@@ -1,34 +1,35 @@
 import {
   AlertOctagon,
   AlertTriangle,
+  Bell,
   CheckCircle2,
   Download,
-  Eye,
   IndianRupee,
   MessageSquare,
   type LucideIcon,
 } from "lucide-react";
-import type { Notification, NotificationType } from "@/types";
+import type { NotificationListItem } from "@/data-access/notifications";
 import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/format-date";
 
-const TYPE_ICON: Record<NotificationType, LucideIcon> = {
-  comment: MessageSquare,
-  changes_requested: AlertTriangle,
-  approval: CheckCircle2,
-  payment: IndianRupee,
-  download: Download,
-  preview_failed: AlertOctagon,
-  view: Eye,
+const TYPE_ICON: Record<string, LucideIcon> = {
+  COMMENT: MessageSquare,
+  CHANGES_REQUESTED: AlertTriangle,
+  PROJECT_APPROVED: CheckCircle2,
+  PAYMENT_COMPLETED: IndianRupee,
+  FILES_DOWNLOADED: Download,
+  PROCESSING_FAILED: AlertOctagon,
+  SYSTEM: Bell,
 };
 
 export interface NotificationItemProps {
-  notification: Notification;
+  notification: NotificationListItem;
   onToggleRead: (id: string) => void;
 }
 
 /** Unread state is shown with a dot AND explicit text for screen readers, never color alone. */
 export function NotificationItem({ notification, onToggleRead }: NotificationItemProps) {
-  const Icon = TYPE_ICON[notification.type];
+  const Icon = TYPE_ICON[notification.type] ?? Bell;
 
   return (
     <li className="border-b border-line last:border-b-0">
@@ -50,11 +51,13 @@ export function NotificationItem({ notification, onToggleRead }: NotificationIte
               )}
               <p className="text-sm font-bold text-ink">{notification.title}</p>
             </div>
-            <p className="mt-0.5 text-[13px] text-ink-muted">{notification.text}</p>
+            <p className="mt-0.5 text-[13px] text-ink-muted">{notification.message}</p>
             <span className="sr-only">{notification.read ? "Read" : "Unread"}</span>
           </div>
         </div>
-        <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">{notification.time}</span>
+        <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
+          {formatDateTime(notification.createdAt)}
+        </span>
       </button>
     </li>
   );

@@ -27,6 +27,15 @@ const STATUS_STYLES = {
   Delivered: { background: "#D1FAE5", color: "#059669" },
   Completed: { background: "#D1FAE5", color: "#059669" },
   Active: { background: "#D1FAE5", color: "#059669" },
+  // Added in Phase 3 for the database-backed WorkspaceStatus/PaymentStatus
+  // enums, which cover a couple of states the Phase 1/2 mock data never
+  // needed. Colors follow the same semantic families as the entries above
+  // (green = settled/positive, amber = pending, red = negative/attention).
+  Cancelled: { background: "#FEE2E2", color: "#DC2626" },
+  Pending: { background: "#FEF3C7", color: "#B45309" },
+  Created: { background: "#F1F5F9", color: "#475569" },
+  Failed: { background: "#FEF2F2", color: "#EF4444" },
+  Refunded: { background: "#F5F3FF", color: "#8B5CF6" },
 } as const satisfies Record<string, StatusStyle>;
 
 export type KnownStatus = keyof typeof STATUS_STYLES;

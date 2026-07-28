@@ -197,3 +197,134 @@ Following `TECHNICAL_AUDIT.md` §18's phased plan, now that the full read-only c
 4. Only after the above: begin auth (Auth.js) for the creator login flow, since every creator screen currently assumes a single hardcoded creator identity with no session boundary.
 
 Do not begin any of the above until Phase 2 is explicitly reviewed and approved.
+
+---
+
+## Phase 3
+
+### Phase 3 objective
+
+Replace creator mock-data reads with secure PostgreSQL-backed queries via Prisma, and implement real creator authentication (registration, credentials login, logout, session handling, protected routes, creator-level data isolation) — while keeping every creator screen's approved visuals unchanged. No workspace/client mutations, file uploads, payments, comments, or secure review links yet. Full architecture reasoning lives in `AUTH_DATABASE_ARCHITECTURE.md`; hands-on setup lives in `DATABASE_SETUP.md`.
+
+### Completed work
+
+- **Database:** PostgreSQL 16 via Docker Compose (`docker-compose.yml`, host port 5433), Prisma 7 with the driver-adapter model (`@prisma/adapter-pg`), schema in `prisma/schema.prisma` (7 models, 4 enums, decisions on cascade behavior documented inline), one migration (`prisma/migrations/20260728051026_init`), deterministic seed (`prisma/seed.ts`) for two creators.
+- **Auth:** Auth.js (next-auth v5 beta) with a Credentials provider, JWT sessions, no adapter — real registration (Zod-validated, bcrypt-hashed, transactional duplicate-email prevention), real login (generic failure message), real logout (Server Action, ends the session server-side).
+- **Route protection, two layers:** `src/proxy.ts` (optimistic, cookie-only, no DB) + `src/app/(creator)/layout.tsx` and every `src/data-access/*` function (definitive, re-reads the session from the database, scopes every query by `creatorId`).
+- **Data-access layer:** `src/data-access/{auth,credentials,users,dashboard,workspaces,clients,payments,notifications}.ts` — one small module per concern, all creator-scoped queries derive `creatorId`/`userId` from the authenticated session, `passwordHash` is selected nowhere except `verifyCredentials()`.
+- **All five creator routes converted from mock data to database reads**, with URL-search-param-backed filters (`q`, `status`, `client`, `sort`, `date`) validated/normalized server-side (`src/lib/search-params.ts`) — see "Database-backed routes" below.
+- **Decimal-safe money throughout:** `src/lib/decimal.ts` (`sumDecimals`/`toDecimal`/`toDisplayNumber`) — every intermediate calculation stays in Prisma's `Decimal` type; conversion to a plain `number` happens exactly once, at the display boundary.
+- **`loading.tsx` and `error.tsx`** added for the `(creator)` route group — a shared skeleton loading state and a generic error boundary that never surfaces a raw Prisma/SQL message to the user (logs via `console.error` only).
+- **Authenticated creator identity** replaces hardcoded mock identity throughout the shell: `CreatorProfile` now shows the real session's name/email, with an initials fallback when there's no profile image, and a real `<form action={logoutAction}>` (not a link) for logout.
+- **Testing, three tiers:**
+  - Unit (Vitest, mocked Prisma/Auth.js, jsdom): 75 tests across 22 files, including all 10 explicitly required behaviors (see below).
+  - Integration (Vitest, real Postgres test database): 11 tests in `src/data-access/isolation.integration.test.ts`.
+  - E2E (Playwright, real dev database): 6 functional auth-flow tests + 24 visual-regression screenshots (1 legitimately skipped — see below).
+- Validated end-to-end manually too: real `curl`-based login/logout against a running production build, confirming session cookies, redirect behavior, and creator-data isolation before writing any tests.
+
+### Authentication strategy
+
+JWT sessions, Credentials provider, no database adapter — see `AUTH_DATABASE_ARCHITECTURE.md` for the full reasoning (short version: Auth.js's database session strategy isn't supported with Credentials; JWT plus a from-scratch `User` model keeps exactly one source of truth for creator accounts instead of two competing ones).
+
+### Protected routes
+
+`/dashboard`, `/workspaces`, `/clients`, `/payments`, `/notifications`, and any future route added to the `(creator)` route group. Public routes (`/`, `/login`, `/register`, `/forgot-password`, the four system-state pages) remain accessible without a session; `/login` and `/register` redirect an already-authenticated visitor to `/dashboard`.
+
+### Database-backed routes
+
+| Route | Data-access module | Filters (URL params) |
+|---|---|---|
+| `/dashboard` | `dashboard.ts` | none (fixed "recent" slices) |
+| `/workspaces` | `workspaces.ts` | `q`, `status`, `client`, `sort` |
+| `/clients` | `clients.ts` | `q` |
+| `/payments` | `payments.ts` | `status`, `date` |
+| `/notifications` | `notifications.ts` | none (matches the original's lack of filters) |
+
+Pagination was **not** added — the approved UI never had it (same call made in Phase 2 for the same reason), and the brief's pagination requirement was explicitly conditional on it existing in the approved UI.
+
+### Mock files now obsolete for production routes
+
+`src/data/mock/*` and `src/types/*` (the Phase 2 mock data and hand-written types) are no longer imported by any production route — every creator page now reads from `src/data-access/*`, which defines its own DB-shaped types locally. They're kept in the repo because:
+
+- Some Phase 2-era tests still exercise the mock-data pure helpers directly (`src/lib/dashboard-metrics.ts` + `dashboard-metrics.test.ts`, `src/lib/client-metrics.ts` — now fully unreferenced by any component, kept as a historical reference for the "derive metrics instead of storing them" pattern that `src/data-access/clients.ts` now does against real data instead).
+- `prisma/seed.ts`'s content was authored by hand to match the mock data's values (not by importing it programmatically), so the mock files remain useful as the "what should this look like" reference if the seed ever needs to be re-derived.
+
+No production code path reads them anymore; a future phase can delete them once nothing still asserts against their pure-function tests.
+
+### Ownership controls
+
+Every creator-scoped Prisma query is built from a `creatorId`/`userId` obtained via `requireAuthenticatedUser()` (`src/data-access/auth.ts`), which itself re-reads the current session and re-fetches the user row from Postgres — never from a URL param, form field, or function argument. Verified three ways:
+1. Unit: `src/data-access/scoping.test.ts` mocks Prisma and asserts the `where` clause always contains the session's `creatorId`, even when a caller tries to smuggle a different one through raw params.
+2. Integration: `src/data-access/isolation.integration.test.ts` proves against the real seeded database that Arjun cannot see Meera's clients/workspaces/dashboard totals, and vice versa.
+3. Manual: a `curl`-based login as Arjun, followed by fetching `/dashboard`/`/clients`, confirmed Meera's seeded client "Devika Nair" never appears.
+
+### Unit tests added (Phase 3)
+
+Mapped to the 10 explicitly required behaviors:
+
+1. Email normalization → `src/lib/normalize-email.test.ts`
+2. Registration validation → `src/lib/validation/auth.test.ts`
+3. Duplicate-email handling → `src/actions/auth.test.ts`
+4. Generic invalid-login behavior → `src/actions/auth.test.ts`, `src/components/auth/login-form.test.tsx`
+5. Currency conversion from Prisma Decimal to view models → `src/lib/decimal.test.ts`
+6. Creator data-access scoping → `src/data-access/scoping.test.ts`
+7. Dashboard metrics from database-shaped records → `src/lib/dashboard-summary.test.ts`
+8. Protected creator-layout behavior → `src/data-access/auth.test.ts` (`requireAuthenticatedUser`/`requireCreatorRole` redirect logic)
+9. Authenticated creator profile rendering → `src/components/creator/creator-profile.test.tsx`
+10. Logout form/action rendering → `src/components/creator/creator-profile.test.tsx` (form/button assertions), `src/actions/auth.test.ts` (`logoutAction` calls `signOut`)
+
+Plus several Phase 2 tests updated in place to match the new DB-shaped props (`client-explorer.test.tsx`, `payment-table.test.tsx`, `notification-item.test.tsx`) rather than the old mock types, and the Phase 2 `dashboard/page.test.tsx` removed (the page is now `async` and hits the database — its coverage moved to `dashboard-summary.test.ts`, a pure-function unit test, plus the Phase 3 integration suite).
+
+### Integration tests added
+
+`src/data-access/isolation.integration.test.ts`, against the dedicated `project_vault_test` database:
+1. `createUser` persists a bcrypt hash, and the raw password verifies against it.
+2. Duplicate email (case-insensitive) is rejected.
+3. `verifyCredentials` authenticates with the real seeded demo password.
+4. `verifyCredentials` is case-insensitive on email.
+5. `verifyCredentials` fails generically (returns `null`) for a wrong password.
+6. `verifyCredentials` fails generically (the same `null`) for a non-existent email.
+7. Arjun cannot query Meera's clients.
+8. Meera cannot query Arjun's clients.
+9. Arjun cannot query Meera's workspaces.
+10. Dashboard metrics for Arjun total exactly his seeded records (₹1,18,000 across 4 workspaces).
+11. Dashboard metrics for Meera total exactly her seeded records (₹37,000 across 2 workspaces).
+
+### Playwright auth E2E tests added
+
+`e2e/auth/auth-flow.spec.ts` (run serially — see "Known issues"):
+1. Unauthenticated `/dashboard` redirects to `/login`.
+2. A valid demo login reaches `/dashboard`.
+3. An invalid login shows the generic error and does not reach the dashboard.
+4. Logout ends the session (verified by re-requesting `/dashboard` afterward, not just checking the redirect target) and returns to `/`.
+5. The authenticated creator's real name/email display, not a hardcoded identity.
+6. A hard page refresh on a protected route keeps the session authenticated.
+
+### Visual baselines added/changed
+
+All 15 Phase 2 baselines were **regenerated** (not just added to) — they were silently wrong after Phase 3 shipped, since `/dashboard` etc. are now protected routes and would have screenshotted the login redirect instead of real content. A `setup` Playwright project now logs in once as the seeded demo creator and shares that session (`e2e/visual/.auth/creator.json`, gitignored) across the three viewport projects.
+
+New baselines (8, one shown at desktop/tablet/mobile except the drawer):
+- Login validation-error state (`login-validation.spec.ts`) — uses a deliberately logged-out context (`storageState: { cookies: [], origins: [] }`), since this is the one visual spec testing a public page.
+- Mobile navigation drawer open state (`mobile-drawer.spec.ts`) — skipped on the `desktop-1440` project (no hamburger/drawer exists there), so this is 2 baselines, not 3.
+- Workspaces no-results empty state (`workspaces-empty.spec.ts`) — reached via `?q=zzz-no-such-workspace-zzz` rather than a separate zero-data creator account.
+
+Total: 24 passing visual checks + 6 passing auth-flow checks = 30 Playwright tests.
+
+### Known issues
+
+- **`e2e/auth/auth-flow.spec.ts` runs serially** (`test.describe.configure({ mode: "serial" })`). Running its 6 tests fully parallel against the one shared dev-server process Playwright starts was flaky in this environment specifically around the logout test — a `page.goto("/dashboard")` immediately after a client-side-observed URL change to `/` would occasionally still see an authenticated session. The underlying logout mechanism itself was verified correct three independent ways (a serial Playwright run, a direct `/api/auth/signout` REST call via `curl`, and a Playwright run using `page.waitForURL` instead of `expect().toHaveURL`) — this reads as test-concurrency contention against a single server process under this sandboxed environment's load, not a broken feature. Worth revisiting if the suite ever needs to run in true parallel (e.g., against a load-balanced set of server instances).
+- **`AUTH_URL` is deliberately unset** in `.env`/`.env.example` (see `AUTH_DATABASE_ARCHITECTURE.md`) — an earlier draft hardcoded it to port 3000, which broke every Auth.js redirect when Playwright's test server ran on a different port. `trustHost: true` plus no fixed `AUTH_URL` fixed it for local dev/testing; revisit for a real deployment behind a fixed domain.
+- Auth security hardening (email verification, password reset, rate limiting/brute-force protection, MFA, OAuth, secret rotation) is explicitly deferred — see `AUTH_DATABASE_ARCHITECTURE.md`'s security section. This phase's auth is real but not production-hardened.
+- `getAuthenticatedCreator()` is wrapped in React's `cache()`, which only de-dupes within a single render pass by design — this is correct for Next.js's per-request scoping, but be aware of it if `src/data-access/auth.ts` is ever unit-tested again: `cache()`'s memoization persists across `it()` blocks within the same Vitest module instance unless `vi.resetModules()` is called between tests (see the comment in `src/data-access/auth.test.ts`).
+
+### Recommended Phase 4 scope
+
+Following `TECHNICAL_AUDIT.md`'s phased plan, now that real auth + a real (read-only) data layer exist:
+
+1. **Workspace detail page** (`/workspaces/[id]`) — still read-only (files list, comments read-only, activity log, payment-gate summary), now backed by the real `Workspace`/`ActivityLog`/`Payment` tables instead of deferred/mock.
+2. **First real mutations as Server Actions** — the lowest-risk ones (resolve a comment once comments exist, copy the client link with a real clipboard call) — each with its own authorization check close to the mutation, not just at the route boundary, per the same pattern `src/data-access/*` already establishes for reads.
+3. **Client creation/editing** — the `/clients` page's "Add/Edit/Delete" buttons already exist and are wired to deferred-action toasts; this is the natural next screen to make real, since the schema (`Client` model) is already in place.
+4. Only after the above: begin the file-storage-adjacent work (uploads, previews, watermarking) that the secure client review portal depends on.
+
+Do not begin any of the above until Phase 3 is explicitly reviewed and approved.

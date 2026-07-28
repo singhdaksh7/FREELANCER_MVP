@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { AuthForm } from "@/components/auth/auth-form";
+import { ForgotPasswordNotice } from "@/components/auth/forgot-password-notice";
 
 export const metadata: Metadata = {
   title: "Reset Password",
 };
 
 export default function ForgotPasswordPage() {
-  return <AuthForm mode="forgot" />;
+  return <ForgotPasswordNotice />;
 }

@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: project-vault-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: project_vault
+      POSTGRES_PASSWORD: project_vault_dev_password
+      POSTGRES_DB: project_vault
+    ports:
+      # Host port 5433 (not 5432) to avoid clashing with any Postgres
+      # instance already running on the host machine.
+      - "5433:5432"
+    volumes:
+      - project-vault-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U project_vault -d project_vault"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  project-vault-postgres-data:

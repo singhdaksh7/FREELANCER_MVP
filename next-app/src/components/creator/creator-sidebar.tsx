@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { Lock, Plus } from "lucide-react";
-import type { Creator } from "@/types";
+import type { AuthenticatedCreator } from "@/data-access/auth";
 import { LinkButton } from "@/components/ui/link-button";
 import { CreatorNavigation } from "./creator-navigation";
 import { CreatorProfile } from "./creator-profile";
 
 export interface CreatorSidebarProps {
-  creator: Creator;
+  creator: AuthenticatedCreator;
   unreadNotificationCount: number;
 }
 

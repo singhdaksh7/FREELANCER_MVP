@@ -174,3 +174,31 @@ These have no Vite counterpart to compare against — they exist only because Ne
 
 - **`not-found.tsx`** — renders for any URL that doesn't match a route (`code="404"`). The old app had no real 404 handling (unmatched routes silently fell through to the creator dashboard).
 - **`error.tsx`** — client-side route error boundary (`code="500"`), reusing the same visual shell as `/server-error` but with a "Try Again" button that calls Next's `reset()` instead of a static link, since a caught render error is recoverable in place.
+
+---
+
+# Phase 3 — Authentication and Database-Backed Data
+
+No approved visual was changed in this phase — every creator screen renders pixel-identical content to Phase 2, now sourced from Postgres instead of mock arrays. This section documents what *did* change: the auth-gating in front of those screens, and the new visual states added specifically because they didn't exist before real auth/data did.
+
+## Auth-gating changes what's screenshotted, not how it looks
+
+Phase 2's 15 visual baselines (dashboard/workspaces/clients/payments/notifications × 3 viewports) were **regenerated**, not newly created — `/dashboard` etc. are now protected routes, so a screenshot taken without a session would silently capture the `/login` redirect instead of the intended screen. A `setup` Playwright project (`e2e/visual/auth.setup.ts`) logs in as the seeded demo creator once and shares that session across the three viewport projects. The actual pixels of those 15 screenshots are unchanged from Phase 2's intent (same layout, same design tokens) — only the underlying data source changed (real seeded Postgres rows instead of `src/data/mock/*`), and the seed data was authored to match the mock data's values exactly for Arjun Raj, so the content itself is visually identical too.
+
+## `/login`, `/register` — real forms, same visual shell
+
+- **Original Vite source:** `src/pages/AuthScreens.jsx` (unchanged reference — same as Phase 1's comparison).
+- **What changed since Phase 1:** submitting now performs a real registration/login instead of showing a "demo only" toast. Phase 1's single `AuthForm` (mode-switched between login/register/forgot) was split into dedicated `LoginForm`/`RegisterForm`/`ForgotPasswordNotice` components in this phase, each now backed by a real Server Action — but the rendered markup and styling are unchanged from Phase 1's approved shell (same `AuthCard` chrome, same field layout). The one new visual state is the validation-error banner (see below), which reuses the exact same red/danger token styling (`bg-danger-bg`/`text-danger`) established in the Phase 1 design system — no new color was introduced.
+- **New visual baseline: login validation-error state** (`login-validation.spec.ts`) — submits a wrong password and captures the resulting error banner above the form fields. Uses a deliberately logged-out browser context (`storageState: { cookies: [], origins: [] }`), since every other visual spec in this phase runs authenticated by default.
+
+## `/forgot-password` — content change, same shell
+
+- **Known difference (disclosed, required by the brief):** the original AuthScreens "forgot" mode had a working-looking form ("Send Reset Link" button, simulated success toast). This phase replaces it with a plain notice stating password recovery isn't enabled yet — per the explicit instruction not to fake sending an email. The `AuthCard` shell (logo, heading, white card on navy background) is unchanged; only the body content differs (an info banner instead of a form).
+
+## New visual baseline: mobile navigation drawer, open state
+
+`mobile-drawer.spec.ts` — opens the hamburger menu on `/dashboard` and screenshots the resulting slide-in panel (nav links, close button, "Signed in as Arjun Raj" footer). Skipped on the `desktop-1440` project (no hamburger/drawer exists at that viewport — the persistent sidebar renders instead), so this produces 2 baselines (tablet-768, mobile-390), not 3. The drawer itself is a Phase 2 addition (see that phase's "known differences" — the original design never had one); Phase 3 simply adds the missing open-state screenshot for it now that the shell reads real authenticated data.
+
+## New visual baseline: workspaces empty/no-results state
+
+`workspaces-empty.spec.ts` — navigates to `/workspaces?q=zzz-no-such-workspace-zzz`, a search term guaranteed to match none of Arjun's seeded workspaces, and screenshots the resulting `EmptyState` (icon, "No workspaces match your search," description). This is the "no results" flavor of empty state (not "zero workspaces ever created") — reaching a true zero-workspace account wasn't worth seeding a third demo creator for, since the empty-state *component* (`EmptyState`, `src/components/ui/empty-state.tsx`) is the same one either way and was already visually verified in Phase 2's component-level tests.

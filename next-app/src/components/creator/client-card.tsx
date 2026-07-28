@@ -1,27 +1,25 @@
 import { Building } from "lucide-react";
-import type { Client, Workspace } from "@/types";
+import type { ClientListItem } from "@/data-access/clients";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatINR } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
-import { getClientLastActivity, getClientOutstanding } from "@/lib/client-metrics";
 
 export interface ClientCardProps {
-  client: Client;
-  workspaces: Workspace[];
+  client: ClientListItem;
   onDeferredAction: (message: string) => void;
 }
 
-export function ClientCard({ client, workspaces, onDeferredAction }: ClientCardProps) {
-  const lastActivity = getClientLastActivity(client.id, workspaces);
-
+export function ClientCard({ client, onDeferredAction }: ClientCardProps) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-ink">{client.name}</h3>
-          <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-muted">
-            <Building size={13} aria-hidden="true" /> {client.company}
-          </p>
+          {client.company && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-muted">
+              <Building size={13} aria-hidden="true" /> {client.company}
+            </p>
+          )}
         </div>
         <StatusBadge status={client.status} />
       </div>
@@ -30,13 +28,13 @@ export function ClientCard({ client, workspaces, onDeferredAction }: ClientCardP
         <dt className="text-ink-muted">Email</dt>
         <dd className="truncate text-right font-medium text-vault-blue">{client.email}</dd>
         <dt className="text-ink-muted">Active workspaces</dt>
-        <dd className="text-right font-medium text-ink">{client.activeWorkspaces}</dd>
+        <dd className="text-right font-medium text-ink">{client.activeWorkspaceCount}</dd>
         <dt className="text-ink-muted">Outstanding</dt>
-        <dd className="text-right font-semibold text-ink">
-          {formatINR(getClientOutstanding(client.id, workspaces))}
-        </dd>
+        <dd className="text-right font-semibold text-ink">{formatINR(client.outstandingAmount)}</dd>
         <dt className="text-ink-muted">Last activity</dt>
-        <dd className="text-right text-ink">{lastActivity ? formatDate(lastActivity) : "—"}</dd>
+        <dd className="text-right text-ink">
+          {client.lastActivityAt ? formatDate(client.lastActivityAt) : "—"}
+        </dd>
       </dl>
 
       <div className="flex gap-2 pt-1">

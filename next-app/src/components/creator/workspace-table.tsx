@@ -1,22 +1,24 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
-import type { Workspace } from "@/types";
+import type { WorkspaceListItem } from "@/data-access/workspaces";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatINR } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
-import { getWorkspaceProgress } from "@/lib/workspace-progress";
+import { workspaceStatusLabel } from "@/lib/status-labels";
 
 export interface WorkspaceTableProps {
-  workspaces: Workspace[];
+  workspaces: WorkspaceListItem[];
   caption: string;
 }
 
 /**
  * Desktop table of workspaces (Title, Client, Amount, Status, Progress,
  * Last activity, Actions). `/workspaces/[id]` and `/review/[token]` are
- * deferred routes in this phase — links point at them anyway (resolving
- * through not-found.tsx for now), matching the Phase 1 pattern for
- * destinations that will exist in a later phase.
+ * deferred routes in this phase — the "Manage" link points there anyway
+ * (resolving through not-found.tsx for now), matching the Phase 1 pattern
+ * for destinations that will exist in a later phase. "Portal" only
+ * renders once a workspace actually has a `publicToken` (i.e. has been
+ * shared) — Phase 2's mock data assumed every workspace already had one.
  */
 export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
   return (
@@ -39,21 +41,18 @@ export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
             <tr key={workspace.id} className="border-b border-line last:border-b-0">
               <td className="px-6 py-4">
                 <div className="font-semibold text-ink">{workspace.title}</div>
-                <div className="text-xs text-ink-muted">
-                  {workspace.category} · {workspace.currentVersion.toUpperCase()}
-                </div>
               </td>
               <td className="px-6 py-4">
                 <div className="font-medium text-ink">{workspace.client.name}</div>
-                <div className="text-xs text-ink-muted">{workspace.client.company}</div>
+                {workspace.client.company && (
+                  <div className="text-xs text-ink-muted">{workspace.client.company}</div>
+                )}
               </td>
               <td className="px-6 py-4 font-semibold text-ink">{formatINR(workspace.amount)}</td>
               <td className="px-6 py-4">
-                <StatusBadge status={workspace.status} />
+                <StatusBadge status={workspaceStatusLabel(workspace.status)} />
               </td>
-              <td className="px-6 py-4 text-xs text-ink-muted">
-                {getWorkspaceProgress(workspace.status)}%
-              </td>
+              <td className="px-6 py-4 text-xs text-ink-muted">{workspace.progress}%</td>
               <td className="px-6 py-4 text-xs text-ink-muted">{formatDate(workspace.updatedAt)}</td>
               <td className="px-6 py-4">
                 <div className="flex justify-end gap-2">
@@ -63,12 +62,14 @@ export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
                   >
                     Manage
                   </Link>
-                  <Link
-                    href={`/review/${workspace.secureToken}`}
-                    className="inline-flex items-center gap-1 rounded-md bg-vault-blue-light px-3 py-1.5 text-xs font-semibold text-vault-blue hover:bg-vault-blue/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-                  >
-                    Portal <ExternalLink size={12} aria-hidden="true" />
-                  </Link>
+                  {workspace.publicToken && (
+                    <Link
+                      href={`/review/${workspace.publicToken}`}
+                      className="inline-flex items-center gap-1 rounded-md bg-vault-blue-light px-3 py-1.5 text-xs font-semibold text-vault-blue hover:bg-vault-blue/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                    >
+                      Portal <ExternalLink size={12} aria-hidden="true" />
+                    </Link>
+                  )}
                 </div>
               </td>
             </tr>

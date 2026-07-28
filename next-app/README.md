@@ -1,11 +1,12 @@
-# Project Vault — Next.js App (Phase 2)
+# Project Vault — Next.js App (Phase 3)
 
-This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 + Phase 2**: foundation/visual-parity for the public and system-state screens, plus the creator application shell and five read-only creator screens backed by centralized typed mock data. See `MIGRATION_STATUS.md` for full scope, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
+This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 + 2 + 3**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, and — new in Phase 3 — real PostgreSQL persistence via Prisma and real creator authentication via Auth.js. See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
 
 ## Requirements
 
 - Node.js 20+ (developed against Node 24.6.0)
 - npm
+- Docker (for the local Postgres database) — or any reachable external PostgreSQL instance
 
 ## Installation
 
@@ -15,9 +16,21 @@ From this directory (`next-app/`):
 npm install
 ```
 
-### Playwright browser install (for visual tests only)
+### Database (required before running the app)
 
-The visual regression suite needs a Chromium binary that `npm install` does not download automatically:
+See `DATABASE_SETUP.md` for full detail. Quick path:
+
+```bash
+docker compose up -d              # starts local Postgres on port 5433
+cp .env.example .env              # fill in AUTH_SECRET (openssl rand -base64 32)
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+```
+
+Demo login after seeding: `arjun@example.com` / `Demo@12345` (see `DATABASE_SETUP.md` for the second demo account and full credential list).
+
+### Playwright browser install (for visual/E2E tests only)
 
 ```bash
 npx playwright install chromium
@@ -31,7 +44,7 @@ npx playwright install chromium
 npm run dev
 ```
 
-Runs the app at `http://localhost:3000` by default.
+Runs the app at `http://localhost:3000` by default. Requires the database to be running and migrated (see above) — every creator route now reads from Postgres.
 
 ## Build
 
@@ -39,7 +52,7 @@ Runs the app at `http://localhost:3000` by default.
 npm run build
 ```
 
-Produces a production build. All routes are statically prerendered.
+Produces a production build. Public/system-state pages remain statically prerendered; every creator route and the auth API route are server-rendered on demand (they depend on the authenticated session and live data).
 
 ```bash
 npm run start
@@ -61,7 +74,7 @@ Runs ESLint (`eslint-config-next`).
 npx tsc --noEmit
 ```
 
-Runs in TypeScript strict mode with zero suppressions (`strict: true`, no `@ts-ignore`/`@ts-nocheck`/`any`). Note: `playwright.config.ts` and `e2e/**` are excluded from this project's `tsconfig.json` (Playwright transpiles its own test files independently and doesn't need them in the Next.js app's type-check scope).
+Runs in TypeScript strict mode with zero suppressions (`strict: true`, no `@ts-ignore`/`@ts-nocheck`/`any`). Note: `playwright.config.ts` and `e2e/**` are excluded from this project's `tsconfig.json` (Playwright transpiles its own test files independently).
 
 ## Test (unit / component)
 
@@ -69,15 +82,28 @@ Runs in TypeScript strict mode with zero suppressions (`strict: true`, no `@ts-i
 npm run test
 ```
 
-Runs the Vitest + React Testing Library suite (jsdom environment). Tests exercise real user-facing behavior (rendered text, roles, `href`s, labelled form fields, toast content, filtering results) rather than snapshots.
+Runs the Vitest + React Testing Library suite (jsdom environment, mocked Prisma/Auth.js — never touches a real database). Tests exercise real user-facing behavior and real logic (validation schemas, decimal-safe money math, query-scoping assertions, auth-redirect behavior) rather than snapshots.
 
-## Visual regression tests
+## Test (database integration)
+
+```bash
+npm run test:integration
+```
+
+Runs `src/data-access/**/*.integration.test.ts` against a **dedicated test database** (never your dev database) — real Prisma queries, real bcrypt hashing, real seeded two-creator isolation checks. Automatically reseeds that database first. See `DATABASE_SETUP.md` → "Test database" for one-time setup, and `scripts/guard-local-db.mjs`, which refuses to run against anything that isn't a local database with "test" in its name.
+
+## Visual regression + authentication E2E tests
 
 ```bash
 npm run test:visual
 ```
 
-Runs the Playwright screenshot-comparison suite (`e2e/visual/*.spec.ts`) against a production build, across 3 viewports (desktop 1440px, tablet 768px, mobile 390px) for each of the 5 creator screens — 15 checks total. The `webServer` block in `playwright.config.ts` builds and starts the app automatically, so you don't need `npm run build`/`start` running separately first.
+Runs the full Playwright suite (`e2e/**/*.spec.ts`) against a production build talking to your **real, seeded development database** — there is no mocking at this layer. Two kinds of coverage:
+
+- **`e2e/auth/*.spec.ts`** — functional tests of the real login/logout/redirect flow (unauthenticated redirect, valid/invalid login, logout, session-survives-refresh, authenticated identity display). Run serially against the shared dev server (see the comment in `auth-flow.spec.ts` for why).
+- **`e2e/visual/*.spec.ts`** — screenshot comparisons across 3 viewports (desktop 1440px, tablet 768px, mobile 390px): the 5 creator screens, the login validation-error state, the mobile navigation drawer open state, and a workspaces empty/no-results state. A `setup` project logs in once as the seeded demo creator and reuses that session (`e2e/visual/.auth/creator.json`, gitignored) across the screenshot tests; `login-validation.spec.ts` explicitly overrides that with a fresh logged-out context, since it's testing the public login page.
+
+The `webServer` block in `playwright.config.ts` builds and starts the app automatically, so you don't need `npm run build`/`start` running separately first — but the **database must already be migrated and seeded** (see above), since the app now depends on it to render anything past the login page.
 
 **Generate the first baseline** (only needed once, or after an intentional visual change):
 
@@ -85,21 +111,11 @@ Runs the Playwright screenshot-comparison suite (`e2e/visual/*.spec.ts`) against
 npm run test:visual:update
 ```
 
-This writes/overwrites the PNGs under `e2e/visual/*.spec.ts-snapshots/` and always passes (there's nothing to compare against yet, or you're deliberately accepting new output).
+**Review changes:** on a failing run, open the generated `playwright-report/index.html` for side-by-side expected/actual/diff images.
 
-**Run comparisons** (the normal, everyday command — what CI would run):
+**Update baselines intentionally:** after confirming a diff is an *intended* visual change, re-run `npm run test:visual:update` and commit the updated PNGs alongside the code change that caused them.
 
-```bash
-npm run test:visual
-```
-
-Compares each fresh screenshot against the committed baseline and fails if they differ by more than 1% of pixels (`maxDiffPixelRatio: 0.01` in `playwright.config.ts`, to absorb harmless anti-aliasing drift between machines).
-
-**Review changes:** on a failing run, Playwright writes an HTML report (`playwright-report/index.html`, open it in a browser) showing expected/actual/diff images side-by-side for every failing check, plus a `test-results/` folder with the same data.
-
-**Update baselines intentionally:** after confirming a diff is an *intended* visual change (not a regression), re-run `npm run test:visual:update` to accept the new screenshots, then commit the updated PNGs alongside the code change that caused them.
-
-Determinism notes (see `MIGRATION_STATUS.md` → "Visual-test status" for the full list): remote avatar images are intercepted and replaced with a static placeholder so screenshots never depend on network access; all content comes from static mock data; animations are disabled during capture; date-range filtering uses a fixed reference date instead of the system clock.
+Determinism notes (see `MIGRATION_STATUS.md` → "Visual-test status" for the full list): remote avatar images are intercepted and replaced with a static placeholder; animations are disabled during capture; payment date-range filtering uses a fixed reference date instead of the system clock; the seed data itself is deterministic (fixed ids, fixed timestamps).
 
 ## Route inventory
 
@@ -107,57 +123,55 @@ Determinism notes (see `MIGRATION_STATUS.md` → "Visual-test status" for the fu
 
 | Route | Screen | Notes |
 |---|---|---|
-| `/` | Landing page | Server Component |
-| `/login` | Sign in | Client Component form (visual only) |
-| `/register` | Create account | Client Component form (visual only) |
-| `/forgot-password` | Reset password | Client Component form (visual only) |
+| `/` | Landing page | Server Component, public |
+| `/login` | Sign in | Real credentials login (Server Action) |
+| `/register` | Create account | Real registration (Server Action) |
+| `/forgot-password` | Reset password | States plainly that recovery isn't enabled yet — no email is sent |
 | `/link-expired` | System state — expired secure link | Server Component |
 | `/link-revoked` | System state — revoked secure link | Server Component |
-| `/permission-denied` | System state — 403 | Server Component |
+| `/permission-denied` | System state — 403 | Also used for an authenticated non-CREATOR role |
 | `/server-error` | System state — 500 | Server Component |
 | *(any unmatched URL)* | `not-found.tsx` | Real Next.js 404 handling |
 | *(uncaught render error)* | `error.tsx` | Next.js route error boundary |
 
-### Creator (Phase 2)
+### Creator (Phase 2 UI, Phase 3 data + auth) — all protected
 
 | Route | Screen | Notes |
 |---|---|---|
-| `/dashboard` | Creator dashboard | Server Component |
-| `/workspaces` | Workspaces directory | Server page + Client search/filter |
-| `/clients` | Clients directory | Client Component |
-| `/payments` | Payments & revenue ledger | Server page + Client filters |
-| `/notifications` | Notifications feed | Server page + Client read/unread toggle |
+| `/dashboard` | Creator dashboard | Database-backed, scoped to the authenticated creator |
+| `/workspaces` | Workspaces directory | Database-backed search/status/client filter/sort via URL params |
+| `/clients` | Clients directory | Database-backed search, derived active-workspace/outstanding figures |
+| `/payments` | Payments & revenue ledger | Database-backed status/date filters, Decimal-safe totals |
+| `/notifications` | Notifications feed | Database-backed list |
 
-All routes above work when opened directly and after a full browser refresh — there is no client-only route-matching logic (the old app's custom `currentRoute` string-router does not exist in this codebase). The five creator routes live under a `(creator)` **route group** (`src/app/(creator)/`) purely for file organization; route groups never add a URL segment, so there is no `/creator` prefix.
+All creator routes redirect unauthenticated visitors to `/login` (`src/proxy.ts`, backed by a definitive re-check in `src/app/(creator)/layout.tsx` and every data-access function — see `AUTH_DATABASE_ARCHITECTURE.md`). They live under a `(creator)` **route group** purely for file organization; route groups never add a URL segment, so there is still no `/creator` prefix.
 
 ## Current migration scope
 
-- **Design system:** a centralized design-token file (`src/app/globals.css`, via Tailwind v4's `@theme`) carries over every color, radius, shadow, breakpoint, and the Inter typeface from the original `src/index.css`, plus layout-dimension tokens for the 240px sidebar / 64px header / 60px mobile nav.
-- **Status colors:** centralized in `src/lib/status-config.ts`, consumed by `StatusBadge` everywhere — no screen redefines status colors locally.
-- **Mock data:** fully typed (`src/types/*`) and centralized (`src/data/mock/*`), replacing `AppContext.jsx`/`mockData.js` for the screens migrated so far. No global mutable store — Client Components hold only their own local UI state.
-- **13 screens migrated:** the 8 public/system-state screens from Phase 1, plus Dashboard, Workspaces, Clients, Payments, and Notifications from Phase 2.
-- **Shared component library:** see `CREATOR_COMPONENT_MAP.md` for the creator-specific inventory, and Phase 1's primitives (`StatusBadge`, `Toast`, `Button`/`LinkButton`, `PageContainer`) reused throughout.
+- **Auth:** real registration + credentials login + logout via Auth.js (JWT sessions, no adapter) — see `AUTH_DATABASE_ARCHITECTURE.md`.
+- **Database:** PostgreSQL via Prisma 7 (driver-adapter model), schema in `prisma/schema.prisma`, deterministic seed in `prisma/seed.ts`.
+- **Data access:** `src/data-access/*` — every creator-scoped query derives `creatorId` from the authenticated session, never from a parameter.
+- **Design system, status colors, shared components:** unchanged from Phase 1/2 — see `CREATOR_COMPONENT_MAP.md` and `VISUAL_PARITY.md`.
 
 ## Explicit list of features NOT yet implemented
 
-- Authentication (login/register/forgot-password are **visual only**; no session, no credential storage, no `localStorage`/`sessionStorage`)
-- Prisma / any database — everything is typed, in-memory mock data
 - Workspace detail page (`/workspaces/[id]`), new-workspace wizard (`/workspaces/new`)
+- Workspace/client creation, editing, deletion (Add/Edit/Delete are visible but show a deferred-action toast or are disabled — never a fake success)
 - Settings page (`/settings`) — the nav link exists and is visually consistent, but the route is unbuilt
 - Admin console (`/admin/*`)
 - The secure client review portal (`/review/[token]`)
-- File upload, preview generation, or watermarking
-- Payments (Razorpay) or any payment simulation
-- File unlocking of any kind
-- Email (Resend)
-- Any create/edit/delete mutation — Add/Edit/Delete Client, workspace creation, payment receipts, and "mark all notifications read" are all either disabled with an accessible explanation or show an "available in a later phase" toast; nothing is ever faked as saved or deleted
-- `AppContext` or any equivalent global app state
+- File upload, object storage, preview generation, watermarking
+- Payments (Razorpay), payment webhooks, file unlocking, download grants
+- Email delivery (Resend) — password reset and email verification are explicitly non-functional (see `/forgot-password` and `AUTH_DATABASE_ARCHITECTURE.md`'s deferred-security list)
+- Notification mutations (mark-as-read is local-only prototype state, not persisted)
+- Rate limiting, MFA, OAuth login, production secret rotation
 
 ## Current limitations
 
-- The Playwright visual suite covers default page loads only — not the mobile drawer's open state, hover/focus states, or empty/no-results states (all reachable only through interaction). See `MIGRATION_STATUS.md` → "Visual-test status."
-- Visual baselines were generated and are only verified on this Windows/Chromium environment; a different OS/font-rendering stack could show minor anti-aliasing differences (the 1% pixel-diff tolerance is meant to absorb exactly this).
-- `npm audit` reports pre-existing high-severity advisories inherited from `create-next-app`'s default dependency tree — unrelated to any code written in these phases, not addressed per the "don't install unrelated dependencies" boundary.
+- Auth security hardening (email verification, password reset, rate limiting, MFA) is explicitly deferred — see `AUTH_DATABASE_ARCHITECTURE.md`'s security section. Do not treat this phase as production-hardened auth.
+- Visual baselines were generated and are only verified on this Windows/Chromium environment; a different OS/font-rendering stack could show minor anti-aliasing differences (the 1% pixel-diff tolerance absorbs this).
+- `npm audit` reports pre-existing high-severity advisories inherited from `create-next-app`'s default dependency tree — unrelated to code written in these phases.
+- `src/data/mock/*` and `src/types/*` (the Phase 2 mock data and types) are now obsolete for production routes — kept only for reference/legacy tests. See `MIGRATION_STATUS.md` for the exact list.
 
 ## How to compare with the original Vite application
 
@@ -170,15 +184,9 @@ npm run dev
 ```
 
 ```bash
-# from next-app/, in another terminal
+# from next-app/, in another terminal (database must be running/seeded first)
 npm run dev
 # Next.js dev server, default http://localhost:3000
 ```
 
-With both running, open the same screen side-by-side, e.g.:
-
-- Vite `http://localhost:5173/` (landing) vs. Next.js `http://localhost:3000/`
-- Vite `http://localhost:5173/dashboard` vs. Next.js `http://localhost:3000/dashboard`
-- Vite `http://localhost:5173/workspaces` vs. Next.js `http://localhost:3000/workspaces`
-
-`VISUAL_PARITY.md` documents the expected result and any known, disclosed differences for each pair — there should be no undocumented visual difference. Manual side-by-side inspection and line-by-line cross-referencing of color/spacing/radius values were used for both phases; Phase 2 additionally has the automated Playwright screenshot suite described above.
+The Vite app has no real login, so its creator screens are reachable directly; the Next.js app requires signing in first (`arjun@example.com` / `Demo@12345`) before `/dashboard` etc. render. `VISUAL_PARITY.md` documents the expected result and any known, disclosed differences.

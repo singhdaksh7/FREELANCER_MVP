@@ -1,11 +1,12 @@
 import { Receipt } from "lucide-react";
-import type { Payment } from "@/types";
+import type { PaymentListItem } from "@/data-access/payments";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatINR } from "@/lib/format-currency";
 import { formatPaymentDate } from "@/lib/format-date";
+import { paymentStatusLabel } from "@/lib/status-labels";
 
 export interface PaymentTableProps {
-  payments: Payment[];
+  payments: PaymentListItem[];
   caption: string;
   onDeferredAction: (message: string) => void;
 }
@@ -29,36 +30,39 @@ export function PaymentTable({ payments, caption, onDeferredAction }: PaymentTab
           </tr>
         </thead>
         <tbody>
-          {payments.map((payment) => (
-            <tr key={payment.id} className="border-b border-line last:border-b-0">
-              <td className="px-6 py-4 font-medium text-ink-muted">{payment.id}</td>
-              <td className="px-6 py-4 font-semibold text-ink">{payment.workspaceTitle}</td>
-              <td className="px-6 py-4 text-ink">{payment.clientName}</td>
-              <td className="px-6 py-4 font-semibold text-ink">{formatINR(payment.amount)}</td>
-              <td className="px-6 py-4 font-semibold text-success">{formatINR(payment.netAmount)}</td>
-              <td className="px-6 py-4 text-xs text-ink-muted">{formatPaymentDate(payment.date)}</td>
-              <td className="px-6 py-4">
-                <StatusBadge status={payment.status} />
-              </td>
-              <td className="px-6 py-4 text-right">
-                <button
-                  type="button"
-                  disabled={payment.status !== "Completed"}
-                  onClick={() =>
-                    onDeferredAction(`Receipts for ${payment.workspaceTitle} are available in a later phase.`)
-                  }
-                  title={
-                    payment.status !== "Completed"
-                      ? "Receipts are only available for completed payments"
-                      : "Receipts are available in a later phase"
-                  }
-                  className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Receipt size={13} aria-hidden="true" /> Receipt
-                </button>
-              </td>
-            </tr>
-          ))}
+          {payments.map((payment) => {
+            const isPaid = payment.status === "PAID";
+            return (
+              <tr key={payment.id} className="border-b border-line last:border-b-0">
+                <td className="px-6 py-4 font-medium text-ink-muted">{payment.id}</td>
+                <td className="px-6 py-4 font-semibold text-ink">{payment.workspaceTitle}</td>
+                <td className="px-6 py-4 text-ink">{payment.clientName}</td>
+                <td className="px-6 py-4 font-semibold text-ink">{formatINR(payment.amount)}</td>
+                <td className="px-6 py-4 font-semibold text-success">{formatINR(payment.netAmount)}</td>
+                <td className="px-6 py-4 text-xs text-ink-muted">{formatPaymentDate(payment.paidAt)}</td>
+                <td className="px-6 py-4">
+                  <StatusBadge status={paymentStatusLabel(payment.status)} />
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button
+                    type="button"
+                    disabled={!isPaid}
+                    onClick={() =>
+                      onDeferredAction(`Receipts for ${payment.workspaceTitle} are available in a later phase.`)
+                    }
+                    title={
+                      isPaid
+                        ? "Receipts are available in a later phase"
+                        : "Receipts are only available for completed payments"
+                    }
+                    className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Receipt size={13} aria-hidden="true" /> Receipt
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import type { Creator } from "@/types";
+import type { AuthenticatedCreator } from "@/data-access/auth";
 import { CreatorSidebar } from "./creator-sidebar";
 import { CreatorHeader } from "./creator-header";
 import { CreatorMobileHeader } from "./creator-mobile-header";
 import { CreatorMobileNav } from "./creator-mobile-nav";
 
 export interface CreatorShellProps {
-  creator: Creator;
+  creator: AuthenticatedCreator;
   unreadNotificationCount: number;
   children: ReactNode;
 }

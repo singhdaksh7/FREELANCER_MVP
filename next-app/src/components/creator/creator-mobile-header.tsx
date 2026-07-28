@@ -3,12 +3,12 @@
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { Lock, Menu, X } from "lucide-react";
-import type { Creator } from "@/types";
+import type { AuthenticatedCreator } from "@/data-access/auth";
 import { CreatorNavigation } from "./creator-navigation";
 import { NotificationTrigger } from "./notification-trigger";
 
 export interface CreatorMobileHeaderProps {
-  creator: Creator;
+  creator: AuthenticatedCreator;
   unreadNotificationCount: number;
 }
 

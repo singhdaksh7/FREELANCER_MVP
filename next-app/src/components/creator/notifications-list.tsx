@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { Bell } from "lucide-react";
-import type { Notification } from "@/types";
+import type { NotificationListItem } from "@/data-access/notifications";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NotificationItem } from "./notification-item";
 
 export interface NotificationsListProps {
-  notifications: Notification[];
+  notifications: NotificationListItem[];
 }
 
 /**

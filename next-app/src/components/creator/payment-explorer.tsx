@@ -1,50 +1,28 @@
 "use client";
 
-import { useState } from "react";
 import { Clock, IndianRupee, Receipt, SearchX } from "lucide-react";
-import type { Payment, PaymentStatus } from "@/types";
+import type { PaymentListItem, PaymentSummary } from "@/data-access/payments";
 import { FilterSelect } from "@/components/ui/filter-select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Toast } from "@/components/ui/toast";
 import { useToastMessage } from "@/hooks/use-toast-message";
+import { useUrlFilters } from "@/hooks/use-url-filters";
+import { PAYMENT_DATE_RANGE_OPTIONS, PAYMENT_STATUS_OPTIONS } from "@/lib/filter-options";
 import { formatINR } from "@/lib/format-currency";
-import { computePaymentSummary } from "@/lib/payment-metrics";
-import { demoDaysAgo } from "@/lib/demo-clock";
 import { PaymentTable } from "./payment-table";
 import { PaymentCard } from "./payment-card";
 
 export interface PaymentExplorerProps {
-  payments: Payment[];
+  /** Already filtered server-side by the current `status`/`date` params — see src/data-access/payments.ts. */
+  payments: PaymentListItem[];
+  summary: PaymentSummary;
+  hasAnyPayments: boolean;
 }
 
-const STATUS_OPTIONS: { label: string; value: "All" | PaymentStatus }[] = [
-  { label: "All Statuses", value: "All" },
-  { label: "Completed", value: "Completed" },
-  { label: "Pending Approval", value: "Pending Approval" },
-  { label: "In Review", value: "In Review" },
-];
-
-const DATE_OPTIONS = [
-  { label: "All Time", value: "all" },
-  { label: "Last 7 Days", value: "7" },
-  { label: "Last 30 Days", value: "30" },
-] as const;
-
-export function PaymentExplorer({ payments }: PaymentExplorerProps) {
-  const [status, setStatus] = useState<"All" | PaymentStatus>("All");
-  const [dateRange, setDateRange] = useState<(typeof DATE_OPTIONS)[number]["value"]>("all");
+export function PaymentExplorer({ payments, summary, hasAnyPayments }: PaymentExplorerProps) {
+  const { getParam, setParam } = useUrlFilters();
   const { toast, showToast } = useToastMessage();
-
-  const summary = computePaymentSummary(payments);
-
-  const filtered = payments.filter((payment) => {
-    const matchesStatus = status === "All" || payment.status === status;
-    const matchesDate =
-      dateRange === "all" ||
-      (payment.date !== null && payment.date >= demoDaysAgo(Number(dateRange)));
-    return matchesStatus && matchesDate;
-  });
 
   return (
     <div className="flex flex-col gap-5">
@@ -68,34 +46,38 @@ export function PaymentExplorer({ payments }: PaymentExplorerProps) {
 
       <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line bg-surface-card p-4">
         <FilterSelect
-          value={status}
-          onChange={(value) => setStatus(value as "All" | PaymentStatus)}
-          options={STATUS_OPTIONS}
+          value={getParam("status", "All")}
+          onChange={(value) => setParam("status", value)}
+          options={PAYMENT_STATUS_OPTIONS}
           aria-label="Filter by payment status"
         />
         <FilterSelect
-          value={dateRange}
-          onChange={(value) => setDateRange(value as (typeof DATE_OPTIONS)[number]["value"])}
-          options={[...DATE_OPTIONS]}
+          value={getParam("date", "all")}
+          onChange={(value) => setParam("date", value, ["all", ""])}
+          options={PAYMENT_DATE_RANGE_OPTIONS}
           aria-label="Filter by date range"
         />
       </div>
 
-      {filtered.length === 0 ? (
+      {payments.length === 0 ? (
         <EmptyState
           icon={SearchX}
-          title="No transactions match your filters"
-          description="Try a different status or date range."
+          title={hasAnyPayments ? "No transactions match your filters" : "No payments yet"}
+          description={
+            hasAnyPayments
+              ? "Try a different status or date range."
+              : "Payments for your workspaces will appear here once a client pays."
+          }
         />
       ) : (
         <>
           <PaymentTable
-            payments={filtered}
+            payments={payments}
             caption="Payments matching the current filters"
             onDeferredAction={(message) => showToast(message, "info")}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
-            {filtered.map((payment) => (
+            {payments.map((payment) => (
               <PaymentCard
                 key={payment.id}
                 payment={payment}

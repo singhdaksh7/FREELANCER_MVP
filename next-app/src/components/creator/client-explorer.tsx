@@ -1,36 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, UserSearch, Users } from "lucide-react";
-import type { Client, Workspace } from "@/types";
+import type { ClientListItem } from "@/data-access/clients";
 import { SearchField } from "@/components/ui/search-field";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Toast } from "@/components/ui/toast";
 import { SectionHeader } from "@/components/ui/section-header";
 import { useToastMessage } from "@/hooks/use-toast-message";
-import { matchesSearch } from "@/lib/search";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { ClientTable } from "./client-table";
 import { ClientCard } from "./client-card";
 
 export interface ClientExplorerProps {
-  clients: Client[];
-  workspaces: Workspace[];
+  /** Already filtered server-side by the current `q` search param — see src/data-access/clients.ts. */
+  clients: ClientListItem[];
+  /** True if the creator has zero clients at all (vs. zero matching the current search). */
+  hasAnyClients: boolean;
 }
 
+const SEARCH_DEBOUNCE_MS = 350;
+
 /**
- * Search over the (mock) client list, plus the Add/Edit/Delete actions —
- * all of which are visually present but unimplemented in this phase and
- * show an "available in a later phase" toast instead of pretending to
- * save or delete anything.
+ * Search updates the `q` URL param (debounced) so filtering happens via a
+ * database-backed Server Component re-render, not client-side array
+ * filtering. Add/Edit/Delete are visibly present but unimplemented in
+ * this phase and show an "available in a later phase" toast instead of
+ * pretending to save or delete anything.
  */
-export function ClientExplorer({ clients, workspaces }: ClientExplorerProps) {
-  const [search, setSearch] = useState("");
+export function ClientExplorer({ clients, hasAnyClients }: ClientExplorerProps) {
+  const { getParam, setParam } = useUrlFilters();
+  const [search, setSearch] = useState(() => getParam("q"));
   const { toast, showToast } = useToastMessage();
 
-  const filtered = clients.filter((client) =>
-    matchesSearch(search, [client.name, client.company, client.email]),
-  );
+  useEffect(() => {
+    const timeout = setTimeout(() => setParam("q", search), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when `search` itself changes
+  }, [search]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -53,30 +61,26 @@ export function ClientExplorer({ clients, workspaces }: ClientExplorerProps) {
 
       {clients.length === 0 ? (
         <EmptyState
-          icon={Users}
-          title="No clients yet"
-          description="Clients you invite into a workspace will appear here."
-        />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={UserSearch}
-          title="No clients match your search"
-          description="Try a different name, company, or email address."
+          icon={hasAnyClients ? UserSearch : Users}
+          title={hasAnyClients ? "No clients match your search" : "No clients yet"}
+          description={
+            hasAnyClients
+              ? "Try a different name, company, or email address."
+              : "Clients you invite into a workspace will appear here."
+          }
         />
       ) : (
         <>
           <ClientTable
-            clients={filtered}
-            workspaces={workspaces}
+            clients={clients}
             caption="Clients matching the current search"
             onDeferredAction={(message) => showToast(message, "info")}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
-            {filtered.map((client) => (
+            {clients.map((client) => (
               <ClientCard
                 key={client.id}
                 client={client}
-                workspaces={workspaces}
                 onDeferredAction={(message) => showToast(message, "info")}
               />
             ))}

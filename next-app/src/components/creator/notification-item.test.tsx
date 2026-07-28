@@ -1,18 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationItem } from "./notification-item";
-import type { Notification } from "@/types";
+import type { NotificationListItem } from "@/data-access/notifications";
 
-const unread: Notification = {
+const unread: NotificationListItem = {
   id: "notif_test_unread",
-  type: "comment",
+  type: "COMMENT",
   title: "New Comment on Test Workspace",
-  text: "Someone left a comment.",
-  time: "5 mins ago",
+  message: "Someone left a comment.",
   read: false,
+  workspaceTitle: "Test Workspace",
+  createdAt: "2026-07-28T08:00:00.000Z",
 };
 
-const read: Notification = { ...unread, id: "notif_test_read", read: true };
+const read: NotificationListItem = { ...unread, id: "notif_test_read", read: true };
 
 describe("NotificationItem", () => {
   it("exposes unread state as text for assistive tech, not color alone", () => {

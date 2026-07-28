@@ -14,5 +14,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Integration tests (real database) live in their own suite — see
+    // vitest.integration.config.ts / `npm run test:integration`.
+    exclude: ["**/node_modules/**", "**/*.integration.test.ts"],
   },
 });
