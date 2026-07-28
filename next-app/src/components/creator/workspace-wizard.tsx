@@ -307,6 +307,16 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
 
           {step < 5 ? (
             <Button
+              // Distinct `key` from the submit button below is load-bearing,
+              // not cosmetic: without it, React reconciles both branches as
+              // "the same" <button> and only patches its `type` attribute
+              // in place (button -> submit) rather than swapping the DOM
+              // node. That patch can land *inside* the same click event
+              // that's advancing the step, so the browser's native
+              // submit-on-click behavior fires against the just-mutated
+              // node — silently creating a real workspace from a "Continue"
+              // click. A fresh DOM node per branch makes that impossible.
+              key="continue-button"
               type="button"
               disabled={step === 1 && !step1Valid}
               onClick={() => setStep((s) => Math.min(5, s + 1))}
@@ -314,7 +324,7 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
               Continue
             </Button>
           ) : (
-            <Button type="submit" disabled={pending || clientOptions.length === 0}>
+            <Button key="submit-button" type="submit" disabled={pending || clientOptions.length === 0}>
               {pending ? "Creating…" : "Create Draft Workspace"}
             </Button>
           )}

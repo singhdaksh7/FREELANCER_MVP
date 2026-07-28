@@ -8,9 +8,14 @@ import { formatINR } from "@/lib/format-currency";
 import { formatDateTime } from "@/lib/format-date";
 import { paymentStatusLabel, workspaceStatusLabel } from "@/lib/status-labels";
 import type { WorkspaceDetail } from "@/data-access/workspaces";
+import type { WorkspaceFileListItem } from "@/data-access/files";
+import type { UploadLimits } from "@/hooks/use-file-upload-queue";
+import { FilesTab } from "./files-tab";
 
 export interface WorkspaceDetailTabsProps {
   workspace: WorkspaceDetail;
+  files: WorkspaceFileListItem[];
+  uploadLimits: UploadLimits;
 }
 
 const TABS = [
@@ -23,7 +28,7 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export function WorkspaceDetailTabs({ workspace }: WorkspaceDetailTabsProps) {
+export function WorkspaceDetailTabs({ workspace, files, uploadLimits }: WorkspaceDetailTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   return (
@@ -85,10 +90,11 @@ export function WorkspaceDetailTabs({ workspace }: WorkspaceDetailTabsProps) {
 
         {activeTab === "files" && (
           <div id="panel-files" role="tabpanel" aria-labelledby="tab-files">
-            <EmptyState
-              icon={Files}
-              title="No files uploaded yet"
-              description="Secure file uploads, previews, and watermarking are coming in Phase 5. This workspace was created without any files."
+            <FilesTab
+              workspaceId={workspace.id}
+              files={files}
+              uploadLimits={uploadLimits}
+              canUpload={!workspace.financiallyLocked}
             />
           </div>
         )}

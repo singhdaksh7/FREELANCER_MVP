@@ -231,5 +231,25 @@ No previously-approved screen's visuals changed in this phase — `/clients`, `/
 ## Confirmation dialog (new UI pattern)
 
 - **Source:** New — the original had no confirmation-dialog pattern at all (destructive actions like "Simulate Payment" fired immediately, see `TECHNICAL_AUDIT.md` §14).
-- **Design:** A native `<dialog>`-backed modal (`ConfirmDialog`, `src/components/ui/confirm-dialog.tsx`) — title, description, Cancel/Confirm buttons, the confirm button disabling and relabeling while the mutation is pending. Reused identically for client delete and workspace cancel/delete, so this is one visual pattern to review, not several.
+- **Design:** A native `<dialog>`-backed modal (`ConfirmDialog`, `src/components/ui/confirm-dialog.tsx`) — title, description, Cancel/Confirm buttons, the confirm button disabling and relabeling while the mutation is pending. Reused identically for client delete, workspace cancel/delete, and (Phase 5) file delete, so this is one visual pattern to review, not several.
 - **New visual baseline:** `confirm-dialog.spec.ts` — the delete-client dialog (desktop/tablet/mobile).
+- **Phase 5 change:** the dialog's `<dialog>` backdrop was changed from a translucent `bg-black/40` to a near-opaque `bg-black/95`. This is a disclosed, deliberate visual change (not a regression) — a translucent backdrop let whatever page content sat behind the dialog bleed through with small, genuinely nondeterministic pixel drift in screenshots (the file list behind the Files-tab delete dialog varies in length depending on what's been uploaded), which a solid backdrop eliminates app-wide. All existing confirm-dialog baselines (client delete, workspace cancel — captured via the shared component) were regenerated to reflect this.
+
+---
+
+# Phase 5 — Secure File Uploads, Protected Previews, File Processing
+
+No previously-approved screen's visuals changed for reasons unrelated to file storage. The Files tab on `/workspaces/[id]` — a placeholder empty state in Phase 4 — is now the real, functional surface this phase adds.
+
+## `/workspaces/[id]` Files tab — real upload/processing/preview UI
+
+- **Original source:** No Vite equivalent (`TECHNICAL_AUDIT.md` §9 — the prototype had zero real file I/O anywhere).
+- **Design:** A drag-and-drop dropzone + "Browse Files" button (`UploadDropzone`), an upload queue showing real per-file progress during the browser's direct-to-storage PUT, and a responsive grid of `FileCard`s — each showing the file's icon/name/size, a status badge (Pending/Uploading/Uploaded/Processing/Ready/Failed), a "View Protected Preview" action (image files only, fetches a short-lived signed URL on demand — never a persistent `<img src>` pointing at storage), a "Preview not available in this MVP" locked note (PDF/ZIP), a "Retry Processing" action (failed files, disabled with an explanation once the retry limit is reached), and a "Remove" action (a `ConfirmDialog`, disabled with an explanation once the workspace is financially locked).
+- **Known differences from the Phase 4 placeholder:** the Files tab now always renders the dropzone above its content (when the workspace isn't financially locked) — this changed the tab's layout even in the *zero-files* state compared to Phase 4's static empty-state-only baseline, which is why `workspace-details.spec.ts`'s "files empty state" baseline was regenerated this phase (a real, intended change, not a regression).
+- **New visual baselines (`e2e/visual/files-*.spec.ts`):** empty state (full-page, `ws_ecommerce_ui` — a workspace no other e2e spec touches); Ready/preview-open, Processing Failed, and locked/preview-unavailable states (element-scoped to the specific file card — see `MIGRATION_STATUS.md` Phase 5 "Known differences" for why); a file-delete confirmation dialog (full-page, safe because of the opaque-backdrop change above).
+
+## Deferred/never-faked in the Files tab
+
+- No original-file download button or link anywhere — verified by a dedicated E2E assertion (`e2e/uploads/uploads.spec.ts`), not just visual absence.
+- No long-lived preview URL — every "View Protected Preview" click fetches a fresh 60-second signed URL.
+- Deliverables step 2 of the workspace wizard (Phase 4) is now backed by real upload capability on the details page, but the wizard step itself remains an informational "coming after creation" panel — files are added after a workspace exists, never during the wizard, per the brief.

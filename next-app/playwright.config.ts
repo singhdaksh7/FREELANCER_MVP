@@ -32,12 +32,38 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "npm run build && npm run start -- -p " + PORT,
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
-  },
+  webServer: [
+    {
+      command: "npm run build && npm run start -- -p " + PORT,
+      url: BASE_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+      // Lowers the per-file upload limit for the whole e2e run so
+      // e2e/uploads/uploads.spec.ts's "oversized file" test doesn't need
+      // to actually upload 50+ MB — nothing else in the e2e suite
+      // uploads a file anywhere near 2 MB, so this is safe to apply globally.
+      env: {
+        UPLOAD_MAX_FILE_SIZE_BYTES: "2097152",
+        // Local-only escape hatch for storage-config.ts's production
+        // guard — this is a real `next build && next start` (so
+        // NODE_ENV=production) but talking to local MinIO on purpose.
+        // Never set this anywhere outside this local test webServer.
+        E2E_LOCAL_BUILD: "true",
+      },
+    },
+    {
+      // File-processing worker (Phase 5) — required for any test that
+      // uploads a file and waits for it to reach READY/FAILED (see
+      // e2e/uploads/*.spec.ts). Not an HTTP server, so there's no `url`
+      // health check; Playwright just keeps the process running
+      // alongside the Next.js server for the duration of the test run.
+      // See FILE_PROCESSING_RUNBOOK.md for why this is a separate
+      // process rather than something the web request cycle does itself.
+      command: "npm run worker:files",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+  ],
   projects: [
     {
       name: "setup",
@@ -62,6 +88,15 @@ export default defineConfig({
       // Same as auth-e2e: each spec logs in through the real UI itself
       // rather than sharing the visual suite's storageState, since these
       // tests create/mutate real records against the real dev database.
+    },
+    {
+      name: "uploads-e2e",
+      testDir: "./e2e/uploads",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      // Same reasoning as mutations-e2e — real uploads against the real
+      // dev database/MinIO, kept in its own project so it can be run in
+      // isolation from the visual suite (see FILE_STORAGE_ARCHITECTURE.md).
     },
     {
       name: "desktop-1440",

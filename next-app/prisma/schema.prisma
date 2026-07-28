@@ -49,6 +49,38 @@ enum NotificationType {
   SYSTEM
 }
 
+/// Phase 5 — see FILE_STORAGE_ARCHITECTURE.md.
+enum FileKind {
+  IMAGE
+  PDF
+  ARCHIVE
+  OTHER
+}
+
+enum FileStatus {
+  UPLOAD_PENDING
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  DELETED
+}
+
+enum ProcessingJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum UploadSessionStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  ABORTED
+}
+
 /// Creator (and future admin) accounts. `email` is normalized
 /// (trimmed + lowercased) by the application layer before every write and
 /// read, so the DB-level `@unique` constraint enforces case-insensitive
@@ -66,10 +98,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  clients       Client[]
-  workspaces    Workspace[]
-  notifications Notification[]
-  activityLogs  ActivityLog[]
+  clients        Client[]
+  workspaces     Workspace[]
+  notifications  Notification[]
+  activityLogs   ActivityLog[]
+  uploadSessions UploadSession[]
 
   @@map("users")
 }
@@ -131,9 +164,11 @@ model Workspace {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  payments      Payment[]
-  activityLogs  ActivityLog[]
-  notifications Notification[]
+  payments       Payment[]
+  activityLogs   ActivityLog[]
+  notifications  Notification[]
+  files          WorkspaceFile[]
+  uploadSessions UploadSession[]
 
   @@index([creatorId])
   @@index([clientId])
@@ -214,4 +249,130 @@ model ActivityLog {
   @@index([creatorId])
   @@index([creatorId, createdAt])
   @@map("activity_logs")
+}
+
+/// Phase 5 — see FILE_STORAGE_ARCHITECTURE.md for the full model and
+/// storage-key/ownership rules. One WorkspaceFile can have many
+/// FileVersion rows (future re-upload support); `currentVersionId` is the
+/// single safely-resolved "current" version — never inferred by picking
+/// "the latest row," so a half-written new version can never briefly
+/// become what the UI shows.
+model WorkspaceFile {
+  id          String     @id @default(cuid())
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Sanitized, display-only filename — never used to derive a storage key.
+  displayName String
+  fileKind    FileKind
+  mimeType    String
+  /// BigInt: file sizes must never silently overflow a 32-bit Int. See
+  /// src/lib/bytes.ts for the safe BigInt -> number view-model conversion
+  /// (sizes here stay far below Number.MAX_SAFE_INTEGER in practice, but
+  /// the column type itself must not assume that).
+  sizeBytes   BigInt
+  status      FileStatus @default(UPLOAD_PENDING)
+
+  currentVersionId String?      @unique
+  /// SetNull (not Cascade): a FileVersion is only ever removed as part of
+  /// deleting its parent WorkspaceFile (which cascades all versions
+  /// together) — this direction exists purely so a version can't leave a
+  /// dangling "current" pointer if it's ever removed independently.
+  currentVersion   FileVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// Soft-delete marker. A deleted file's row (and its checksums/audit
+  /// trail) is kept; only its storage objects are removed/scheduled for
+  /// removal — see MUTATION_ARCHITECTURE.md-style deletion rules in
+  /// FILE_STORAGE_ARCHITECTURE.md.
+  deletedAt DateTime?
+
+  versions FileVersion[] @relation("FileVersions")
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, deletedAt])
+  @@map("workspace_files")
+}
+
+model FileVersion {
+  id            String        @id @default(cuid())
+  fileId        String
+  file          WorkspaceFile @relation("FileVersions", fields: [fileId], references: [id], onDelete: Cascade)
+  versionNumber Int
+
+  /// Opaque, server-generated, random storage keys — never derived from
+  /// the database id alone. See src/storage/storage-keys.ts.
+  originalStorageKey String  @unique
+  previewStorageKey  String? @unique
+
+  originalChecksum String
+  previewChecksum  String?
+  originalSizeBytes BigInt
+  previewSizeBytes  BigInt?
+  mimeType          String
+  width             Int?
+  height            Int?
+  /// Safe, user-facing failure summary only — never a raw Sharp/AWS
+  /// SDK/Prisma error (see FILE_STORAGE_ARCHITECTURE.md "Security
+  /// limitations").
+  processingError String?
+  createdAt       DateTime @default(now())
+
+  currentForFile WorkspaceFile?      @relation("CurrentVersion")
+  processingJobs FileProcessingJob[]
+
+  @@unique([fileId, versionNumber])
+  @@index([fileId])
+  @@map("file_versions")
+}
+
+model FileProcessingJob {
+  id            String              @id @default(cuid())
+  fileVersionId String
+  fileVersion   FileVersion         @relation(fields: [fileVersionId], references: [id], onDelete: Cascade)
+  status        ProcessingJobStatus @default(PENDING)
+  attempts      Int                 @default(0)
+  errorCode     String?
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([fileVersionId])
+  @@index([status])
+  @@index([status, createdAt])
+  @@map("file_processing_jobs")
+}
+
+/// Tracks one presigned-upload lifecycle from request to completion (or
+/// expiry) — see FILE_STORAGE_ARCHITECTURE.md "Upload-session lifecycle."
+/// Never stores a signed URL itself (those are never persisted, only
+/// generated on demand and returned once).
+model UploadSession {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creatorId   String
+  creator     User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  /// The random temp/ storage key this session's presigned URL was issued
+  /// for — the only key that particular URL is valid for.
+  storageKey        String              @unique
+  /// Sanitized filename the creator declared — re-validated, never trusted,
+  /// when the upload is completed.
+  declaredFileName  String
+  expectedMimeType  String
+  expectedSizeBytes BigInt
+  status            UploadSessionStatus @default(PENDING)
+  expiresAt         DateTime
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+
+  @@index([workspaceId])
+  @@index([creatorId])
+  @@index([status, expiresAt])
+  @@map("upload_sessions")
 }

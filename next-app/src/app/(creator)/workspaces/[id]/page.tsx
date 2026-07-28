@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getOwnedWorkspaceDetail } from "@/data-access/workspaces";
+import { getWorkspaceFiles } from "@/data-access/files";
+import { getUploadLimits } from "@/storage/storage-config";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FlashToast } from "@/components/ui/flash-toast";
 import { WorkspaceActions } from "@/components/creator/workspace-actions";
@@ -25,6 +27,9 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
 
   // Never distinguishes "doesn't exist" from "belongs to another creator" — both render the same not-found page.
   if (!workspace) notFound();
+
+  const files = await getWorkspaceFiles(workspace.id);
+  const uploadLimits = getUploadLimits();
 
   return (
     <div className="flex flex-col gap-5">
@@ -57,7 +62,7 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
         />
       </div>
 
-      <WorkspaceDetailTabs workspace={workspace} />
+      <WorkspaceDetailTabs workspace={workspace} files={files} uploadLimits={uploadLimits} />
       <FlashToast />
     </div>
   );

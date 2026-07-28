@@ -385,3 +385,52 @@ Following `TECHNICAL_AUDIT.md`'s phased plan, now that real client/workspace mut
 3. Only after storage exists: begin the secure client review portal (`/review/[token]`) and Share Secure Link token issuance, which both currently have real, disabled UI waiting for them.
 
 Do not begin any of the above until Phase 4 is explicitly reviewed and approved.
+
+---
+
+## Phase 5
+
+### Phase 5 objective
+
+Implement secure creator file uploads to private S3-compatible object storage, server-side upload verification, a standalone file-processing worker that generates protected watermarked previews for images (and marks PDF/ZIP as locked deliverables), and the real Files-tab UI (drag-and-drop, upload queue/progress, preview, retry, delete) — replacing the Phase 4 placeholder. Client-facing access, comments, approvals, and payments remain explicitly out of scope. Full architecture reasoning lives in `FILE_STORAGE_ARCHITECTURE.md`; hands-on operations live in `FILE_PROCESSING_RUNBOOK.md`.
+
+### Completed work
+
+- **Dependencies:** `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner` (storage), `sharp` (image processing), `file-type` (magic-byte content detection).
+- **Local infrastructure:** `docker-compose.yml` extended with a `minio` service (S3-compatible storage) and a `minio-init` one-shot bucket-bootstrap service confirming the bucket is private.
+- **Schema:** one migration (`prisma/migrations/20260728085350_phase5_file_storage`) adding `FileKind`/`FileStatus`/`ProcessingJobStatus`/`UploadSessionStatus` enums and the `WorkspaceFile`/`FileVersion`/`FileProcessingJob`/`UploadSession` models — see `FILE_STORAGE_ARCHITECTURE.md` → "Database models."
+- **Storage abstraction:** `src/storage/{storage-provider,s3-storage-provider,storage-config,storage-keys,signed-urls}.ts` — business logic never imports the AWS SDK directly, only the `StorageProvider` interface.
+- **Validation/processing libs:** `src/lib/{filename-sanitize,file-kind,checksum,watermark,image-preview,bytes}.ts` — filename sanitization, MIME/magic-byte allow-listing, SHA-256 checksums, XML-safe watermark SVG generation, Sharp-based preview generation, and safe BigInt↔number byte-count conversion.
+- **Data access:** `src/data-access/uploads.ts` (upload-session lifecycle: `createUploadSession`, `completeUploadSession`) and `src/data-access/files.ts` (`getWorkspaceFiles`, `getOwnedFilePreviewUrl`, `retryFileProcessing`, `deleteOwnedFile`), plus `requireOwnedWorkspaceFile` added to `src/data-access/authorization.ts`.
+- **Route handlers:** `POST /api/workspaces/[id]/upload-sessions`, `POST /api/upload-sessions/[sessionId]/complete`, `GET /api/files/[fileId]/preview-url` — a real HTTP request/response workflow, not Server Actions, per the brief. `src/lib/api-errors.ts` added so route handlers can safely reuse the same session-derived-auth data-access functions as Server Components without a redirect leaking into a JSON API response.
+- **Server Actions:** `src/actions/files.ts` (`retryFileProcessingAction`, `deleteFileAction`) — reuse the same `{error, success}` shape as Phase 4's `ConfirmDialog`.
+- **Worker:** `src/worker/process-files.ts` (the `npm run worker:files` entry point — a standalone, long-lived Node process, never part of the Next.js request cycle) + `src/worker/job-processor.ts` (the actual claim/process logic, factored out so it's directly exercised by integration tests). Atomic job claiming via Postgres `FOR UPDATE SKIP LOCKED` — safe for multiple concurrent worker instances.
+- **UI:** `src/components/creator/{files-tab,file-card,upload-dropzone,workspace-detail-tabs}.tsx` (the last one updated in place) + `src/hooks/use-file-upload-queue.ts` (client-side upload orchestration with real `XMLHttpRequest` progress events) — replaces the Phase 4 Files-tab placeholder entirely.
+- **Activity events:** `FILE_UPLOAD_STARTED`, `FILE_UPLOADED`, `FILE_PROCESSING_COMPLETED`, `FILE_PROCESSING_FAILED`, `FILE_PROCESSING_RETRIED`, `FILE_DELETED` — added to `src/lib/activity-log.ts`'s centralized formatter.
+- **A real bug found and fixed during this phase, unrelated to file storage:** the five-step workspace creation wizard's "Continue" button (step 4 → 5) could, under certain click-timing conditions, cause a genuine, unintended workspace submission — see "A wizard bug found during Phase 5 testing" below. Fixed in `src/components/creator/workspace-wizard.tsx`.
+- **Testing, four tiers:**
+  - Unit (Vitest): filename sanitization, MIME/magic-byte validation (using real `file-type` against real Sharp-generated images), storage-key generation/randomness, XML escaping + watermark SVG generation, watermark configuration, preview dimension-calculation math (real Sharp calls, no mocking), checksum generation/sensitivity, storage-config production guards, upload-limit validation, and file-state/retry-limit transition rules (mocked Prisma) — 9 new test files, ~120 new test cases.
+  - Integration (Vitest, real Postgres test DB + real MinIO): `src/data-access/files.integration.test.ts` — 15 tests covering the full upload-session lifecycle (including a real `fetch()` PUT to a real presigned URL), server-side verification (size mismatch, unsupported content), original-file privacy (an unsigned request to the object's URL is rejected), cross-creator preview-access denial, worker-produced preview checksums differing from the original, safe error recording for a genuinely corrupt image, retry re-queuing, atomic concurrent job claiming, and deletion (including the paid-workspace block).
+  - E2E (Playwright, real dev server + database + MinIO + worker): `e2e/uploads/uploads.spec.ts` — 10 functional tests against the seeded `ws_social_campaign` workspace: valid upload → Ready, preview opens, no original-download action ever appears, direct-refresh persistence, unsupported-type rejection, oversized-file rejection (against an e2e-configured 2 MB limit), a genuine processing failure (an oversized-*dimension* real JPEG, not a mock) with a working retry, file deletion, and mobile-viewport usability.
+  - Visual (Playwright): 5 new specs × 3 viewports — Files-tab empty state (full-page) and, element-scoped (see below), the Ready/preview-open, Processing Failed, locked/preview-unavailable, and file-delete-confirmation states.
+
+### A wizard bug found during Phase 5 testing
+
+While building the file-visual regression baselines, a **pre-existing** bug in the Phase 4 workspace-creation wizard was discovered: clicking "Continue" on step 4 (which only ever renders a `type="button"` element) could, under a specific timing window, result in a real form submission — creating an actual workspace the creator never asked to create. Root cause: the wizard's step-5 submit button and step-4 "Continue" button occupy the *same position* in the JSX tree via a ternary, so React reconciled them as "the same" `<button>` and patched its `type` attribute (`button` → `submit`) **in place** rather than swapping the DOM node — and that patch could land inside the same click-event tick that was also advancing the step, so the browser's native submit-on-click behavior fired against the just-mutated node. Fixed by giving the two branches distinct `key` props, forcing React to mount a genuinely new DOM node per branch instead of mutating one in place. Confirmed fixed via repeated E2E runs (zero unintended workspaces created across dozens of wizard-review-step test executions, versus a stray workspace on nearly every run before the fix). This was **not** a Phase 5 storage/upload issue — it's called out here because it was caught by Phase 5's visual-testing work, and the fix belongs in the historical record for the component it actually touched.
+
+### Known differences / deliberate scope boundaries
+
+- **PDF/ZIP have no visual preview at all** — "locked deliverable" is the complete, honest state for these file kinds in this MVP (filename, size, type, a "Preview not available in this MVP" message). No PDF rendering, no thumbnail extraction.
+- **Only one `FileVersion` is ever created per file** — the schema supports multiple versions (a future re-upload/revision workflow), but no UI or action in this phase ever creates a second one.
+- **File-related visual baselines are element-scoped, not full-page**, for four of the five new specs — `e2e/visual/files-ready.spec.ts`'s doc comment explains why (the shared seeded workspace they upload into can legitimately contain other in-flight test uploads from concurrently-running viewport projects; scoping to just the test's own `data-testid="file-card"` element keeps the baseline deterministic regardless). The empty-state and delete-confirmation baselines remain full-page (the former is read-only/never mutates; the latter is safe because the native `<dialog>`'s backdrop — made near-opaque during this phase specifically to remove a source of screenshot nondeterminism — fully covers whatever's behind it).
+- **`e2e/uploads/uploads.spec.ts` and the file-content visual specs should be run separately from the rest of the Playwright suite** (`--project=uploads-e2e` on its own) — they share the one background worker process with the file-visual specs in `e2e/visual/`, and running everything at once can exceed that single worker's throughput within a screenshot assertion's timeout. This is the same category of accommodation already documented for `mutations-e2e` in `MUTATION_ARCHITECTURE.md`, extended to cover the worker as a second shared, single-instance resource (alongside the shared dev server/database).
+
+### Recommended Phase 6 scope
+
+Following `TECHNICAL_AUDIT.md`'s phased plan, now that files can be securely uploaded, verified, and previewed:
+
+1. **The secure client review portal** (`/review/[token]`) and real Share Secure Link token issuance — both have real, disabled UI already waiting for them, and now have real files/previews to actually show once a client can authenticate against a token.
+2. **Client-facing preview access** — a client-scoped equivalent of `getOwnedFilePreviewUrl`, authorized by a validated review token rather than a creator session.
+3. Only after the above: comments (tied to the now-real client identity from the review token), approvals, and — last, highest-risk, most scrutiny — Razorpay payments and file unlocking.
+
+Do not begin any of the above until Phase 5 is explicitly reviewed and approved.

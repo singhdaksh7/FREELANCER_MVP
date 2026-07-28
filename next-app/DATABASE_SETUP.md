@@ -139,6 +139,15 @@ npm run db:migrate
 
 No seed changes were required — the migration only adds nullable columns, so existing seeded rows remain valid as-is.
 
+## Phase 5 schema changes
+
+Migration `prisma/migrations/20260728085350_phase5_file_storage` (see `FILE_STORAGE_ARCHITECTURE.md` for the full reasoning):
+
+- New enums: `FileKind`, `FileStatus`, `ProcessingJobStatus`, `UploadSessionStatus`.
+- New models: `WorkspaceFile`, `FileVersion`, `FileProcessingJob`, `UploadSession`.
+
+Same update path as above (`npm run db:generate && npm run db:migrate`). This phase also requires **object storage**, not just the database — see `FILE_STORAGE_ARCHITECTURE.md` and `FILE_PROCESSING_RUNBOOK.md` for MinIO setup (`docker compose up -d minio minio-init`) and the file-processing worker (`npm run worker:files`), both of which the app now depends on for anything past creating an empty workspace. No seed changes were required here either — no file rows exist in the seed data by design (a creator uploads their own).
+
 ## Troubleshooting
 
 - **"password authentication failed" / connection refused** — confirm `docker compose ps` shows the container healthy, and that `DATABASE_URL` in `.env` matches the port (`5433`) and credentials in `docker-compose.yml`.

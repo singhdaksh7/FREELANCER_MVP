@@ -54,3 +54,25 @@ export async function requireOwnedWorkspace(workspaceId: string) {
  * readability — the check is identical.
  */
 export const requireClientAvailableToCreator = requireOwnedClient;
+
+/**
+ * Loads a WorkspaceFile (with its parent Workspace) scoped to the
+ * authenticated creator — resolves ownership through the file's
+ * workspace, never trusting a `workspaceId` a caller might separately
+ * supply. Throws OwnershipError for a missing, not-owned, or
+ * already-soft-deleted file (a deleted file is treated as "not found,"
+ * not surfaced as a distinct state, to a mutation that didn't already
+ * know its id).
+ */
+export async function requireOwnedWorkspaceFile(fileId: string) {
+  const creator = await requireAuthenticatedUser();
+  const file = await prisma.workspaceFile.findFirst({
+    where: { id: fileId, deletedAt: null, workspace: { creatorId: creator.id } },
+    include: {
+      workspace: { select: { id: true, creatorId: true, status: true } },
+      currentVersion: true,
+    },
+  });
+  if (!file) throw new OwnershipError();
+  return { creator, file };
+}

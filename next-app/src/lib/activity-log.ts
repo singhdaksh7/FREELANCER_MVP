@@ -23,6 +23,12 @@ export const ActivityAction = {
   CLIENT_CREATED: "CLIENT_CREATED",
   CLIENT_UPDATED: "CLIENT_UPDATED",
   CLIENT_DELETED: "CLIENT_DELETED",
+  FILE_UPLOAD_STARTED: "FILE_UPLOAD_STARTED",
+  FILE_UPLOADED: "FILE_UPLOADED",
+  FILE_PROCESSING_COMPLETED: "FILE_PROCESSING_COMPLETED",
+  FILE_PROCESSING_FAILED: "FILE_PROCESSING_FAILED",
+  FILE_PROCESSING_RETRIED: "FILE_PROCESSING_RETRIED",
+  FILE_DELETED: "FILE_DELETED",
 } as const;
 
 export type ActivityActionCode = (typeof ActivityAction)[keyof typeof ActivityAction];
@@ -38,6 +44,9 @@ export interface ActivityMetadata {
   toDueDate?: string | null;
   name?: string;
   title?: string;
+  fileName?: string;
+  errorSummary?: string;
+  attempt?: number;
 }
 
 function formatCurrencyAmount(amount: number, currency: string): string {
@@ -93,6 +102,18 @@ export function formatActivityLabel(action: string, metadata: unknown): string {
         : "Client updated";
     case ActivityAction.CLIENT_DELETED:
       return meta.name ? `Client ${meta.name} deleted` : "Client deleted";
+    case ActivityAction.FILE_UPLOAD_STARTED:
+      return meta.fileName ? `Upload started: ${meta.fileName}` : "File upload started";
+    case ActivityAction.FILE_UPLOADED:
+      return meta.fileName ? `File uploaded: ${meta.fileName}` : "File uploaded";
+    case ActivityAction.FILE_PROCESSING_COMPLETED:
+      return meta.fileName ? `Preview ready: ${meta.fileName}` : "File processing completed";
+    case ActivityAction.FILE_PROCESSING_FAILED:
+      return meta.fileName ? `Processing failed: ${meta.fileName}` : "File processing failed";
+    case ActivityAction.FILE_PROCESSING_RETRIED:
+      return meta.fileName ? `Processing retried: ${meta.fileName}` : "File processing retried";
+    case ActivityAction.FILE_DELETED:
+      return meta.fileName ? `File deleted: ${meta.fileName}` : "File deleted";
     default:
       // Legacy/pre-Phase-4 rows already store a finished, human-readable
       // sentence directly in `action` — render it unchanged.

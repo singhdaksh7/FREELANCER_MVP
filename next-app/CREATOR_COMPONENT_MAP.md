@@ -126,11 +126,35 @@ The `(creator)` segment is a Next.js **route group** — it organizes these rout
 | `src/data-access/clients.ts` | `getClients`, plus (Phase 4) `getClientOptionsForCreator`, `getOwnedClientForEdit`, `createClient`, `updateOwnedClient`, `deleteOwnedUnusedClient` | Powers `/clients`, `/clients/new`, `/clients/[id]/edit`, and the workspace client-select dropdowns |
 | `src/data-access/payments.ts` | `getPayments` | Powers `/payments` and the workspace details Payment tab |
 | `src/data-access/notifications.ts` | `getNotifications`, `getUnreadNotificationCount` | Powers `/notifications` and the header/nav unread badge |
-| `src/data-access/authorization.ts` (Phase 4) | `requireOwnedClient`, `requireOwnedWorkspace`, `requireClientAvailableToCreator`, `OwnershipError` | Centralized ownership checks — see `MUTATION_ARCHITECTURE.md` |
+| `src/data-access/authorization.ts` (Phase 4, extended Phase 5) | `requireOwnedClient`, `requireOwnedWorkspace`, `requireClientAvailableToCreator`, `requireOwnedWorkspaceFile`, `OwnershipError` | Centralized ownership checks — see `MUTATION_ARCHITECTURE.md` / `FILE_STORAGE_ARCHITECTURE.md` |
 | `src/data-access/activity.ts` (Phase 4) | `recordActivity` | Writes one `ActivityLog` row inside the caller's transaction — see `MUTATION_ARCHITECTURE.md` |
-| `src/data-access/scoping.test.ts`, `isolation.integration.test.ts`, `mutations.test.ts`, `mutations.integration.test.ts` | — | Not modules, but worth knowing about here: the unit + integration proof that every module above scopes by the authenticated session, never a parameter, and that mutation restrictions (paid-workspace lock, client-deletion block, status transitions) actually hold |
+| `src/data-access/uploads.ts` (Phase 5) | `createUploadSession`, `completeUploadSession` | Upload-session lifecycle — see `FILE_STORAGE_ARCHITECTURE.md` |
+| `src/data-access/files.ts` (Phase 5) | `getWorkspaceFiles`, `getOwnedFilePreviewUrl`, `retryFileProcessing`, `deleteOwnedFile` | Powers the `/workspaces/[id]` Files tab |
+| `src/data-access/scoping.test.ts`, `isolation.integration.test.ts`, `mutations.test.ts`, `mutations.integration.test.ts`, `uploads.test.ts`, `files.test.ts`, `files.integration.test.ts` | — | Not modules, but worth knowing about here: the unit + integration proof that every module above scopes by the authenticated session, never a parameter, and that mutation/upload restrictions (paid-workspace lock, client-deletion block, status transitions, upload-limit/content validation, retry limits) actually hold |
 
-Every module above starts with `import "server-only"` and is never imported from a Client Component. `src/actions/{clients,workspaces}.ts` (Phase 4, `"use server"`) sit one layer above this — see `MUTATION_ARCHITECTURE.md` for the Server Action structure.
+Every module above starts with `import "server-only"` and is never imported from a Client Component. `src/actions/{clients,workspaces,files}.ts` (`"use server"`) sit one layer above this — see `MUTATION_ARCHITECTURE.md` for the Server Action structure. Phase 5's upload-session-create/complete and preview-URL endpoints are **route handlers**, not Server Actions (`src/app/api/{workspaces/[id]/upload-sessions,upload-sessions/[sessionId]/complete,files/[fileId]/preview-url}/route.ts`) — see `FILE_STORAGE_ARCHITECTURE.md` for why.
+
+## Storage & file-processing layer (new in Phase 5 — not creator-screen components, but what the Files tab depends on)
+
+| Module | Exports | Notes |
+|---|---|---|
+| `src/storage/storage-provider.ts` | `StorageProvider` (interface) | Business logic depends only on this shape, never the AWS SDK directly |
+| `src/storage/s3-storage-provider.ts` | `s3StorageProvider` | The only module that imports `@aws-sdk/client-s3`/`@aws-sdk/s3-request-presigner` |
+| `src/storage/storage-config.ts` | `getStorageConfig`, `getUploadLimits`, `getPreviewLimits`, `getWorkerConfig` | Centralized env-driven configuration + the production dev-credential guard |
+| `src/storage/storage-keys.ts` | `generateStorageKey`, `STORAGE_PREFIXES` | Random, unpredictable storage-key generation |
+| `src/storage/signed-urls.ts` | `createUploadPresignedUrl`, `createPreviewPresignedUrl` | App-specific presign helpers with the app's own expiry defaults |
+| `src/lib/{filename-sanitize,file-kind,checksum,watermark,image-preview,bytes}.ts` | — | Pure/Sharp-dependent validation, watermarking, and byte-count helpers — see `FILE_STORAGE_ARCHITECTURE.md` |
+| `src/worker/process-files.ts` | — (entry point, `npm run worker:files`) | Standalone long-lived process; instantiates its own Prisma client (like `prisma/seed.ts`) since it runs outside Next's bundler |
+| `src/worker/job-processor.ts` | `claimNextJob`, `processJob`, `summarizeError` | The actual claim/process logic, factored out so integration tests can exercise it directly |
+
+## Files-tab components (new in Phase 5)
+
+| Component | Location | Type | Notes |
+|---|---|---|---|
+| `FilesTab` | `src/components/creator/files-tab.tsx` | **Client** | Replaces the Phase 4 placeholder on the workspace details Files tab; owns the upload queue + polls (`router.refresh()`) while any file is in a transient state |
+| `UploadDropzone` | `src/components/creator/upload-dropzone.tsx` | **Client** | Drag-and-drop + Browse Files, hidden `<input type="file" multiple>` |
+| `FileCard` | `src/components/creator/file-card.tsx` | **Client** (`useActionState` for retry, `ConfirmDialog` for delete) | Per-file status/preview/retry/remove; `data-testid="file-card"` + `data-file-name` for reliable E2E/visual scoping |
+| `use-file-upload-queue` | `src/hooks/use-file-upload-queue.ts` | Client hook | Orchestrates presign → `XMLHttpRequest` PUT (real progress events) → completion, per file |
 
 ## Data & lib layer (Phase 2, now mostly superseded — see below)
 

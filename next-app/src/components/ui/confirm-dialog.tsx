@@ -62,7 +62,12 @@ export function ConfirmDialog({
       <dialog
         ref={dialogRef}
         aria-labelledby={titleId}
-        className="w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface-card p-0 shadow-lg backdrop:bg-black/40"
+        // Near-opaque (not translucent) backdrop: a partially-see-through
+        // backdrop lets whatever's behind it (a file list of varying
+        // length, etc.) bleed into visual-regression screenshots with
+        // small, genuinely nondeterministic pixel drift — solid backdrop
+        // removes that source of flakiness app-wide, not just for tests.
+        className="w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface-card p-0 shadow-lg backdrop:bg-black/95"
       >
         <form action={formAction} className="flex flex-col gap-4 p-6">
           {Object.entries(hiddenFields).map(([name, value]) => (
