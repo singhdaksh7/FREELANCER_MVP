@@ -56,7 +56,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       where: { creatorId },
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: RECENT_WORKSPACE_COUNT,
-      include: { client: { select: { id: true, name: true, company: true } } },
+      include: {
+        client: { select: { id: true, name: true, company: true } },
+        reviewLinks: { where: { status: "ACTIVE", expiresAt: { gt: new Date() } }, select: { id: true }, take: 1 },
+      },
     }),
     prisma.activityLog.findMany({
       where: { workspace: { creatorId } },
@@ -82,7 +85,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       amount: toDisplayNumber(w.amount),
       status: w.status,
       progress: w.progress,
-      publicToken: w.publicToken,
+      hasActiveReviewLink: w.reviewLinks.length > 0,
       updatedAt: w.updatedAt.toISOString(),
       client: w.client,
     })),

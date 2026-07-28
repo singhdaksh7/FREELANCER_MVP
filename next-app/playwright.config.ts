@@ -99,6 +99,18 @@ export default defineConfig({
       // isolation from the visual suite (see FILE_STORAGE_ARCHITECTURE.md).
     },
     {
+      name: "review-e2e",
+      testDir: "./e2e/review",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      // Same reasoning as uploads-e2e — real uploads, real worker
+      // processing, and a real review-token round trip against the real
+      // dev database/MinIO. Uses ws_brand_identity (uploads-e2e uses
+      // ws_social_campaign) so the two never contend for the same
+      // workspace's file list even if run back to back — see
+      // CLIENT_REVIEW_ARCHITECTURE.md.
+    },
+    {
       name: "desktop-1440",
       testDir: "./e2e/visual",
       testMatch: /.*\.spec\.ts/,

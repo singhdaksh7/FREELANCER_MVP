@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import type { WorkspaceListItem } from "@/data-access/workspaces";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatINR } from "@/lib/format-currency";
@@ -13,12 +13,11 @@ export interface WorkspaceTableProps {
 
 /**
  * Desktop table of workspaces (Title, Client, Amount, Status, Progress,
- * Last activity, Actions). `/workspaces/[id]` and `/review/[token]` are
- * deferred routes in this phase — the "Manage" link points there anyway
- * (resolving through not-found.tsx for now), matching the Phase 1 pattern
- * for destinations that will exist in a later phase. "Portal" only
- * renders once a workspace actually has a `publicToken` (i.e. has been
- * shared) — Phase 2's mock data assumed every workspace already had one.
+ * Last activity, Actions). The raw secure review-link token is only ever
+ * shown once at creation time (see CLIENT_REVIEW_ARCHITECTURE.md), so this
+ * table cannot link directly to `/review/[token]` — a "Shared" indicator
+ * shows instead when an active link exists; managing/copying it happens on
+ * the workspace details page.
  */
 export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
   return (
@@ -62,13 +61,13 @@ export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
                   >
                     Manage
                   </Link>
-                  {workspace.publicToken && (
-                    <Link
-                      href={`/review/${workspace.publicToken}`}
-                      className="inline-flex items-center gap-1 rounded-md bg-vault-blue-light px-3 py-1.5 text-xs font-semibold text-vault-blue hover:bg-vault-blue/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                  {workspace.hasActiveReviewLink && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md bg-vault-blue-light px-3 py-1.5 text-xs font-semibold text-vault-blue"
+                      title="This workspace has an active secure review link. Manage or copy it from the workspace details page."
                     >
-                      Portal <ExternalLink size={12} aria-hidden="true" />
-                    </Link>
+                      <ShieldCheck size={12} aria-hidden="true" /> Shared
+                    </span>
                   )}
                 </div>
               </td>

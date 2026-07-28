@@ -434,3 +434,46 @@ Following `TECHNICAL_AUDIT.md`'s phased plan, now that files can be securely upl
 3. Only after the above: comments (tied to the now-real client identity from the review token), approvals, and — last, highest-risk, most scrutiny — Razorpay payments and file unlocking.
 
 Do not begin any of the above until Phase 5 is explicitly reviewed and approved.
+
+---
+
+## Phase 6
+
+### Phase 6 objective
+
+Implement the complete secure client-review workflow — review-link issuance/revocation/regeneration, token-authorized preview access, comments and replies, change requests, file-version re-upload with atomic promotion, revision submission, and approval — without payment processing or original-file unlocking. Full architecture reasoning lives in `CLIENT_REVIEW_ARCHITECTURE.md`; token security specifically lives in `REVIEW_TOKEN_SECURITY.md`.
+
+### Completed work
+
+- **Schema:** one migration (`prisma/migrations/20260728172849_phase6_client_review_workflow`) — removes the unused, insecure `Workspace.publicToken`/`sharedAt` (plaintext token storage), adds `ReviewLinkStatus`/`ReviewAuthorType`/`CommentStatus`/`ChangeRequestStatus`/`ApprovalStatus`/`FileVersionStatus` enums and `ReviewLink`/`ReviewComment`/`ChangeRequest`/`WorkspaceApproval` models, and extends `FileVersion` (`status`, `submittedAt`), `WorkspaceFile` (`pendingVersionId`), and `UploadSession` (`targetFileId`) — see `CLIENT_REVIEW_ARCHITECTURE.md` for the full reasoning behind each addition.
+- **Token security:** `src/lib/review-token.ts` (256-bit generation, SHA-256 hashing, shape validation, constant-time comparison helper) + `src/data-access/review-auth.ts` (`authorizeReviewToken` — a trust path entirely separate from creator sessions). See `REVIEW_TOKEN_SECURITY.md`.
+- **Workflow transitions:** `src/lib/workspace-transitions.ts` — one centralized allow-list every status-changing function (including Phase 4's pre-existing `cancelOwnedWorkspace`) now routes through.
+- **Data access:** `src/data-access/{review-links,review-auth,review-comments,change-requests,revisions,approvals,review-files}.ts`, plus `uploads.ts`/`files.ts` extended for version re-upload and version-history reporting.
+- **Server Actions:** `src/actions/{review-links,review-comments,revisions,review}.ts` — creator actions follow the existing `useActionState` pattern from `MUTATION_ARCHITECTURE.md`; client (token-authorized, no session) actions accept the raw token as a hidden form field and re-authorize on every call.
+- **Worker:** `src/worker/job-processor.ts` extended to distinguish an original (v1) processing job from a version-upload job (`WorkspaceFile.pendingVersionId`) — atomic promotion on success, zero disturbance to the existing current version on failure.
+- **Routes:** `src/app/review/[token]/page.tsx` (the client portal, `dynamic = "force-dynamic"`, `noindex`/`nofollow`), `src/app/api/review/[token]/files/[fileId]/preview-url/route.ts` (token-authorized, submitted-versions-only preview access), `src/app/api/workspaces/[id]/files/[fileId]/versions/upload-sessions/route.ts` (creator version re-upload), `src/app/robots.ts` (new).
+- **UI:** `src/components/review/*` (portal, comments panel, request-changes/approve modals, system states — no creator sidebar, real mobile bottom sheet, desktop two-column layout); `src/components/creator/{review-link-panel,comments-tab,change-request-banner}.tsx` (new) and `workspace-actions.tsx`/`workspace-detail-tabs.tsx`/`file-card.tsx` (extended) on the creator side.
+- **Activity events:** 15 new `ActivityAction` codes (`REVIEW_LINK_CREATED/REVOKED/REGENERATED/VIEWED`, `COMMENT_ADDED/REPLIED/RESOLVED`, `CHANGES_REQUESTED`, `FILE_VERSION_UPLOAD_STARTED/UPLOADED/PROCESSING_COMPLETED/PROCESSING_FAILED`, `REVISION_SUBMITTED`, `PROJECT_APPROVED`) added to `src/lib/activity-log.ts`'s centralized formatter; `recordActivity`'s `actorType` widened to accept `"CLIENT"` alongside the existing `"CREATOR"`/`"SYSTEM"`.
+- **Testing, three tiers:**
+  - Unit (Vitest, mocked Prisma): 9 new test files covering token generation/hashing/shape-rejection, the full transition-policy allow/deny matrix, comment/pin-coordinate/reply validation, review-link eligibility/revocation/regeneration, change-request duplicate-prevention, approval snapshot generation/blocking rules, submitted-version filtering, and revision-readiness rules — ~110 new test cases.
+  - Integration (Vitest, real Postgres + real MinIO): `src/data-access/review-workflow.integration.test.ts` — 21 tests covering the full creator↔client round trip end to end, including a genuine upload→process→promote/fail cycle for file versions, cross-workspace/cross-creator boundary checks, and activity-log-on-success vs. none-on-failure.
+  - E2E/visual (Playwright): see the Phase 6 addendum to this document's testing sections once added — kept isolated from `uploads-e2e`/`mutations-e2e` per the same shared-dev-server/shared-worker constraint already documented for those suites.
+
+### Known differences / deliberate scope boundaries
+
+- **`Workspace.publicToken`/`sharedAt` are gone, not deprecated-in-place** — they stored a plaintext token, which is structurally incompatible with this phase's hash-only requirement. The two places that read `publicToken` for a `/review/[token]` shortcut link (`workspace-card.tsx`, `workspace-table.tsx`) now show a non-clickable "Shared" indicator instead, since a raw token can never be retrieved again after creation.
+- **No dedicated "referenced comments" join table for change requests** — the brief's "optionally reference open comments" is handled at the UI/text level (a client-selected comment's text is quoted into the `ChangeRequest.summary`), not a separate relation, matching the "add only what's required" instruction for what is fundamentally a text-composition affordance.
+- **Rate limiting remains deferred and documented**, not silently assumed — no request-level throttling exists on comment/reply/change-request/approval submission, matching the equivalent, already-documented Phase 5 gap for upload-session creation.
+- **No email verification, no client accounts, no OTP** — a link holder is "a reviewer with access to the link," never a cryptographically verified individual; see `REVIEW_TOKEN_SECURITY.md`'s "Identity limitations."
+- **Payment/unlocking is completely absent, on purpose** — no Razorpay integration, no `PAYMENT_PENDING`/`PAID`/`FILES_UNLOCKED` transitions exist in `workspace-transitions.ts`'s allow-list at all; approval only ever reaches `APPROVED`.
+
+### Recommended Phase 7 scope
+
+Following `TECHNICAL_AUDIT.md`'s phased plan, now that the full review→comment→change-request→revision→approval loop is real:
+
+1. **Razorpay payment integration** — order creation, payment verification, webhooks — gated behind the now-real `APPROVED` workspace status.
+2. **File unlocking** — `PAYMENT_PENDING → PAID → FILES_UNLOCKED → DELIVERED` transitions (deliberately absent from `workspace-transitions.ts` today), plus real original-file download access once `FILES_UNLOCKED`.
+3. **Email delivery** for review-link sharing and payment confirmations — deferred in every phase so far, including this one.
+4. Only after the above: the optional email-verification hardening `REVIEW_TOKEN_SECURITY.md` describes as a future, non-breaking addition.
+
+Do not begin any of the above until Phase 6 is explicitly reviewed and approved.

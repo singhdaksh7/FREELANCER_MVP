@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Share2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cancelWorkspaceAction, deleteWorkspaceAction } from "@/actions/workspaces";
 
@@ -32,15 +32,6 @@ export function WorkspaceActions({
       >
         <Pencil size={14} aria-hidden="true" /> Edit Workspace
       </Link>
-
-      <button
-        type="button"
-        disabled
-        title="Client review links are available in a later phase, once secure token issuance ships."
-        className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink-muted opacity-60"
-      >
-        <Share2 size={14} aria-hidden="true" /> Share Secure Link
-      </button>
 
       {canCancel && (
         <ConfirmDialog

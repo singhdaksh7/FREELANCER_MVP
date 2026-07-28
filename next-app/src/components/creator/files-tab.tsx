@@ -30,7 +30,9 @@ export function FilesTab({ workspaceId, files, uploadLimits, canUpload }: FilesT
   const { queue, enqueueFiles, removeItem } = useFileUploadQueue(workspaceId, uploadLimits);
   const router = useRouter();
 
-  const hasTransientFiles = files.some((file) => TRANSIENT_STATUSES.has(file.status));
+  const hasTransientFiles = files.some(
+    (file) => TRANSIENT_STATUSES.has(file.status) || file.pendingVersion?.status === "PROCESSING",
+  );
   useEffect(() => {
     if (!hasTransientFiles) return;
     const interval = setInterval(() => router.refresh(), POLL_INTERVAL_MS);

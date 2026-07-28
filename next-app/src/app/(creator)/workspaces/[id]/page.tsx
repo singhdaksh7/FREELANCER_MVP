@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getOwnedWorkspaceDetail } from "@/data-access/workspaces";
 import { getWorkspaceFiles } from "@/data-access/files";
+import { getOwnedReviewCommentThreads } from "@/data-access/review-comments";
+import { getActiveChangeRequest } from "@/data-access/change-requests";
 import { getUploadLimits } from "@/storage/storage-config";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FlashToast } from "@/components/ui/flash-toast";
 import { WorkspaceActions } from "@/components/creator/workspace-actions";
+import { ReviewLinkPanel } from "@/components/creator/review-link-panel";
 import { WorkspaceDetailTabs } from "@/components/creator/workspace-detail-tabs";
 import { formatINR } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
@@ -30,6 +33,8 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
 
   const files = await getWorkspaceFiles(workspace.id);
   const uploadLimits = getUploadLimits();
+  const comments = await getOwnedReviewCommentThreads(workspace.id);
+  const activeChangeRequest = await getActiveChangeRequest(workspace.id);
 
   return (
     <div className="flex flex-col gap-5">
@@ -62,7 +67,19 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
         />
       </div>
 
-      <WorkspaceDetailTabs workspace={workspace} files={files} uploadLimits={uploadLimits} />
+      <ReviewLinkPanel
+        workspaceId={workspace.id}
+        workspaceTitle={workspace.title}
+        reviewLink={workspace.reviewLink}
+      />
+
+      <WorkspaceDetailTabs
+        workspace={workspace}
+        files={files}
+        uploadLimits={uploadLimits}
+        comments={comments}
+        activeChangeRequest={activeChangeRequest}
+      />
       <FlashToast />
     </div>
   );

@@ -17,6 +17,7 @@ const { prismaMock } = vi.hoisted(() => ({
     client: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
     payment: { findMany: vi.fn().mockResolvedValue([]) },
     notification: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
+    reviewLink: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));

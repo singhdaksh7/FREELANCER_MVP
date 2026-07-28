@@ -253,3 +253,28 @@ No previously-approved screen's visuals changed for reasons unrelated to file st
 - No original-file download button or link anywhere — verified by a dedicated E2E assertion (`e2e/uploads/uploads.spec.ts`), not just visual absence.
 - No long-lived preview URL — every "View Protected Preview" click fetches a fresh 60-second signed URL.
 - Deliverables step 2 of the workspace wizard (Phase 4) is now backed by real upload capability on the details page, but the wizard step itself remains an informational "coming after creation" panel — files are added after a workspace exists, never during the wizard, per the brief.
+
+---
+
+# Phase 6 — Secure Client Review Portal
+
+## `/review/[token]` — client review portal
+
+- **Original source:** `src/components/layouts/ClientReviewLayout.jsx` + `src/pages/ClientPortalPortal.jsx`. **Deliberate, brief-mandated departure, not a redesign of anything "approved":** the original has zero responsive/mobile handling at all (`.portal-grid`/`.portal-sidebar` have no CSS rules defined anywhere in the source), no modal dialogs (Request Changes/Approve are plain sidebar tab-swaps, not confirmations), and includes a fully fake payment/checkout flow (`simulatePaymentSuccess`). Phase 6's brief explicitly requires a real mobile layout (compact header, full-width preview, bottom-sheet comments, safe-area spacing) and explicit confirmation modals for Request Changes/Approve, and explicitly forbids simulating payment success — so this screen is a genuine new build against the brief's requirements, using the original's color palette (`--color-vault-navy`, watermark treatment) as the only carried-over visual reference.
+- **New route:** `next-app/src/app/review/[token]/page.tsx` → `ReviewPortal` (`src/components/review/review-portal.tsx`).
+- **Desktop (`lg:` and up):** two-column layout — file/version switcher + large protected preview on the left, a persistent comments panel on the right (`ReviewCommentsPanel`), matching the brief's explicit desktop content list.
+- **Mobile:** full-width preview, compact header, a "Comments" button opening a bottom sheet (`role="dialog"`, backdrop-dismissible, `env(safe-area-inset-bottom)` padding) instead of the desktop's persistent side panel — genuinely new interaction, since the original had none.
+- **Always visible:** "Original files remain securely locked until payment is completed." — present in the footer strip on every state, exact wording from the brief (no "escrow," no screenshot-prevention claim anywhere in this component tree).
+- **System states:** `ReviewSystemState` (`src/components/review/review-system-state.tsx`) reuses the existing `SystemStateLayout` primitive (Phase 1) with review-appropriate actions (never a "Return to Creator Dashboard" link, since a client here has no creator account).
+
+## `/workspaces/[id]` — Share Secure Link, Comments tab, Files tab additions
+
+- **Share Secure Link:** the Phase 4/5 disabled placeholder button is replaced by `ReviewLinkPanel` (`src/components/creator/review-link-panel.tsx`) — real create/copy/revoke/regenerate controls, a one-time raw-link reveal panel, and status/expiry/view-count display.
+- **Comments tab:** the Phase 4/5 static "aren't available yet" empty state is replaced by `CommentsTab` (`src/components/creator/comments-tab.tsx`) — real threaded comments with inline reply/resolve.
+- **Files tab:** `FileCard` gains an "Upload New Version" control, a collapsible version-history list, and a pending-candidate-version status line; a `ChangeRequestBanner` appears above the file grid whenever the workspace is `CHANGES_REQUESTED`, with the "Submit Revision for Review" action.
+
+No visual baseline for any *previously* approved screen changed for reasons unrelated to these additions.
+
+## Known test-isolation note: `review-portal.spec.ts` vs `workspace-details.spec.ts`
+
+`e2e/visual/review-portal.spec.ts` uploads a file and creates a review link against `ws_brand_identity` — the same seeded workspace `e2e/visual/workspace-details.spec.ts` screenshots (Overview/Files-empty/Activity tabs). Running the full unfiltered visual project set (`npx playwright test --project=desktop-1440 --project=tablet-768 --project=mobile-390`, i.e. all three viewports fully parallel) can have these two specs mutate/read that same workspace at overlapping moments, producing spurious diffs — the same category of shared-dev-server/shared-data contention already documented in `MUTATION_ARCHITECTURE.md` ("Testing") for `mutations-e2e`/`uploads-e2e` vs. the visual suite. Both specs are stable and deterministic **in isolation** (verified via `-g "workspace details"` / `-g "review portal"`); this is a scheduling concern under this environment's load, not a product bug. A future cleanup could give Phase 6's visual spec its own dedicated seeded workspace to remove the contention entirely.

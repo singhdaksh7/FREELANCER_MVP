@@ -8,6 +8,9 @@ import { toDecimal, toDisplayNumber } from "@/lib/decimal";
 import { parseEnumParam, parseQueryParam, type RawSearchParams } from "@/lib/search-params";
 import type { WorkspaceCreateInput, WorkspaceUpdateInput } from "@/validation/workspace";
 import { WorkspaceStatus, type Prisma } from "@/generated/prisma/client";
+import { assertWorkspaceTransition, InvalidStatusTransitionError } from "@/lib/workspace-transitions";
+
+export { InvalidStatusTransitionError };
 
 export interface WorkspaceListItem {
   id: string;
@@ -17,7 +20,8 @@ export interface WorkspaceListItem {
   currency: string;
   status: string;
   progress: number;
-  publicToken: string | null;
+  /** Whether an ACTIVE, unexpired ReviewLink currently exists — the raw token itself is never retrievable after creation, so this is a boolean indicator only, not a link. */
+  hasActiveReviewLink: boolean;
   updatedAt: string;
   client: { id: string; name: string; company: string | null };
 }
@@ -48,6 +52,7 @@ function mapWorkspace(
   workspace: Prisma.WorkspaceGetPayload<{
     include: { client: { select: { id: true; name: true; company: true } } };
   }>,
+  activeReviewLinkWorkspaceIds: ReadonlySet<string>,
 ): WorkspaceListItem {
   return {
     id: workspace.id,
@@ -57,7 +62,7 @@ function mapWorkspace(
     currency: workspace.currency,
     status: workspace.status,
     progress: workspace.progress,
-    publicToken: workspace.publicToken,
+    hasActiveReviewLink: activeReviewLinkWorkspaceIds.has(workspace.id),
     updatedAt: workspace.updatedAt.toISOString(),
     client: workspace.client,
   };
@@ -112,8 +117,14 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
     }),
   ]);
 
+  const activeReviewLinks = await prisma.reviewLink.findMany({
+    where: { workspaceId: { in: workspaces.map((w) => w.id) }, status: "ACTIVE", expiresAt: { gt: new Date() } },
+    select: { workspaceId: true },
+  });
+  const activeReviewLinkWorkspaceIds = new Set(activeReviewLinks.map((link) => link.workspaceId));
+
   return {
-    workspaces: workspaces.map(mapWorkspace),
+    workspaces: workspaces.map((w) => mapWorkspace(w, activeReviewLinkWorkspaceIds)),
     clientOptions,
     filters: { q, status, clientId: clientIdParam || "All", sort },
   };
@@ -149,7 +160,6 @@ export interface WorkspaceDetail {
   progress: number;
   dueDate: string | null;
   watermarkText: string | null;
-  publicToken: string | null;
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
@@ -162,6 +172,15 @@ export interface WorkspaceDetail {
   client: { id: string; name: string; email: string; company: string | null; phone: string | null };
   payments: WorkspacePaymentEntry[];
   activity: WorkspaceActivityEntry[];
+  /** Most-recent ReviewLink (any status) for the review-link controls — never the raw token, only what's safe to display. */
+  reviewLink: {
+    status: string;
+    tokenPrefix: string;
+    expiresAt: string;
+    revokedAt: string | null;
+    lastViewedAt: string | null;
+    viewCount: number;
+  } | null;
 }
 
 /**
@@ -179,6 +198,7 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
       client: { select: { id: true, name: true, email: true, company: true, phone: true } },
       payments: { orderBy: [{ createdAt: "desc" }, { id: "asc" }] },
       activityLogs: { orderBy: [{ createdAt: "desc" }, { id: "asc" }] },
+      reviewLinks: { orderBy: [{ createdAt: "desc" }], take: 1 },
     },
   });
   if (!workspace) return null;
@@ -195,7 +215,6 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
     progress: workspace.progress,
     dueDate: workspace.dueDate ? workspace.dueDate.toISOString() : null,
     watermarkText: workspace.watermarkText,
-    publicToken: workspace.publicToken,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
     approvedAt: workspace.approvedAt ? workspace.approvedAt.toISOString() : null,
@@ -224,6 +243,24 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
       actorType: entry.actorType,
       createdAt: entry.createdAt.toISOString(),
     })),
+    reviewLink: workspace.reviewLinks[0]
+      ? {
+          // Lazily-computed display status — nothing proactively flips
+          // ACTIVE -> EXPIRED in the database, so an ACTIVE row whose
+          // expiresAt has passed is still shown as expired here.
+          status:
+            workspace.reviewLinks[0].status === "ACTIVE" && workspace.reviewLinks[0].expiresAt <= new Date()
+              ? "EXPIRED"
+              : workspace.reviewLinks[0].status,
+          tokenPrefix: workspace.reviewLinks[0].tokenPrefix,
+          expiresAt: workspace.reviewLinks[0].expiresAt.toISOString(),
+          revokedAt: workspace.reviewLinks[0].revokedAt ? workspace.reviewLinks[0].revokedAt.toISOString() : null,
+          lastViewedAt: workspace.reviewLinks[0].lastViewedAt
+            ? workspace.reviewLinks[0].lastViewedAt.toISOString()
+            : null,
+          viewCount: workspace.reviewLinks[0].viewCount,
+        }
+      : null,
   };
 }
 
@@ -408,23 +445,11 @@ export async function updateOwnedWorkspace(
   });
 }
 
-export class InvalidStatusTransitionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidStatusTransitionError";
-  }
-}
-
 /** Cancels a workspace. Refuses for already-cancelled or financially-locked (PAID/FILES_UNLOCKED/DELIVERED) workspaces — payment history is never touched. */
 export async function cancelOwnedWorkspace(workspaceId: string): Promise<void> {
   const { creator, workspace } = await requireOwnedWorkspace(workspaceId);
 
-  if (workspace.status === "CANCELLED") {
-    throw new InvalidStatusTransitionError("This workspace is already cancelled.");
-  }
-  if ((FINANCIAL_LOCK_STATUSES as readonly string[]).includes(workspace.status)) {
-    throw new InvalidStatusTransitionError("Paid or delivered workspaces cannot be cancelled.");
-  }
+  assertWorkspaceTransition(workspace.status, "CANCELLED");
 
   await prisma.$transaction(async (tx) => {
     await tx.workspace.update({

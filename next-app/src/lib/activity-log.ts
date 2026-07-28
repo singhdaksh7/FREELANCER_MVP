@@ -29,6 +29,24 @@ export const ActivityAction = {
   FILE_PROCESSING_FAILED: "FILE_PROCESSING_FAILED",
   FILE_PROCESSING_RETRIED: "FILE_PROCESSING_RETRIED",
   FILE_DELETED: "FILE_DELETED",
+  // Phase 6 — see CLIENT_REVIEW_ARCHITECTURE.md.
+  REVIEW_LINK_CREATED: "REVIEW_LINK_CREATED",
+  REVIEW_LINK_REVOKED: "REVIEW_LINK_REVOKED",
+  REVIEW_LINK_REGENERATED: "REVIEW_LINK_REGENERATED",
+  /** Defined for completeness but deliberately never written per-view — see
+   * "Avoid logging every preview request" in CLIENT_REVIEW_ARCHITECTURE.md.
+   * View counting uses ReviewLink.viewCount/lastViewedAt instead. */
+  REVIEW_LINK_VIEWED: "REVIEW_LINK_VIEWED",
+  COMMENT_ADDED: "COMMENT_ADDED",
+  COMMENT_REPLIED: "COMMENT_REPLIED",
+  COMMENT_RESOLVED: "COMMENT_RESOLVED",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
+  FILE_VERSION_UPLOAD_STARTED: "FILE_VERSION_UPLOAD_STARTED",
+  FILE_VERSION_UPLOADED: "FILE_VERSION_UPLOADED",
+  FILE_VERSION_PROCESSING_COMPLETED: "FILE_VERSION_PROCESSING_COMPLETED",
+  FILE_VERSION_PROCESSING_FAILED: "FILE_VERSION_PROCESSING_FAILED",
+  REVISION_SUBMITTED: "REVISION_SUBMITTED",
+  PROJECT_APPROVED: "PROJECT_APPROVED",
 } as const;
 
 export type ActivityActionCode = (typeof ActivityAction)[keyof typeof ActivityAction];
@@ -47,6 +65,13 @@ export interface ActivityMetadata {
   fileName?: string;
   errorSummary?: string;
   attempt?: number;
+  // Phase 6 — never a raw token; tokenPrefix only (see REVIEW_TOKEN_SECURITY.md).
+  tokenPrefix?: string;
+  reviewerName?: string;
+  commentPreview?: string;
+  versionNumber?: number;
+  versionCount?: number;
+  changeRequestSummary?: string;
 }
 
 function formatCurrencyAmount(amount: number, currency: string): string {
@@ -114,6 +139,44 @@ export function formatActivityLabel(action: string, metadata: unknown): string {
       return meta.fileName ? `Processing retried: ${meta.fileName}` : "File processing retried";
     case ActivityAction.FILE_DELETED:
       return meta.fileName ? `File deleted: ${meta.fileName}` : "File deleted";
+    case ActivityAction.REVIEW_LINK_CREATED:
+      return meta.tokenPrefix ? `Secure review link created (${meta.tokenPrefix}…)` : "Secure review link created";
+    case ActivityAction.REVIEW_LINK_REVOKED:
+      return "Secure review link revoked";
+    case ActivityAction.REVIEW_LINK_REGENERATED:
+      return meta.tokenPrefix
+        ? `Secure review link regenerated (${meta.tokenPrefix}…)`
+        : "Secure review link regenerated";
+    case ActivityAction.REVIEW_LINK_VIEWED:
+      return "Review link viewed";
+    case ActivityAction.COMMENT_ADDED:
+      return meta.reviewerName ? `${meta.reviewerName} added a comment` : "Comment added";
+    case ActivityAction.COMMENT_REPLIED:
+      return meta.reviewerName ? `${meta.reviewerName} replied to a comment` : "Reply added";
+    case ActivityAction.COMMENT_RESOLVED:
+      return "Comment resolved";
+    case ActivityAction.CHANGES_REQUESTED:
+      return meta.reviewerName ? `${meta.reviewerName} requested changes` : "Changes requested";
+    case ActivityAction.FILE_VERSION_UPLOAD_STARTED:
+      return meta.fileName ? `New version upload started: ${meta.fileName}` : "New version upload started";
+    case ActivityAction.FILE_VERSION_UPLOADED:
+      return meta.fileName && meta.versionNumber
+        ? `${meta.fileName} — version ${meta.versionNumber} uploaded`
+        : "New file version uploaded";
+    case ActivityAction.FILE_VERSION_PROCESSING_COMPLETED:
+      return meta.fileName && meta.versionNumber
+        ? `${meta.fileName} — version ${meta.versionNumber} ready`
+        : "New file version ready";
+    case ActivityAction.FILE_VERSION_PROCESSING_FAILED:
+      return meta.fileName && meta.versionNumber
+        ? `${meta.fileName} — version ${meta.versionNumber} processing failed`
+        : "New file version processing failed";
+    case ActivityAction.REVISION_SUBMITTED:
+      return meta.versionCount
+        ? `Revision submitted for review (${meta.versionCount} file${meta.versionCount === 1 ? "" : "s"})`
+        : "Revision submitted for review";
+    case ActivityAction.PROJECT_APPROVED:
+      return meta.reviewerName ? `Project approved by ${meta.reviewerName}` : "Project approved";
     default:
       // Legacy/pre-Phase-4 rows already store a finished, human-readable
       // sentence directly in `action` — render it unchanged.

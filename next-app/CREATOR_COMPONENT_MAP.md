@@ -161,3 +161,39 @@ Every module above starts with `import "server-only"` and is never imported from
 - `src/types/*`, `src/data/mock/*` — **obsolete for production routes as of Phase 3** (see `MIGRATION_STATUS.md`). No page imports them anymore; kept only because some Phase 2-era pure-function tests (`dashboard-metrics.test.ts`) still exercise them directly.
 - `src/lib/format-currency.ts`, `format-date.ts` (now also `formatDateTime`), `format-relative-time.ts`, `search.ts`, `workspace-progress.ts`, `dashboard-metrics.ts` (legacy/mock-only), `client-metrics.ts` (legacy/mock-only, fully unreferenced), `payment-metrics.ts` (legacy/mock-only), `demo-clock.ts` (still used — see `src/data-access/payments.ts`'s date-range filter) — pure formatting/derivation helpers.
 - **New in Phase 3:** `src/lib/decimal.ts` (Decimal-safe money math), `src/lib/dashboard-summary.ts` (pure, DB-shape-aware dashboard math, testable without a database), `src/lib/status-labels.ts` (humanizes the Prisma enums into the strings `src/lib/status-config.ts` already has styles for), `src/lib/filter-options.ts` (client-safe filter dropdown option lists, importing enums from the browser-safe Prisma entrypoint), `src/lib/search-params.ts` (validates/normalizes URL search params server-side), `src/hooks/use-url-filters.ts` (the one small Client-side hook every filter bar uses to read/write those params).
+
+## Client Review Portal (new in Phase 6)
+
+| Component | Location | Type | Notes |
+|---|---|---|---|
+| `ReviewPortal` | `src/components/review/review-portal.tsx` | **Client** | Main orchestrator — file/version switcher, protected preview, desktop comments panel, mobile bottom sheet, locked-original notice, action bar |
+| `ReviewCommentsPanel` | `src/components/review/review-comments-panel.tsx` | **Client** | Shared between the desktop inline panel and the mobile bottom sheet |
+| `RequestChangesModal` | `src/components/review/request-changes-modal.tsx` | **Client** (`useActionState`, native `<dialog>`) | — |
+| `ApproveProjectModal` | `src/components/review/approve-project-modal.tsx` | **Client** (`useActionState`, native `<dialog>`) | Shows exact files/versions + amount (from `Workspace.amount`, never hardcoded) |
+| `ReviewSystemState` | `src/components/review/review-system-state.tsx` | Server | Wraps Phase 1's `SystemStateLayout` with review-appropriate (no-dashboard-link) actions |
+
+No original Vite equivalent exists for any of these except the overall shell concept (`ClientReviewLayout.jsx`/`ClientPortalPortal.jsx`) — see `VISUAL_PARITY.md`'s Phase 6 section for why this is a deliberate new build against the brief, not a line-for-line migration.
+
+## Creator-side review additions (new in Phase 6)
+
+| Component | Location | Type | Notes |
+|---|---|---|---|
+| `ReviewLinkPanel` | `src/components/creator/review-link-panel.tsx` | **Client** (`useActionState`, Clipboard API) | Replaces the Phase 4/5 disabled "Share Secure Link" button |
+| `CommentsTab` | `src/components/creator/comments-tab.tsx` | **Client** | Replaces the Phase 4/5 static empty state |
+| `ChangeRequestBanner` | `src/components/creator/change-request-banner.tsx` | **Client** (`useActionState`) | Shown on the Files tab when `status === CHANGES_REQUESTED` |
+| `SystemStateLayout` | `src/components/layout/system-state-layout.tsx` | Server | **Extended** (not replaced) — added an optional `actions` prop so the review portal's system states don't show creator-only navigation |
+| `FileCard` | `src/components/creator/file-card.tsx` | **Client** | **Extended** — "Upload New Version" control, collapsible version history, pending-candidate status line |
+
+## Data access (new in Phase 6)
+
+| Module | Key exports | Notes |
+|---|---|---|
+| `src/lib/review-token.ts` | `generateReviewToken`, `hashReviewToken`, `reviewTokenPrefix`, `isValidReviewTokenShape`, `hashesEqual` | See `REVIEW_TOKEN_SECURITY.md` |
+| `src/lib/workspace-transitions.ts` | `assertWorkspaceTransition`, `canTransitionWorkspace`, `InvalidStatusTransitionError` | Centralized allow-list; `InvalidStatusTransitionError` moved here from `data-access/workspaces.ts` (still re-exported there for backward compatibility) |
+| `src/data-access/review-auth.ts` | `authorizeReviewToken`, `recordReviewLinkView` | Session-independent trust path |
+| `src/data-access/review-links.ts` | `createReviewLink`, `revokeReviewLink`, `regenerateReviewLink` | Creator-authenticated |
+| `src/data-access/review-comments.ts` | `addClientReviewComment`, `addCreatorReviewComment`, `resolveReviewComment`, `getReviewCommentThreads` | Shared validation core for both author types |
+| `src/data-access/change-requests.ts` | `createChangeRequest`, `getActiveChangeRequest` | — |
+| `src/data-access/revisions.ts` | `submitRevision` | — |
+| `src/data-access/approvals.ts` | `approveWorkspace`, `getApprovalSummary` | — |
+| `src/data-access/review-files.ts` | `getReviewableFiles` | Submitted-versions-only, client-safe file/version list |

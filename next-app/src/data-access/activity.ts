@@ -4,9 +4,15 @@ import type { ActivityActionCode, ActivityMetadata } from "@/lib/activity-log";
 
 export interface RecordActivityInput {
   action: ActivityActionCode;
-  actorType: "CREATOR";
+  /**
+   * "CLIENT" rows are written by an unauthenticated, token-holding reviewer
+   * (see CLIENT_REVIEW_ARCHITECTURE.md) — `creatorId` is still set (from the
+   * workspace) so the row appears in the creator's own audit trail, but the
+   * actor performing the action is not an authenticated User.
+   */
+  actorType: "CREATOR" | "CLIENT" | "SYSTEM";
   actorName: string;
-  creatorId: string;
+  creatorId?: string;
   workspaceId?: string;
   clientId?: string;
   metadata?: ActivityMetadata;

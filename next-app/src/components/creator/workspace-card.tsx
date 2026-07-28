@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import type { WorkspaceListItem } from "@/data-access/workspaces";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatINR } from "@/lib/format-currency";
@@ -40,13 +40,13 @@ export function WorkspaceCard({ workspace }: WorkspaceCardProps) {
         >
           Manage Details
         </Link>
-        {workspace.publicToken && (
-          <Link
-            href={`/review/${workspace.publicToken}`}
-            className="flex items-center justify-center gap-1 rounded-md bg-vault-navy px-3 py-2 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        {workspace.hasActiveReviewLink && (
+          <span
+            className="flex items-center justify-center gap-1 rounded-md bg-vault-navy px-3 py-2 text-xs font-semibold text-white"
+            title="This workspace has an active secure review link. Manage or copy it from the workspace details page."
           >
-            Portal <ExternalLink size={12} aria-hidden="true" />
-          </Link>
+            <ShieldCheck size={12} aria-hidden="true" /> Shared
+          </span>
         )}
       </div>
     </div>

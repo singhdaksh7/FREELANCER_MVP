@@ -138,3 +138,14 @@ export function getWorkerConfig(): WorkerConfig {
     maxAttempts: intEnv("FILE_WORKER_MAX_ATTEMPTS", 3),
   };
 }
+
+export interface ReviewLinkConfig {
+  expiryDays: number;
+}
+
+/** Phase 6 — see REVIEW_TOKEN_SECURITY.md. */
+export function getReviewLinkConfig(): ReviewLinkConfig {
+  return {
+    expiryDays: intEnv("REVIEW_LINK_EXPIRY_DAYS", 30),
+  };
+}

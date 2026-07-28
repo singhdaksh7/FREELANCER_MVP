@@ -10,12 +10,18 @@ import { paymentStatusLabel, workspaceStatusLabel } from "@/lib/status-labels";
 import type { WorkspaceDetail } from "@/data-access/workspaces";
 import type { WorkspaceFileListItem } from "@/data-access/files";
 import type { UploadLimits } from "@/hooks/use-file-upload-queue";
+import type { ReviewCommentThreadItem } from "@/data-access/review-comments";
+import type { ActiveChangeRequest } from "@/data-access/change-requests";
 import { FilesTab } from "./files-tab";
+import { CommentsTab } from "./comments-tab";
+import { ChangeRequestBanner } from "./change-request-banner";
 
 export interface WorkspaceDetailTabsProps {
   workspace: WorkspaceDetail;
   files: WorkspaceFileListItem[];
   uploadLimits: UploadLimits;
+  comments: ReviewCommentThreadItem[];
+  activeChangeRequest: ActiveChangeRequest | null;
 }
 
 const TABS = [
@@ -28,8 +34,20 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export function WorkspaceDetailTabs({ workspace, files, uploadLimits }: WorkspaceDetailTabsProps) {
+export function WorkspaceDetailTabs({
+  workspace,
+  files,
+  uploadLimits,
+  comments,
+  activeChangeRequest,
+}: WorkspaceDetailTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  // See ChangeRequestBanner's doc comment — set immediately on a
+  // successful "Submit Revision" so the confirmation survives the
+  // Server Action's revalidatePath potentially unmounting the banner
+  // (whose render condition depends on the now-stale `activeChangeRequest`/
+  // `workspace.status` props) before its own inline message can paint.
+  const [revisionJustSubmitted, setRevisionJustSubmitted] = useState(false);
 
   return (
     <div className="rounded-lg border border-line bg-surface-card">
@@ -90,6 +108,24 @@ export function WorkspaceDetailTabs({ workspace, files, uploadLimits }: Workspac
 
         {activeTab === "files" && (
           <div id="panel-files" role="tabpanel" aria-labelledby="tab-files">
+            {revisionJustSubmitted && (
+              <p role="status" className="mb-4 rounded-lg bg-success-bg px-4 py-3 text-sm font-medium text-success">
+                Revision submitted for review.
+              </p>
+            )}
+            {!revisionJustSubmitted && workspace.status === "CHANGES_REQUESTED" && activeChangeRequest && (
+              <ChangeRequestBanner
+                workspaceId={workspace.id}
+                changeRequest={activeChangeRequest}
+                canSubmitRevision={files.some(
+                  (f) =>
+                    f.pendingVersion === null &&
+                    f.currentVersionNumber !== null &&
+                    f.versions.some((v) => v.versionNumber === f.currentVersionNumber && !v.submittedAt),
+                )}
+                onSubmitted={() => setRevisionJustSubmitted(true)}
+              />
+            )}
             <FilesTab
               workspaceId={workspace.id}
               files={files}
@@ -101,11 +137,7 @@ export function WorkspaceDetailTabs({ workspace, files, uploadLimits }: Workspac
 
         {activeTab === "comments" && (
           <div id="panel-comments" role="tabpanel" aria-labelledby="tab-comments">
-            <EmptyState
-              icon={MessageSquare}
-              title="Comments aren't available yet"
-              description="Client comments open up once a secure client review link has been shared for this workspace — link sharing is coming in a later phase."
-            />
+            <CommentsTab workspaceId={workspace.id} comments={comments} />
           </div>
         )}
 

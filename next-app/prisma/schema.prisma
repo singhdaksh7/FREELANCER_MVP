@@ -81,6 +81,44 @@ enum UploadSessionStatus {
   ABORTED
 }
 
+/// Phase 6 — see CLIENT_REVIEW_ARCHITECTURE.md / REVIEW_TOKEN_SECURITY.md.
+enum ReviewLinkStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum ReviewAuthorType {
+  CREATOR
+  CLIENT
+}
+
+enum CommentStatus {
+  OPEN
+  RESOLVED
+}
+
+enum ChangeRequestStatus {
+  OPEN
+  RESOLVED
+  WITHDRAWN
+}
+
+enum ApprovalStatus {
+  APPROVED
+  REVOKED
+}
+
+/// Per-FileVersion processing state — generalizes what WorkspaceFile.status
+/// already tracked for a file's only version in Phase 5, now tracked per
+/// version so an old (READY) version and a new re-upload candidate
+/// (PROCESSING/FAILED) can coexist without disturbing each other.
+enum FileVersionStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
 /// Creator (and future admin) accounts. `email` is normalized
 /// (trimmed + lowercased) by the application layer before every write and
 /// read, so the DB-level `@unique` constraint enforces case-insensitive
@@ -103,6 +141,10 @@ model User {
   notifications  Notification[]
   activityLogs   ActivityLog[]
   uploadSessions UploadSession[]
+  reviewLinksCreated    ReviewLink[]
+  commentsAuthored      ReviewComment[] @relation("CommentAuthor")
+  commentsResolved      ReviewComment[] @relation("CommentResolver")
+  changeRequestsResolved ChangeRequest[]
 
   @@map("users")
 }
@@ -151,10 +193,6 @@ model Workspace {
   /// generation itself is Phase 5 — this field is only persisted metadata
   /// for now (Phase 4 scope, see MUTATION_ARCHITECTURE.md).
   watermarkText String?
-  /// Secure client-review token. Nullable until a link has been shared;
-  /// unique so a token can never resolve to more than one workspace.
-  publicToken String?         @unique
-  sharedAt    DateTime?
   approvedAt  DateTime?
   paidAt      DateTime?
   deliveredAt DateTime?
@@ -169,6 +207,10 @@ model Workspace {
   notifications  Notification[]
   files          WorkspaceFile[]
   uploadSessions UploadSession[]
+  reviewLinks    ReviewLink[]
+  reviewComments ReviewComment[]
+  changeRequests ChangeRequest[]
+  approvals      WorkspaceApproval[]
 
   @@index([creatorId])
   @@index([clientId])
@@ -279,6 +321,15 @@ model WorkspaceFile {
   /// dangling "current" pointer if it's ever removed independently.
   currentVersion   FileVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
 
+  /// Phase 6 — the in-flight or failed *candidate* re-upload version, if
+  /// any. `currentVersionId` is left untouched while this processes; the
+  /// worker promotes it (currentVersionId = pendingVersionId, this field
+  /// cleared) on success, or leaves it pointing at the FAILED version (so
+  /// the creator UI can show the failed candidate) on failure. Never
+  /// exposed to the client portal.
+  pendingVersionId String?      @unique
+  pendingVersion   FileVersion? @relation("PendingVersion", fields: [pendingVersionId], references: [id], onDelete: SetNull)
+
   sortOrder Int       @default(0)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -288,7 +339,9 @@ model WorkspaceFile {
   /// FILE_STORAGE_ARCHITECTURE.md.
   deletedAt DateTime?
 
-  versions FileVersion[] @relation("FileVersions")
+  versions             FileVersion[]   @relation("FileVersions")
+  reviewComments       ReviewComment[]
+  versionUploadSessions UploadSession[]
 
   @@index([workspaceId])
   @@index([workspaceId, status])
@@ -318,13 +371,26 @@ model FileVersion {
   /// SDK/Prisma error (see FILE_STORAGE_ARCHITECTURE.md "Security
   /// limitations").
   processingError String?
-  createdAt       DateTime @default(now())
+  /// Per-version processing state — see FileVersionStatus. Independent of
+  /// WorkspaceFile.status so an old READY version and a new
+  /// PROCESSING/FAILED candidate can coexist.
+  status    FileVersionStatus @default(PROCESSING)
+  /// Set only when this version is explicitly made client-visible (first
+  /// review-link creation, or a creator's "Submit Revision"). The client
+  /// portal always queries by submittedAt != null, never by
+  /// currentVersionId directly — so uploading a new version alone can
+  /// never silently change what a client sees.
+  submittedAt DateTime?
+  createdAt   DateTime @default(now())
 
   currentForFile WorkspaceFile?      @relation("CurrentVersion")
+  pendingForFile WorkspaceFile?      @relation("PendingVersion")
   processingJobs FileProcessingJob[]
+  reviewComments ReviewComment[]
 
   @@unique([fileId, versionNumber])
   @@index([fileId])
+  @@index([fileId, submittedAt])
   @@map("file_versions")
 }
 
@@ -358,6 +424,12 @@ model UploadSession {
   creatorId   String
   creator     User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 
+  /// Phase 6 — null means "uploading a brand-new file" (Phase 5 behavior,
+  /// unchanged). Set means "uploading a new version of this existing,
+  /// owned file" — completeUploadSession branches on this.
+  targetFileId String?
+  targetFile   WorkspaceFile? @relation(fields: [targetFileId], references: [id], onDelete: SetNull)
+
   /// The random temp/ storage key this session's presigned URL was issued
   /// for — the only key that particular URL is valid for.
   storageKey        String              @unique
@@ -375,4 +447,159 @@ model UploadSession {
   @@index([creatorId])
   @@index([status, expiresAt])
   @@map("upload_sessions")
+}
+
+/// Phase 6 — see REVIEW_TOKEN_SECURITY.md. Only a SHA-256 hash of the raw
+/// token is ever stored; the raw token itself is generated with 256 bits
+/// of entropy (crypto.randomBytes(32)), shown to the creator exactly once
+/// at creation/regeneration time, and never persisted anywhere else (not
+/// in this row, not in ActivityLog.metadata, not in a log line).
+model ReviewLink {
+  id     String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  tokenHash   String           @unique
+  /// First 8 chars of the raw token — support/debugging identification
+  /// only. Not sufficient on its own to reconstruct a 256-bit token.
+  tokenPrefix String
+  status      ReviewLinkStatus @default(ACTIVE)
+  expiresAt   DateTime
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+
+  /// Updated on every review-portal page load; deliberately NOT paired
+  /// with an ActivityLog row per-view (would be extremely noisy) — see
+  /// CLIENT_REVIEW_ARCHITECTURE.md.
+  lastViewedAt DateTime?
+  viewCount    Int       @default(0)
+
+  /// Set on the OLD link when regeneration creates a replacement — points
+  /// at the new link's id. Self-relation, 1-1 (unique).
+  replacedById String?     @unique
+  replacedBy   ReviewLink? @relation("ReviewLinkChain", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacesLink ReviewLink? @relation("ReviewLinkChain")
+
+  changeRequests ChangeRequest[]
+  approvals      WorkspaceApproval[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@map("review_links")
+}
+
+/// Phase 6 — client and creator comments/replies. `authorType` +
+/// nullable creator/reviewer fields distinguish an authenticated creator
+/// comment from an unauthenticated (link-holder) client comment; a client
+/// identity is never treated as cryptographically verified — see
+/// CLIENT_REVIEW_ARCHITECTURE.md.
+model ReviewComment {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  workspaceFileId String?
+  workspaceFile   WorkspaceFile? @relation(fields: [workspaceFileId], references: [id], onDelete: SetNull)
+
+  fileVersionId String?
+  fileVersion   FileVersion? @relation(fields: [fileVersionId], references: [id], onDelete: SetNull)
+
+  /// One level of replies only — enforced in application code (a reply's
+  /// parent must itself have parentId == null), not by the schema.
+  parentId String?
+  parent   ReviewComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  ReviewComment[] @relation("CommentReplies")
+
+  authorType      ReviewAuthorType
+  creatorAuthorId String?
+  creatorAuthor   User?            @relation("CommentAuthor", fields: [creatorAuthorId], references: [id], onDelete: SetNull)
+  /// Client-entered, unverified display identity — never treated as proof
+  /// of who the reviewer actually is.
+  reviewerName  String?
+  reviewerEmail String?
+
+  body   String
+  status CommentStatus @default(OPEN)
+
+  /// Normalized pin coordinates (0..1), image comments only. App-validated
+  /// range, not a DB constraint.
+  pinX Float?
+  pinY Float?
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("CommentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([parentId])
+  @@map("review_comments")
+}
+
+/// Phase 6 — a client's "Request Changes" submission. Only one OPEN
+/// request per workspace is ever allowed at a time (enforced in
+/// data-access, not the schema) — see CLIENT_REVIEW_ARCHITECTURE.md.
+model ChangeRequest {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  reviewLinkId String
+  reviewLink   ReviewLink @relation(fields: [reviewLinkId], references: [id], onDelete: Cascade)
+
+  reviewerName  String?
+  reviewerEmail String?
+  /// The client's requested-changes summary. If the client referenced open
+  /// comments in the UI, a quoted reference is prepended here server-side
+  /// rather than modeling a separate join table for a cosmetic feature.
+  summary String
+
+  status      ChangeRequestStatus @default(OPEN)
+  requestedAt DateTime            @default(now())
+  resolvedAt  DateTime?
+  resolvedById String?
+  resolvedBy   User?    @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@map("change_requests")
+}
+
+/// Phase 6 — client approval WITHOUT payment/unlocking. Explicitly never
+/// sets Workspace.status to PAID/FILES_UNLOCKED and never grants original
+/// download access — see CLIENT_REVIEW_ARCHITECTURE.md.
+model WorkspaceApproval {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  reviewLinkId String
+  reviewLink   ReviewLink @relation(fields: [reviewLinkId], references: [id], onDelete: Cascade)
+
+  /// Immutable record of exactly which file/version ids were approved —
+  /// a JSON snapshot, never recomputed later, so a subsequent file change
+  /// can never retroactively alter what was actually approved.
+  approvedFileVersionSnapshot Json
+
+  reviewerName  String
+  reviewerEmail String?
+
+  status        ApprovalStatus @default(APPROVED)
+  termsAccepted Boolean        @default(false)
+  approvedAt    DateTime       @default(now())
+  revokedAt     DateTime?
+  userAgent     String?
+
+  @@index([workspaceId])
+  @@map("workspace_approvals")
 }

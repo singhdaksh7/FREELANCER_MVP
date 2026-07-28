@@ -84,18 +84,32 @@ async function recordWorkerActivity(
   });
 }
 
+/** True when this job's FileVersion is a re-upload candidate (not the file's original/promoted version) — see WorkspaceFile.pendingVersionId in schema.prisma. */
+function isVersionUploadJob(job: NonNullable<ClaimedJob>): boolean {
+  return job.fileVersion.file.pendingVersionId === job.fileVersion.id;
+}
+
 export async function markJobFailed(prisma: PrismaLike, job: NonNullable<ClaimedJob>, summary: SafeErrorSummary): Promise<void> {
   const file = job.fileVersion.file;
+  const isVersionUpload = isVersionUploadJob(job);
+
   await prisma.$transaction([
     prisma.fileProcessingJob.update({
       where: { id: job.id },
       data: { status: "FAILED", errorCode: summary.code, errorMessage: summary.message, completedAt: new Date() },
     }),
-    prisma.fileVersion.update({ where: { id: job.fileVersion.id }, data: { processingError: summary.message } }),
-    prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "FAILED" } }),
+    prisma.fileVersion.update({
+      where: { id: job.fileVersion.id },
+      data: { processingError: summary.message, status: "FAILED" },
+    }),
+    // Version-upload failure: the candidate FileVersion is marked FAILED
+    // above (pendingVersionId still points at it, so the creator UI can
+    // show it), but the file's own status/currentVersionId are left
+    // completely untouched — the previous current version stays active.
+    ...(isVersionUpload ? [] : [prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "FAILED" as const } })]),
   ]);
   await recordWorkerActivity(prisma, {
-    action: ActivityAction.FILE_PROCESSING_FAILED,
+    action: isVersionUpload ? ActivityAction.FILE_VERSION_PROCESSING_FAILED : ActivityAction.FILE_PROCESSING_FAILED,
     creatorId: file.workspace.creatorId,
     workspaceId: file.workspaceId,
     fileName: file.displayName,
@@ -104,12 +118,20 @@ export async function markJobFailed(prisma: PrismaLike, job: NonNullable<Claimed
 
 async function markNonPreviewableReady(prisma: PrismaLike, job: NonNullable<ClaimedJob>): Promise<void> {
   const file = job.fileVersion.file;
+  const isVersionUpload = isVersionUploadJob(job);
+
   await prisma.$transaction([
     prisma.fileProcessingJob.update({ where: { id: job.id }, data: { status: "COMPLETED", completedAt: new Date() } }),
-    prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "READY" } }),
+    prisma.fileVersion.update({ where: { id: job.fileVersion.id }, data: { status: "READY" } }),
+    isVersionUpload
+      ? prisma.workspaceFile.update({
+          where: { id: file.id },
+          data: { currentVersionId: job.fileVersion.id, pendingVersionId: null },
+        })
+      : prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "READY" } }),
   ]);
   await recordWorkerActivity(prisma, {
-    action: ActivityAction.FILE_PROCESSING_COMPLETED,
+    action: isVersionUpload ? ActivityAction.FILE_VERSION_PROCESSING_COMPLETED : ActivityAction.FILE_PROCESSING_COMPLETED,
     creatorId: file.workspace.creatorId,
     workspaceId: file.workspaceId,
     fileName: file.displayName,
@@ -132,6 +154,7 @@ async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>)
   const previewKey = generateStorageKey(STORAGE_PREFIXES.previews, "jpg");
   await s3StorageProvider.putObjectBuffer(previewKey, preview.buffer, preview.mimeType);
   const previewChecksum = sha256Hex(preview.buffer);
+  const isVersionUpload = isVersionUploadJob(job);
 
   await prisma.$transaction([
     prisma.fileVersion.update({
@@ -143,13 +166,19 @@ async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>)
         width: preview.width,
         height: preview.height,
         processingError: null,
+        status: "READY",
       },
     }),
     prisma.fileProcessingJob.update({ where: { id: job.id }, data: { status: "COMPLETED", completedAt: new Date() } }),
-    prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "READY" } }),
+    isVersionUpload
+      ? prisma.workspaceFile.update({
+          where: { id: file.id },
+          data: { currentVersionId: version.id, pendingVersionId: null },
+        })
+      : prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "READY" } }),
   ]);
   await recordWorkerActivity(prisma, {
-    action: ActivityAction.FILE_PROCESSING_COMPLETED,
+    action: isVersionUpload ? ActivityAction.FILE_VERSION_PROCESSING_COMPLETED : ActivityAction.FILE_PROCESSING_COMPLETED,
     creatorId: workspace.creatorId,
     workspaceId: file.workspaceId,
     fileName: file.displayName,

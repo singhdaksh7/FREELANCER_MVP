@@ -32,6 +32,14 @@ export class PreviewUnavailableError extends Error {
   }
 }
 
+export interface WorkspaceFileVersionSummary {
+  id: string;
+  versionNumber: number;
+  status: string;
+  submittedAt: string | null;
+  createdAt: string;
+}
+
 export interface WorkspaceFileListItem {
   id: string;
   displayName: string;
@@ -49,6 +57,12 @@ export interface WorkspaceFileListItem {
   attempts: number;
   canRetry: boolean;
   canDelete: boolean;
+  canUploadNewVersion: boolean;
+  currentVersionNumber: number | null;
+  /** The in-flight or failed re-upload candidate, if any — see WorkspaceFile.pendingVersionId. Never exposed to the client portal. */
+  pendingVersion: { id: string; versionNumber: number; status: string; processingError: string | null } | null;
+  /** Complete owned version history — READY/PROCESSING/FAILED, current, and submitted-to-client state for each. */
+  versions: WorkspaceFileVersionSummary[];
 }
 
 /** Every non-deleted file for a workspace the authenticated creator owns, newest-first within manual sort order. */
@@ -61,10 +75,13 @@ export async function getWorkspaceFiles(workspaceId: string): Promise<WorkspaceF
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     include: {
       currentVersion: { include: { processingJobs: { orderBy: { createdAt: "desc" }, take: 1 } } },
+      pendingVersion: true,
+      versions: { orderBy: { versionNumber: "asc" } },
     },
   });
 
   const financiallyLocked = (FINANCIAL_LOCK_STATUSES as readonly string[]).includes(workspace.status);
+  const hasApprovedApproval = await prisma.workspaceApproval.count({ where: { workspaceId, status: "APPROVED" } });
 
   return files.map((file) => {
     const latestJob = file.currentVersion?.processingJobs[0];
@@ -88,6 +105,27 @@ export async function getWorkspaceFiles(workspaceId: string): Promise<WorkspaceF
       attempts,
       canRetry: file.status === "FAILED" && attempts < maxAttempts,
       canDelete: !financiallyLocked,
+      canUploadNewVersion:
+        !financiallyLocked &&
+        hasApprovedApproval === 0 &&
+        !["CANCELLED", "DELIVERED"].includes(workspace.status) &&
+        file.pendingVersionId === null,
+      currentVersionNumber: file.currentVersion?.versionNumber ?? null,
+      pendingVersion: file.pendingVersion
+        ? {
+            id: file.pendingVersion.id,
+            versionNumber: file.pendingVersion.versionNumber,
+            status: file.pendingVersion.status,
+            processingError: file.pendingVersion.processingError,
+          }
+        : null,
+      versions: file.versions.map((v) => ({
+        id: v.id,
+        versionNumber: v.versionNumber,
+        status: v.status,
+        submittedAt: v.submittedAt ? v.submittedAt.toISOString() : null,
+        createdAt: v.createdAt.toISOString(),
+      })),
     };
   });
 }

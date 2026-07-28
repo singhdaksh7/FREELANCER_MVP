@@ -1,6 +1,6 @@
-# Project Vault — Next.js App (Phase 5)
+# Project Vault — Next.js App (Phase 6)
 
-This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 + 2 + 3 + 4 + 5**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, real PostgreSQL persistence + creator authentication (Phase 3), real client/workspace mutations (Phase 4), and — new in Phase 5 — secure creator file uploads to private object storage, a real file-processing worker, and protected watermarked previews. See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `MUTATION_ARCHITECTURE.md` for the Phase 4 mutation architecture, `FILE_STORAGE_ARCHITECTURE.md` for the Phase 5 storage/upload/processing architecture, `FILE_PROCESSING_RUNBOOK.md` for hands-on worker/storage operations, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
+This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 through 6**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, real PostgreSQL persistence + creator authentication (Phase 3), real client/workspace mutations (Phase 4), secure creator file uploads/protected previews (Phase 5), and — new in Phase 6 — the full secure client-review portal: review-link issuance/revocation/regeneration, token-authorized preview access, comments/replies, change requests, file-version re-upload, revision submission, and approval (without payment or file unlocking, which remain Phase 7). See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `MUTATION_ARCHITECTURE.md` for the Phase 4 mutation architecture, `FILE_STORAGE_ARCHITECTURE.md` for the Phase 5 storage/upload/processing architecture, `FILE_PROCESSING_RUNBOOK.md` for hands-on worker/storage operations, `CLIENT_REVIEW_ARCHITECTURE.md` for the Phase 6 review-workflow architecture, `REVIEW_TOKEN_SECURITY.md` for the review-token security design, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
 
 ## Requirements
 
@@ -167,16 +167,19 @@ Determinism notes (see `MIGRATION_STATUS.md` → "Visual-test status" for the fu
 | `/clients/new` | Add new client | Real mutation (Server Action) — new in Phase 4 |
 | `/clients/[id]/edit` | Edit client | Real mutation; 404s for a nonexistent/not-owned client — new in Phase 4 |
 | `/workspaces/new` | Create workspace (5-step wizard) | Real mutation, creates a `DRAFT` — new in Phase 4 |
-| `/workspaces/[id]` | Workspace details | Overview/Files/Comments/Payment/Activity tabs; Files tab is now real (Phase 5) — upload/preview/retry/delete; Comments still shows an honest "coming later" empty state |
+| `/workspaces/[id]` | Workspace details | Overview/Files/Comments/Payment/Activity tabs; Files tab (Phase 5) — upload/preview/retry/delete/version history; Comments tab (Phase 6) — real threaded comments with reply/resolve; secure review-link controls (Phase 6) above the tabs |
 | `/workspaces/[id]/edit` | Edit workspace | Real mutation; amount/currency/client locked once paid — new in Phase 4 |
+| `/review/[token]` | Client review portal | New in Phase 6 — no creator account required; see `CLIENT_REVIEW_ARCHITECTURE.md` |
 
-### Route handlers (Phase 5 — upload workflow)
+### Route handlers (Phase 5/6 — upload and review workflows)
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/workspaces/[id]/upload-sessions` | `POST` | Creates a presigned upload session for one declared file |
-| `/api/upload-sessions/[sessionId]/complete` | `POST` | Server-side verification + completion after the browser's direct PUT |
+| `/api/workspaces/[id]/upload-sessions` | `POST` | Creates a presigned upload session for one declared new file |
+| `/api/workspaces/[id]/files/[fileId]/versions/upload-sessions` | `POST` | Phase 6 — creates a presigned upload session for a new *version* of an existing owned file |
+| `/api/upload-sessions/[sessionId]/complete` | `POST` | Server-side verification + completion after the browser's direct PUT (both new-file and new-version sessions) |
 | `/api/files/[fileId]/preview-url` | `GET` | Short-lived (60s), creator-owned-only presigned preview URL — never an original |
+| `/api/review/[token]/files/[fileId]/preview-url` | `GET` | Phase 6 — short-lived, token-authorized, submitted-versions-only preview URL |
 
 See `FILE_STORAGE_ARCHITECTURE.md` for why these are route handlers (a real HTTP request/response workflow) rather than Server Actions, matching the Phase 5 brief.
 
@@ -189,14 +192,16 @@ All creator routes redirect unauthenticated visitors to `/login` (`src/proxy.ts`
 - **Data access:** `src/data-access/*` — every creator-scoped query derives `creatorId` from the authenticated session, never from a parameter.
 - **Mutations (Phase 4):** real client create/edit/delete and workspace create/edit/cancel/delete via Server Actions, with full ownership checks, Zod validation, transactional activity logging, and safe deletion/status-transition rules — see `MUTATION_ARCHITECTURE.md`.
 - **File storage (Phase 5):** secure creator uploads directly to private S3-compatible object storage (real AWS S3 in production, local MinIO in dev/test), server-side verification (magic-byte content sniffing, exact size checking — never trusting the browser), a standalone file-processing worker that generates watermarked, metadata-stripped protected previews for images and marks PDF/ZIP as locked deliverables, retry/delete actions, and full activity logging — see `FILE_STORAGE_ARCHITECTURE.md` and `FILE_PROCESSING_RUNBOOK.md`.
+- **Client review portal (Phase 6):** secure, high-entropy, hash-at-rest review tokens (`REVIEW_TOKEN_SECURITY.md`); creator create/copy/revoke/regenerate link controls; a session-free client portal (desktop two-column + real mobile bottom-sheet layout) with protected preview access, file/version switching, comments/replies, "Request Changes," and "Approve Project"; creator-side comment reply/resolve, change-request visibility, file-version re-upload with atomic promotion, and "Submit Revision for Review" — see `CLIENT_REVIEW_ARCHITECTURE.md`.
 - **Design system, status colors, shared components:** unchanged from Phase 1/2 — see `CREATOR_COMPONENT_MAP.md` and `VISUAL_PARITY.md`.
 
 ## Explicit list of features NOT yet implemented
 
 - Settings page (`/settings`) — the nav link exists and is visually consistent, but the route is unbuilt
 - Admin console (`/admin/*`)
-- The secure client review portal (`/review/[token]`), and Share Secure Link (visibly present, disabled with an explanatory `title`) — client-facing access to files/previews is explicitly deferred
-- Comments (the workspace details Comments tab explains they open up once a review link exists), change requests, approvals
+- Razorpay payment integration, payment order creation/verification/webhooks, payment-success simulation
+- File unlocking / original-file downloads — `PAYMENT_PENDING → PAID → FILES_UNLOCKED → DELIVERED` transitions do not exist yet (Phase 7 scope)
+- Email delivery of any kind (review-link sharing, notifications, payment confirmations), OTP/email verification of client identity, client accounts
 - Video preview processing, PDF visual preview (PDF is a locked deliverable with no visual preview in this MVP), antivirus/malware scanning (see `FILE_STORAGE_ARCHITECTURE.md` "Security limitations")
 - File version re-upload UI (the schema supports multiple `FileVersion` rows per file; only version 1 is ever created in this phase)
 - Payments (Razorpay), payment webhooks, file unlocking, original client downloads, download grants/logs — the Payment tab shows real seeded records but creates none

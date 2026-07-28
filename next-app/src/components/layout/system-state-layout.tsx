@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { LinkButton } from "@/components/ui/link-button";
 
@@ -6,6 +7,13 @@ export interface SystemStateLayoutProps {
   title: string;
   message: string;
   icon: LucideIcon;
+  /**
+   * Overrides the default "Return to Creator Dashboard" / "Home Landing"
+   * buttons — used by the client review portal's system states
+   * (invalid/expired/revoked token, etc.), which must never link a client
+   * (no creator account) into `/dashboard`.
+   */
+  actions?: ReactNode;
 }
 
 /**
@@ -18,6 +26,7 @@ export function SystemStateLayout({
   title,
   message,
   icon: Icon,
+  actions,
 }: SystemStateLayoutProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-vault-navy p-6 text-white">
@@ -34,14 +43,18 @@ export function SystemStateLayout({
         </p>
 
         <div className="mt-7 flex justify-center gap-3">
-          <LinkButton href="/dashboard">Return to Creator Dashboard</LinkButton>
-          <LinkButton
-            href="/"
-            variant="ghost"
-            className="border border-white/20 text-slate-400"
-          >
-            Home Landing
-          </LinkButton>
+          {actions ?? (
+            <>
+              <LinkButton href="/dashboard">Return to Creator Dashboard</LinkButton>
+              <LinkButton
+                href="/"
+                variant="ghost"
+                className="border border-white/20 text-slate-400"
+              >
+                Home Landing
+              </LinkButton>
+            </>
+          )}
         </div>
       </div>
     </div>
