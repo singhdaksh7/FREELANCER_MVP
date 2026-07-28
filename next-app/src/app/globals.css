@@ -53,7 +53,14 @@
     Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 
   --breakpoint-sm: 640px;
-  --breakpoint-md: 768px;
+  /*
+   * 769px, not Tailwind's default 768px: the original CreatorLayout.jsx
+   * switches to the desktop sidebar/header at `min-width: 769px` and to
+   * the mobile bottom nav at `max-width: 768px`. Using Tailwind's stock
+   * 768px `md:` breakpoint would flip the layout one pixel earlier than
+   * the approved design at exactly 768px (e.g. a 768px tablet).
+   */
+  --breakpoint-md: 769px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
 }

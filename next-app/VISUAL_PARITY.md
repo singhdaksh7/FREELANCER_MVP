@@ -103,6 +103,71 @@ Verification method: `npm run build && npm run start` in `next-app/`, then `curl
 
 ---
 
+# Phase 2 — Creator Application Shell & Read-Only Screens
+
+Verification method: `npm run build && npm run start` in `next-app/`, manual side-by-side comparison against the Vite app (`npm run dev` at the repository root, port 5173) at 1440px/768px/390px, plus the Playwright visual-regression suite (`npm run test:visual`, 15/15 passing — see `MIGRATION_STATUS.md` → "Visual-test status" for what it covers and its determinism safeguards).
+
+**Two systemic items apply to every Phase 2 screen** (documented once here):
+
+1. **Creator shell chrome (sidebar/header/mobile nav) is shared across all five screens** — see `CREATOR_COMPONENT_MAP.md`. Desktop: 240px fixed sidebar (`CreatorSidebar`) + 64px sticky header (`CreatorHeader`), matching the original's `--sidebar-width: 240px` and 64px header exactly. Mobile (≤768px): compact header + fixed 60px bottom nav (`CreatorMobileNav`), matching the original's `.mobile-bottom-nav` height exactly.
+2. **Breakpoint correction:** the original CreatorLayout.jsx switches to the mobile layout at `max-width: 768px` and to desktop at `min-width: 769px`. Tailwind's stock `md:` breakpoint is `768px` (min-width), which would have shown the *desktop* sidebar at exactly 768px — one pixel off from the approved design. Fixed by overriding `--breakpoint-md` to `769px` in `globals.css`, so the mobile/desktop switch happens at exactly the same width as the original.
+
+## `/dashboard` — Creator Dashboard
+
+- **Original source:** `src/pages/CreatorDashboard.jsx`
+- **New route:** `next-app/src/app/(creator)/dashboard/page.tsx`
+- **Desktop parity:** Welcome banner, metric cards, "Recent Workspaces" table, and per-workspace Manage/Portal links match the original's structure and spacing (card padding, radii, table row structure). Two new sections were added — "Recent Activity" and "Payment Overview" — because this phase's brief explicitly requires both on the dashboard; the original had neither (activity only existed per-workspace, not as a unified feed). Both reuse the same card/list visual language as the rest of the page, so they read as native to the design rather than bolted on.
+- **Tablet parity (768px):** Metric cards reflow from 5-across to a 2–3 column grid via `sm:`/`lg:`/`xl:` breakpoints (the original had only 3 metric cards and no defined tablet grid to compare against — this is a reasonable extrapolation of the same `repeat(auto-fit, minmax(...))` pattern the original used elsewhere). Mobile shell (drawer + bottom nav) applies at this width, matching the corrected breakpoint above.
+- **Mobile parity (390px):** Metric cards and workspace list stack to a single column; the desktop table (`WorkspaceTable`) is hidden and replaced by `WorkspaceCard`s, matching the original `WorkspacesList.jsx` card pattern (the original `CreatorDashboard` itself had no defined mobile treatment for its table — this borrows the approved card component from the Workspaces screen rather than inventing a new one).
+- **Known differences:** Dashboard now shows 5 metric cards (Outstanding, Received, Awaiting Review, Changes Requested, Payment Pending) instead of the original's 3 (Total Earnings, Pending Payment Locks, Active Workspaces), because this phase's brief explicitly lists 5 required metrics. All values are computed from `WORKSPACES` via `src/lib/dashboard-metrics.ts`, never hardcoded.
+- **Accessibility improvements:** Proper `<table>`/`<th scope="col">` structure with a `sr-only` caption (original used styled `<div>`s in some spots, a real `<table>` elsewhere but without a caption); icons are `aria-hidden`; heading hierarchy is `h1` → `h2` throughout.
+- **Deferred interactions:** "New Workspace Flow" and workspace row "Manage"/"Portal" links point at deferred routes (`/workspaces/new`, `/workspaces/[id]`, `/review/[token]`) and currently resolve through `not-found.tsx` — same pattern as Phase 1's landing-page CTAs.
+
+## `/workspaces` — Workspaces Directory
+
+- **Original source:** `src/pages/WorkspacesList.jsx` (the `WorkspacesList` export; `NewWorkspaceWizard` is deferred)
+- **New route:** `next-app/src/app/(creator)/workspaces/page.tsx` → `WorkspaceExplorer`
+- **Desktop parity:** Heading + "New Workspace" button, search bar, status filter, and card grid all match the original's layout, spacing, and card content (status badge, version badge, title, category, client, amount, action buttons). A "Client" filter and a desktop `WorkspaceTable` were added alongside the original's card grid — the brief explicitly asks for both a "Client filter where present" and a "Desktop table layout," and the original had neither at desktop width (cards only, no table, no client filter) — see `MIGRATION_STATUS.md` "Known differences."
+- **Tablet parity (768px):** Falls into the mobile card layout per the corrected breakpoint (matches the original, which only ever showed cards — never a table — at any width).
+- **Mobile parity (390px):** Single-column cards, matching the original's `WorkspaceCard` content and spacing exactly, with two additions — a derived "Progress" percentage and "Last activity" date, both explicitly required by this phase's brief and both absent from the original card.
+- **Known differences:** A "Progress" percentage (derived from status, see `src/lib/workspace-progress.ts`) and a desktop table view are new — see `MIGRATION_STATUS.md`. Filtering/search/empty-state text (e.g. "No workspaces match your search") is new copy, not present in the original (which had no empty-state handling at all — an empty `filtered` array simply rendered an empty grid).
+- **Accessibility improvements:** `EmptyState` uses `role="status"` so screen readers announce zero-result searches; the search input has an explicit `aria-label` (the original had no visible or programmatic label, relying on placeholder text alone).
+- **Deferred interactions:** "New Workspace" → `/workspaces/new`; "Manage"/"Portal" per row → `/workspaces/[id]`, `/review/[token]`. All deferred routes, same pattern as Phase 1.
+
+## `/clients` — Clients Directory
+
+- **Original source:** `src/pages/CreatorPages.jsx` (`ClientsManagement`)
+- **New route:** `next-app/src/app/(creator)/clients/page.tsx` → `ClientExplorer`
+- **Desktop parity:** Heading, "Add New Client" button, and card grid match the original. A desktop `ClientTable` was added — the original only ever rendered cards, even at desktop width; this phase's brief explicitly requires a "Client table or mobile cards" pairing consistent with the other screens.
+- **Tablet parity (768px):** Mobile card layout applies (matches original, cards-only at every width).
+- **Mobile parity (390px):** Single-column cards matching the original's field set (name, company, email, active workspaces, status badge) plus one addition — a derived "Outstanding" amount (see `MIGRATION_STATUS.md`) and Edit/Delete buttons, which the original never had (no client actions existed at all).
+- **Known differences:** Edit/Delete actions are new (visually required by the brief) and are wired to an "available in a later phase" toast rather than any mutation. "Total Spent," shown in the original, isn't rendered in this phase (see `MIGRATION_STATUS.md`) — the brief's field list for this screen didn't include it, but the data is preserved on the `Client` type for a future phase.
+- **Accessibility improvements:** Edit/Delete are real `<button type="button">` elements (not clickable `<div>`s); each announces which client it targets via its accessible name context (visually via the row/card, programmatically via the toast message it produces).
+- **Deferred interactions:** Add/Edit/Delete client — all show a toast, never a fake success or persisted change.
+
+## `/payments` — Payments & Revenue Ledger
+
+- **Original source:** `src/pages/CreatorPages.jsx` (`PaymentsDashboard`)
+- **New route:** `next-app/src/app/(creator)/payments/page.tsx` → `PaymentExplorer`
+- **Desktop parity:** Heading and transactions table match the original's column set and row content almost exactly (Transaction ID, Workspace, Client, Gross Amount, Net Payout, Status), with a "Date" column and a "Receipt" action column added, both explicitly required by the brief and absent from the original table.
+- **Tablet parity (768px):** Mobile card layout applies. The original had no defined mobile treatment for this screen at all (table only, `overflowX: 'auto'` as its only responsive behavior) — `PaymentCard` is new, built to match the visual language of the table it stands in for.
+- **Mobile parity (390px):** Single-column cards; same content as the desktop table row, minus the transaction ID (kept off the card to avoid crowding, consistent with how `WorkspaceCard` also drops less-essential desktop-table-only columns).
+- **Known differences:** Three metric cards (Total Received, Outstanding Amount, Platform Fees) and a status + date-range filter bar are new — the original `PaymentsDashboard` had no summary cards or filters at all, just the raw table. All explicitly required by this phase's brief; all values computed from `PAYMENTS` via `src/lib/payment-metrics.ts`.
+- **Accessibility improvements:** The Receipt button is properly `disabled` (with a `title` explaining why) for payments that haven't settled, rather than being clickable-but-inert.
+- **Deferred interactions:** Receipt action shows a toast for completed payments; is disabled for pending ones. No receipts are generated, no payment orders are created.
+
+## `/notifications` — Notifications Feed
+
+- **Original source:** `src/pages/CreatorPages.jsx` (`NotificationsPage`)
+- **New route:** `next-app/src/app/(creator)/notifications/page.tsx` → `NotificationsList`
+- **Desktop parity:** Heading, max-width container, and notification row layout (title, text, timestamp, unread highlight) match the original closely — same `max-width: 720px` constraint, same highlighted-background treatment for unread rows.
+- **Tablet/mobile parity:** The original notification list was already a single-column, non-tabular layout with no distinct desktop/mobile treatment — this carries over unchanged at every width tested.
+- **Known differences:** Clicking a row still toggles read/unread (matching the original's core interaction), but this is now explicitly local-only component state with a disclosure line above the list ("Read status shown below is local to this browser tab for preview purposes only — it is not saved") — the original persisted this via `AppContext`, which is out of scope this phase. Three additional notification examples (types `changes_requested`, `download`, `preview_failed`) appear that weren't in the original's 4-item mock set — see `MIGRATION_STATUS.md`.
+- **Accessibility improvements:** Unread/read state is exposed as real text via a visually-hidden `sr-only` span ("Unread"/"Read"), not color alone; each row is a real `<button>` inside a `<li>` (the original row was a clickable `<div>` with an `onClick` handler and no keyboard/role semantics at all).
+- **Deferred interactions:** Read/unread toggle is local-only (see above). No "Mark all as read" control exists — the original never had one either (verified against source), so none was added.
+
+---
+
 ## Next.js-only additions (no original equivalent)
 
 These have no Vite counterpart to compare against — they exist only because Next.js's routing conventions require them — but reuse the same `SystemStateLayout` shell so they stay visually consistent with the four system-state screens above:
