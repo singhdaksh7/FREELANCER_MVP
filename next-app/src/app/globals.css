@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+/*
+ * Project Vault design tokens.
+ * Values are ported 1:1 from the original Vite app's src/index.css.
+ * This is the single source of truth for color, radius, shadow and
+ * layout-dimension tokens across the Next.js app.
+ */
+@theme {
+  --color-vault-navy: #111a3a;
+  --color-vault-navy-light: #1a2652;
+  --color-vault-navy-dark: #0a1026;
+  --color-vault-blue: #2563eb;
+  --color-vault-blue-hover: #1d4ed8;
+  --color-vault-blue-light: #eff6ff;
+
+  --color-surface: #f8fafc;
+  --color-surface-card: #ffffff;
+  --color-line: #e2e8f0;
+
+  --color-ink: #0f172a;
+  --color-ink-muted: #64748b;
+  --color-ink-inverse: #ffffff;
+
+  --color-success: #10b981;
+  --color-success-bg: #ecfdf5;
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #ef4444;
+  --color-danger-bg: #fef2f2;
+  --color-purple: #8b5cf6;
+  --color-purple-bg: #f5f3ff;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md:
+    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
+  --shadow-lg:
+    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05);
+
+  /* Layout dimensions carried over for future (not-yet-migrated) creator
+     screens, so the tokens exist centrally before those screens land. */
+  --spacing-sidebar: 240px;
+  --spacing-header: 64px;
+  --spacing-mobile-nav: 60px;
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI",
+    Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Watermark stripe pattern, ported verbatim for future preview screens. */
+.watermark-overlay {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(37 99 235 / 0.12),
+    rgb(37 99 235 / 0.12) 150px,
+    transparent 150px,
+    transparent 300px
+  );
+  pointer-events: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
