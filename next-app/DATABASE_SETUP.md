@@ -123,6 +123,22 @@ npm run test:integration
 
 This automatically re-seeds `project_vault_test` (via `npm run db:seed:test`, itself guarded by `scripts/guard-local-db.mjs --allow-test-suffix`, which additionally requires the database *name* to contain "test") before running the suite in `src/data-access/*.integration.test.ts`. **Never point `TEST_DATABASE_URL` at your development or a production database** — the guard only checks for "looks local and named test," it can't stop you from typing your prod URL into the wrong file.
 
+## Phase 4 schema changes
+
+Migration `prisma/migrations/20260728065323_phase4_client_workspace_mutations` (see `MUTATION_ARCHITECTURE.md` for the full reasoning):
+
+- `Workspace.watermarkText` (nullable `String`) and `Workspace.cancelledAt` (nullable `DateTime`) added.
+- `ActivityLog.workspaceId` changed from required to nullable; `ActivityLog.clientId` (nullable, `onDelete: SetNull`) and `ActivityLog.creatorId` (nullable, `onDelete: Cascade`) added, so client-level mutations (not tied to any one workspace) can be logged without a fake `workspaceId`.
+
+If you're pulling this change into an existing local database, run:
+
+```bash
+npm run db:generate
+npm run db:migrate
+```
+
+No seed changes were required — the migration only adds nullable columns, so existing seeded rows remain valid as-is.
+
 ## Troubleshooting
 
 - **"password authentication failed" / connection refused** — confirm `docker compose ps` shows the container healthy, and that `DATABASE_URL` in `.env` matches the port (`5433`) and credentials in `docker-compose.yml`.

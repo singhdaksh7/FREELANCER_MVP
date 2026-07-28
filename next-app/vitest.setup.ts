@@ -9,3 +9,15 @@ import { vi } from "vitest";
 // password.ts) would crash on import in tests without this. This mock
 // is the standard workaround for unit testing "server-only" code.
 vi.mock("server-only", () => ({}));
+
+// jsdom doesn't implement <dialog>'s imperative API (used by
+// ConfirmDialog, src/components/ui/confirm-dialog.tsx). Polyfilled here
+// once, globally, rather than per-test.
+if (typeof HTMLDialogElement !== "undefined") {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
+}

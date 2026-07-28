@@ -1,15 +1,18 @@
+import Link from "next/link";
 import { Building } from "lucide-react";
 import type { ClientListItem } from "@/data-access/clients";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { deleteClientAction } from "@/actions/clients";
 import { formatINR } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
 
 export interface ClientCardProps {
   client: ClientListItem;
-  onDeferredAction: (message: string) => void;
+  onDeleted: (message: string) => void;
 }
 
-export function ClientCard({ client, onDeferredAction }: ClientCardProps) {
+export function ClientCard({ client, onDeleted }: ClientCardProps) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -38,20 +41,29 @@ export function ClientCard({ client, onDeferredAction }: ClientCardProps) {
       </dl>
 
       <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          onClick={() => onDeferredAction(`Editing ${client.name} is available in a later phase.`)}
-          className="flex-1 rounded-md border border-line py-2 text-xs font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        <Link
+          href={`/clients/${client.id}/edit`}
+          className="flex-1 rounded-md border border-line py-2 text-center text-xs font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
         >
           Edit
-        </button>
-        <button
-          type="button"
-          onClick={() => onDeferredAction(`Deleting ${client.name} is available in a later phase.`)}
-          className="flex-1 rounded-md border border-line py-2 text-xs font-semibold text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-        >
-          Delete
-        </button>
+        </Link>
+        <ConfirmDialog
+          triggerLabel="Delete"
+          triggerClassName="flex-1 rounded-md border border-line py-2 text-xs font-semibold text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+          title={`Delete ${client.name}?`}
+          description={
+            client.activeWorkspaceCount > 0
+              ? "This client has active workspaces and cannot be deleted."
+              : "This will permanently remove this client. This cannot be undone."
+          }
+          confirmLabel="Delete Client"
+          pendingLabel="Deleting…"
+          action={deleteClientAction}
+          initialState={{}}
+          hiddenFields={{ clientId: client.id, clientName: client.name }}
+          destructive
+          onSuccess={(state) => state.success && onDeleted(state.success)}
+        />
       </div>
     </div>
   );

@@ -69,6 +69,7 @@ model User {
   clients       Client[]
   workspaces    Workspace[]
   notifications Notification[]
+  activityLogs  ActivityLog[]
 
   @@map("users")
 }
@@ -85,7 +86,8 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspaces Workspace[]
+  workspaces   Workspace[]
+  activityLogs ActivityLog[]
 
   @@index([creatorId])
   @@index([creatorId, name])
@@ -112,6 +114,10 @@ model Workspace {
   /// within a single status without a schema change.
   progress    Int             @default(0)
   dueDate     DateTime?
+  /// Optional watermark text applied to preview files. Deliverables/preview
+  /// generation itself is Phase 5 — this field is only persisted metadata
+  /// for now (Phase 4 scope, see MUTATION_ARCHITECTURE.md).
+  watermarkText String?
   /// Secure client-review token. Nullable until a link has been shared;
   /// unique so a token can never resolve to more than one workspace.
   publicToken String?         @unique
@@ -119,6 +125,9 @@ model Workspace {
   approvedAt  DateTime?
   paidAt      DateTime?
   deliveredAt DateTime?
+  /// Set when a DRAFT/other non-terminal workspace is cancelled instead of
+  /// deleted (see MUTATION_ARCHITECTURE.md "Status transition rules").
+  cancelledAt DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
@@ -176,17 +185,33 @@ model Notification {
   @@map("notifications")
 }
 
+/// Extended in Phase 4 (see MUTATION_ARCHITECTURE.md, schema-change option
+/// A) so client-level mutations that aren't tied to any single workspace
+/// (create/edit/delete client) can still be recorded, instead of either
+/// inventing a fake workspaceId or dropping that audit trail entirely.
+/// `workspaceId` is therefore now optional; every row still records
+/// `creatorId` so a creator-level audit view is always possible, and
+/// `clientId` is set for client-scoped entries.
 model ActivityLog {
-  id          String    @id @default(cuid())
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId    String?
+  /// SetNull (not Cascade): deleting a client should not erase the
+  /// historical audit trail of what happened to it.
+  client      Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  creatorId   String?
+  creator     User?      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
   action      String
   actorType   String
   actorName   String
   metadata    Json?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime   @default(now())
 
   @@index([workspaceId])
   @@index([workspaceId, createdAt])
+  @@index([clientId])
+  @@index([creatorId])
+  @@index([creatorId, createdAt])
   @@map("activity_logs")
 }

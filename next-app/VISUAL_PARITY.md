@@ -202,3 +202,34 @@ Phase 2's 15 visual baselines (dashboard/workspaces/clients/payments/notificatio
 ## New visual baseline: workspaces empty/no-results state
 
 `workspaces-empty.spec.ts` — navigates to `/workspaces?q=zzz-no-such-workspace-zzz`, a search term guaranteed to match none of Arjun's seeded workspaces, and screenshots the resulting `EmptyState` (icon, "No workspaces match your search," description). This is the "no results" flavor of empty state (not "zero workspaces ever created") — reaching a true zero-workspace account wasn't worth seeding a third demo creator for, since the empty-state *component* (`EmptyState`, `src/components/ui/empty-state.tsx`) is the same one either way and was already visually verified in Phase 2's component-level tests.
+
+---
+
+# Phase 4 — Client & Workspace Mutations
+
+No previously-approved screen's visuals changed in this phase — `/clients`, `/dashboard`, `/workspaces` remain pixel-identical (their "Add/Edit/Delete"/"New Workspace Flow" controls now perform real navigation/mutations instead of showing a deferred-action toast, but their own appearance is unchanged, so no existing baseline needed updating for that reason alone). `/clients` and `/workspaces` baselines *were* regenerated this phase purely because the underlying dataset shape didn't change — confirmed no diff beyond anti-aliasing.
+
+## `/clients/new`, `/clients/[id]/edit` — Add/Edit Client
+
+- **Source:** New routes — no Vite equivalent (the original app had no client mutation UI at all, per `TECHNICAL_AUDIT.md` §9).
+- **Design:** Reuses the same form-field visual language already established by `LoginForm`/`RegisterForm` (labeled inputs, `border-line`, `focus-visible:ring-vault-blue`) — Name/Email required, Company/Phone/Notes optional, a `textarea` for Notes.
+- **New visual baselines:** `client-new.spec.ts`, `client-edit.spec.ts` (desktop/tablet/mobile each).
+
+## `/workspaces/new` — Create Workspace (five-step wizard)
+
+- **Original source:** `WorkspacesList.jsx`'s `NewWorkspaceWizard` (deferred in every prior phase).
+- **Design:** A step indicator (1 Project Details · 2 Deliverables · 3 Protection · 4 Payment · 5 Review & Create) matching the approved five-step pattern, Back/Continue navigation, and a review step summarizing every entered field before the real `Create Draft Workspace` submit. Step 2 (Deliverables) is visually present but explicitly labelled as a Phase 5 capability — no upload control pretends to work.
+- **New visual baselines:** `workspace-new.spec.ts` — step 1 (Project Details) and the review step (desktop/tablet/mobile each).
+
+## `/workspaces/[id]` — Workspace Details
+
+- **Original source:** `WorkspaceDetails.jsx` (deferred in every prior phase).
+- **Design:** Header card (title, status badge, client, amount, due date) + action row (Edit Workspace, Share Secure Link (disabled), Cancel Workspace, Delete Draft when eligible) + a 5-tab panel (Overview/Files/Comments/Payment/Activity) matching the approved tab styling already used elsewhere (`border-b-2` active-tab underline, same as `CreatorNavigation`'s treatment).
+- **Known differences:** Files and Comments render real, honestly-worded empty states rather than the original's static file/comment mock content — see `MUTATION_ARCHITECTURE.md` for the exact copy. Payment renders real seeded `Payment` rows when present.
+- **New visual baselines:** `workspace-details.spec.ts` — overview tab, files empty state, activity tab (desktop/tablet/mobile each).
+
+## Confirmation dialog (new UI pattern)
+
+- **Source:** New — the original had no confirmation-dialog pattern at all (destructive actions like "Simulate Payment" fired immediately, see `TECHNICAL_AUDIT.md` §14).
+- **Design:** A native `<dialog>`-backed modal (`ConfirmDialog`, `src/components/ui/confirm-dialog.tsx`) — title, description, Cancel/Confirm buttons, the confirm button disabling and relabeling while the mutation is pending. Reused identically for client delete and workspace cancel/delete, so this is one visual pattern to review, not several.
+- **New visual baseline:** `confirm-dialog.spec.ts` — the delete-client dialog (desktop/tablet/mobile).

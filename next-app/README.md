@@ -1,6 +1,6 @@
-# Project Vault — Next.js App (Phase 3)
+# Project Vault — Next.js App (Phase 4)
 
-This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 + 2 + 3**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, and — new in Phase 3 — real PostgreSQL persistence via Prisma and real creator authentication via Auth.js. See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
+This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 + 2 + 3 + 4**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, real PostgreSQL persistence + creator authentication (Phase 3), and — new in Phase 4 — real client and workspace mutations (create/edit/delete a client, create/edit/cancel/delete a workspace) via Server Actions, plus the workspace details screen and full activity logging. See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `MUTATION_ARCHITECTURE.md` for the Phase 4 mutation architecture, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
 
 ## Requirements
 
@@ -101,7 +101,8 @@ npm run test:visual
 Runs the full Playwright suite (`e2e/**/*.spec.ts`) against a production build talking to your **real, seeded development database** — there is no mocking at this layer. Two kinds of coverage:
 
 - **`e2e/auth/*.spec.ts`** — functional tests of the real login/logout/redirect flow (unauthenticated redirect, valid/invalid login, logout, session-survives-refresh, authenticated identity display). Run serially against the shared dev server (see the comment in `auth-flow.spec.ts` for why).
-- **`e2e/visual/*.spec.ts`** — screenshot comparisons across 3 viewports (desktop 1440px, tablet 768px, mobile 390px): the 5 creator screens, the login validation-error state, the mobile navigation drawer open state, and a workspaces empty/no-results state. A `setup` project logs in once as the seeded demo creator and reuses that session (`e2e/visual/.auth/creator.json`, gitignored) across the screenshot tests; `login-validation.spec.ts` explicitly overrides that with a fresh logged-out context, since it's testing the public login page.
+- **`e2e/visual/*.spec.ts`** — screenshot comparisons across 3 viewports (desktop 1440px, tablet 768px, mobile 390px): the 5 creator screens, the login validation-error state, the mobile navigation drawer open state, a workspaces empty/no-results state, and — new in Phase 4 — the client create/edit forms, the delete-confirmation dialog, Create Workspace step 1 + review, and the workspace details overview/files/activity tabs. A `setup` project logs in once as the seeded demo creator and reuses that session (`e2e/visual/.auth/creator.json`, gitignored) across the screenshot tests; `login-validation.spec.ts` explicitly overrides that with a fresh logged-out context, since it's testing the public login page.
+- **`e2e/mutations/mutations.spec.ts`** (new in Phase 4) — functional coverage of real client/workspace CRUD against the real dev database: create/validate/edit/block-delete/delete a client, create-through-the-wizard/refresh/edit/cancel a workspace, an unauthorized workspace id resolving through `not-found` (never a 403), and the wizard's mobile usability. Run this project **separately** from the visual/auth projects (`npx playwright test --project=mutations-e2e`) — running it concurrently with the pixel-exact visual screenshots was observed to make those screenshots briefly pick up the mutation suite's in-flight test records. See `MUTATION_ARCHITECTURE.md` → "Testing" for detail.
 
 The `webServer` block in `playwright.config.ts` builds and starts the app automatically, so you don't need `npm run build`/`start` running separately first — but the **database must already be migrated and seeded** (see above), since the app now depends on it to render anything past the login page.
 
@@ -143,6 +144,11 @@ Determinism notes (see `MIGRATION_STATUS.md` → "Visual-test status" for the fu
 | `/clients` | Clients directory | Database-backed search, derived active-workspace/outstanding figures |
 | `/payments` | Payments & revenue ledger | Database-backed status/date filters, Decimal-safe totals |
 | `/notifications` | Notifications feed | Database-backed list |
+| `/clients/new` | Add new client | Real mutation (Server Action) — new in Phase 4 |
+| `/clients/[id]/edit` | Edit client | Real mutation; 404s for a nonexistent/not-owned client — new in Phase 4 |
+| `/workspaces/new` | Create workspace (5-step wizard) | Real mutation, creates a `DRAFT` — new in Phase 4 |
+| `/workspaces/[id]` | Workspace details | Overview/Files/Comments/Payment/Activity tabs; Files/Comments show honest "coming later" empty states — new in Phase 4 |
+| `/workspaces/[id]/edit` | Edit workspace | Real mutation; amount/currency/client locked once paid — new in Phase 4 |
 
 All creator routes redirect unauthenticated visitors to `/login` (`src/proxy.ts`, backed by a definitive re-check in `src/app/(creator)/layout.tsx` and every data-access function — see `AUTH_DATABASE_ARCHITECTURE.md`). They live under a `(creator)` **route group** purely for file organization; route groups never add a URL segment, so there is still no `/creator` prefix.
 
@@ -151,17 +157,17 @@ All creator routes redirect unauthenticated visitors to `/login` (`src/proxy.ts`
 - **Auth:** real registration + credentials login + logout via Auth.js (JWT sessions, no adapter) — see `AUTH_DATABASE_ARCHITECTURE.md`.
 - **Database:** PostgreSQL via Prisma 7 (driver-adapter model), schema in `prisma/schema.prisma`, deterministic seed in `prisma/seed.ts`.
 - **Data access:** `src/data-access/*` — every creator-scoped query derives `creatorId` from the authenticated session, never from a parameter.
+- **Mutations (Phase 4):** real client create/edit/delete and workspace create/edit/cancel/delete via Server Actions, with full ownership checks, Zod validation, transactional activity logging, and safe deletion/status-transition rules — see `MUTATION_ARCHITECTURE.md`.
 - **Design system, status colors, shared components:** unchanged from Phase 1/2 — see `CREATOR_COMPONENT_MAP.md` and `VISUAL_PARITY.md`.
 
 ## Explicit list of features NOT yet implemented
 
-- Workspace detail page (`/workspaces/[id]`), new-workspace wizard (`/workspaces/new`)
-- Workspace/client creation, editing, deletion (Add/Edit/Delete are visible but show a deferred-action toast or are disabled — never a fake success)
 - Settings page (`/settings`) — the nav link exists and is visually consistent, but the route is unbuilt
 - Admin console (`/admin/*`)
-- The secure client review portal (`/review/[token]`)
-- File upload, object storage, preview generation, watermarking
-- Payments (Razorpay), payment webhooks, file unlocking, download grants
+- The secure client review portal (`/review/[token]`), and Share Secure Link (visibly present, disabled with an explanatory `title`)
+- File upload, object storage, preview generation, watermark *rendering* (watermark *text* is persisted metadata as of Phase 4 — see `MUTATION_ARCHITECTURE.md`)
+- Comments (the workspace details Comments tab explains they open up once a review link exists)
+- Payments (Razorpay), payment webhooks, file unlocking, download grants — the Payment tab shows real seeded records but creates none
 - Email delivery (Resend) — password reset and email verification are explicitly non-functional (see `/forgot-password` and `AUTH_DATABASE_ARCHITECTURE.md`'s deferred-security list)
 - Notification mutations (mark-as-read is local-only prototype state, not persisted)
 - Rate limiting, MFA, OAuth login, production secret rotation

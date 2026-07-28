@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from "./auth";
 import { toDisplayNumber } from "@/lib/decimal";
 import { computeDashboardSummaryFromWorkspaces, type DashboardSummary } from "@/lib/dashboard-summary";
+import { formatActivityLabel } from "@/lib/activity-log";
 import type { WorkspaceListItem } from "./workspaces";
 
 export type { DashboardSummary };
@@ -87,11 +88,15 @@ export async function getDashboardData(): Promise<DashboardData> {
     })),
     recentActivity: recentActivity.map((entry) => ({
       id: entry.id,
-      action: entry.action,
+      action: formatActivityLabel(entry.action, entry.metadata),
       actorName: entry.actorName,
       createdAt: entry.createdAt.toISOString(),
-      workspaceId: entry.workspace.id,
-      workspaceTitle: entry.workspace.title,
+      // The query below filters `where: { workspace: { creatorId } }`,
+      // which excludes rows with a null workspaceId (client-level activity
+      // added in Phase 4) — so `workspace` is always present here, even
+      // though the relation itself is optional on the model now.
+      workspaceId: entry.workspace!.id,
+      workspaceTitle: entry.workspace!.title,
     })),
     recentPayments: recentPayments.map((payment) => ({
       id: payment.id,

@@ -1,0 +1,196 @@
+"use client";
+
+import { useActionState, useId } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { updateWorkspaceAction, type WorkspaceFormState } from "@/actions/workspaces";
+import type { ClientOption } from "@/data-access/clients";
+import type { WorkspaceEditDetail } from "@/data-access/workspaces";
+
+export interface WorkspaceEditFormProps {
+  workspace: WorkspaceEditDetail;
+  clientOptions: ClientOption[];
+}
+
+const initialState: WorkspaceFormState = {};
+
+/** Single-page workspace edit form. Amount/currency/client are locked (with an explanatory note) once the workspace has reached a paid/delivered status. */
+export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFormProps) {
+  const [state, formAction, pending] = useActionState(updateWorkspaceAction, initialState);
+  const router = useRouter();
+  const locked = workspace.financiallyLocked;
+
+  const values = state.values ?? {
+    title: workspace.title,
+    clientId: workspace.clientId,
+    description: workspace.description ?? "",
+    dueDate: workspace.dueDate ?? "",
+    watermarkText: workspace.watermarkText ?? "",
+    currency: workspace.currency,
+    amount: String(workspace.amount),
+  };
+
+  const titleId = useId();
+  const clientId = useId();
+  const descriptionId = useId();
+  const dueDateId = useId();
+  const watermarkId = useId();
+  const amountId = useId();
+
+  return (
+    <form action={formAction} noValidate className="flex max-w-xl flex-col gap-5">
+      <input type="hidden" name="workspaceId" value={workspace.id} />
+      {locked && <input type="hidden" name="currency" value={workspace.currency} />}
+      {locked && <input type="hidden" name="amount" value={String(workspace.amount)} />}
+      {locked && <input type="hidden" name="clientId" value={workspace.clientId} />}
+
+      {state.error && (
+        <p role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
+          {state.error}
+        </p>
+      )}
+
+      {locked && (
+        <p className="rounded-md bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted">
+          This workspace has been paid, so its client, amount, and currency can no longer be changed. You can still
+          edit the title, description, due date, and watermark text.
+        </p>
+      )}
+
+      <div>
+        <label htmlFor={titleId} className="mb-1.5 block text-sm font-semibold text-ink">
+          Title <span aria-hidden="true">*</span>
+        </label>
+        <input
+          id={titleId}
+          name="title"
+          defaultValue={values.title}
+          maxLength={150}
+          required
+          className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        />
+        {state.fieldErrors?.title && (
+          <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.title[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor={clientId} className="mb-1.5 block text-sm font-semibold text-ink">
+          Client <span aria-hidden="true">*</span>
+        </label>
+        {locked ? (
+          <input
+            disabled
+            value={clientOptions.find((c) => c.id === workspace.clientId)?.name ?? ""}
+            className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted"
+          />
+        ) : (
+          <select
+            id={clientId}
+            name="clientId"
+            defaultValue={values.clientId}
+            required
+            className="w-full rounded-md border border-line bg-white px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+          >
+            {clientOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {state.fieldErrors?.clientId && (
+          <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.clientId[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor={descriptionId} className="mb-1.5 block text-sm font-semibold text-ink">
+          Description
+        </label>
+        <textarea
+          id={descriptionId}
+          name="description"
+          defaultValue={values.description}
+          rows={4}
+          maxLength={2000}
+          className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-ink">Currency</label>
+          {locked ? (
+            <input disabled value={workspace.currency} className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
+          ) : (
+            <input name="currency" defaultValue={values.currency} disabled className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
+          )}
+        </div>
+        <div>
+          <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-ink">
+            Amount <span aria-hidden="true">*</span>
+          </label>
+          {locked ? (
+            <input disabled value={workspace.amount} className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
+          ) : (
+            <input
+              id={amountId}
+              name="amount"
+              inputMode="decimal"
+              defaultValue={values.amount}
+              required
+              className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+            />
+          )}
+          {state.fieldErrors?.amount && (
+            <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.amount[0]}</p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor={dueDateId} className="mb-1.5 block text-sm font-semibold text-ink">
+          Due Date
+        </label>
+        <input
+          id={dueDateId}
+          name="dueDate"
+          type="date"
+          defaultValue={values.dueDate}
+          className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue sm:w-60"
+        />
+        {state.fieldErrors?.dueDate && (
+          <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.dueDate[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor={watermarkId} className="mb-1.5 block text-sm font-semibold text-ink">
+          Watermark Text
+        </label>
+        <input
+          id={watermarkId}
+          name="watermarkText"
+          defaultValue={values.watermarkText}
+          maxLength={200}
+          className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        />
+      </div>
+
+      <div className="flex gap-3 pt-1">
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Save Changes"}
+        </Button>
+        <button
+          type="button"
+          onClick={() => router.push(`/workspaces/${workspace.id}`)}
+          disabled={pending}
+          className="rounded-md border border-line px-4 py-2.5 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}

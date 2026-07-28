@@ -328,3 +328,60 @@ Following `TECHNICAL_AUDIT.md`'s phased plan, now that real auth + a real (read-
 4. Only after the above: begin the file-storage-adjacent work (uploads, previews, watermarking) that the secure client review portal depends on.
 
 Do not begin any of the above until Phase 3 is explicitly reviewed and approved.
+
+---
+
+## Phase 4
+
+### Phase 4 objective
+
+Implement the first real authenticated creator mutations as Server Actions: workspace details, client create/edit/delete, workspace create/edit/cancel, and full transactional activity logging — while keeping every approved visual (forms, five-step wizard, tabs, confirmation dialogs) unchanged. File upload, comments, client review, and payment processing remain explicitly out of scope. Full architecture reasoning lives in `MUTATION_ARCHITECTURE.md`.
+
+### Completed work
+
+- **Schema:** one migration (`prisma/migrations/20260728065323_phase4_client_workspace_mutations`) adding `Workspace.watermarkText`/`cancelledAt` and extending `ActivityLog` with a nullable `workspaceId` plus new `clientId`/`creatorId` columns — see `MUTATION_ARCHITECTURE.md` → "Activity logging" for why (schema-change option A from the brief) and `DATABASE_SETUP.md` for the hands-on migration note.
+- **Validation:** `src/validation/client.ts`, `src/validation/workspace.ts` (Zod, server-authoritative, decimal-safe amount string).
+- **Authorization:** `src/data-access/authorization.ts` (`requireOwnedClient`, `requireOwnedWorkspace`, `requireClientAvailableToCreator`) — centralized so no mutation re-implements an ownership check.
+- **Activity logging:** `src/lib/activity-log.ts` (centralized action codes + `formatActivityLabel` formatter) and `src/data-access/activity.ts` (`recordActivity`, always called inside the mutation's own transaction).
+- **Data access:** `src/data-access/clients.ts` extended with `getClientOptionsForCreator`, `getOwnedClientForEdit`, `createClient`, `updateOwnedClient`, `deleteOwnedUnusedClient`; `src/data-access/workspaces.ts` extended with `getOwnedWorkspaceDetail`, `getOwnedWorkspaceForEdit`, `createWorkspace`, `updateOwnedWorkspace`, `cancelOwnedWorkspace`, `deleteOwnedDraftWorkspace`.
+- **Server Actions:** `src/actions/clients.ts`, `src/actions/workspaces.ts` — see `MUTATION_ARCHITECTURE.md` → "Server Action structure" for the shared error-handling/redirect/flash-toast pattern.
+- **New routes:** `/clients/new`, `/clients/[id]/edit`, `/workspaces/new` (real five-step wizard, replacing the deferred placeholder), `/workspaces/[id]` (real workspace details, Overview/Files/Comments/Payment/Activity tabs), `/workspaces/[id]/edit`.
+- **New/changed components:** `ClientForm`, `WorkspaceWizard`, `WorkspaceEditForm`, `WorkspaceDetailTabs`, `WorkspaceActions`, `ConfirmDialog` (generic, reused for client delete + workspace cancel/delete), `FlashToast`; `ClientCard`/`ClientTable` now perform real Edit (link) and Delete (confirm dialog) instead of showing a deferred-action toast.
+- **Testing, three tiers plus visual:**
+  - Unit (Vitest, mocked Prisma/session): `src/validation/{client,workspace}.test.ts`, `src/lib/activity-log.test.ts`, `src/lib/decimal.test.ts` (extended), `src/data-access/mutations.test.ts` — 48 new test cases across 5 files.
+  - Integration (Vitest, real Postgres test database): `src/data-access/mutations.integration.test.ts` — 12 tests covering the full client/workspace CRUD + ownership-boundary + activity-log-on-success/none-on-failure matrix.
+  - E2E (Playwright, real dev server + database): `e2e/mutations/mutations.spec.ts` — 11 functional tests (see `MUTATION_ARCHITECTURE.md` → "Testing" for why this is one file, not two).
+  - Visual (Playwright): 18 new baselines (6 new specs × 3 viewports) for the client forms, confirm dialog, workspace wizard, and workspace details tabs.
+- Validated end-to-end: `npm install`, `npx tsc --noEmit` (0 errors), `npm run lint` (0 errors/warnings), `npm run test`, `npm run test:integration`, `npx playwright test --project=mutations-e2e`, the visual/auth Playwright projects, and `npm run build` — see the Phase 4 completion report for exact results.
+
+### Deferred interactions now real
+
+Per `CREATOR_COMPONENT_MAP.md`'s Phase 2/3 "Deferred interactions" table:
+
+| Action | Where | Phase 2/3 behavior | Phase 4 behavior |
+|---|---|---|---|
+| Add New Client | `/clients` | Toast: "available in a later phase" | Real navigation to `/clients/new`, real creation |
+| Edit client | `/clients` | Toast naming the client | Real navigation to `/clients/[id]/edit`, real update |
+| Delete client | `/clients` | Toast naming the client | Real confirm-dialog deletion, blocked (with a clear message) if the client has workspaces |
+| "New Workspace Flow" | Dashboard, `/workspaces` | Linked to the deferred `/workspaces/new` (resolved via `not-found.tsx`) | Real five-step wizard, creates a real `DRAFT` workspace |
+| Workspace row "Manage" | `/workspaces`, dashboard | Linked to the deferred `/workspaces/[id]` (resolved via `not-found.tsx`) | Real workspace details page |
+
+Still deferred, unchanged: "Open Client Portal View" / workspace row "Portal" (both need `/review/[token]`), notification read/unread persistence, Settings, Admin.
+
+### Known differences / deliberate scope boundaries
+
+- **Deliverables step (wizard step 2) is visually present but inert** — clearly labelled "Secure file upload is coming in Phase 5," no browser `File` object, base64 payload, or simulated upload is ever stored. A workspace is always created as a files-less `DRAFT`.
+- **Share Secure Link stays disabled** on workspace details, with an explanatory `title` — no `publicToken` is generated by any Phase 4 action, since real client-review token issuance is a later phase.
+- **Comments and Files tabs show honest empty states**, not fake content — see `MUTATION_ARCHITECTURE.md` for the exact copy and reasoning.
+- **Currency is currently a single-option field (`INR` only)** — see `MUTATION_ARCHITECTURE.md` → "Validation strategy" for why (every currency-display helper in this app is hardcoded to ₹/en-IN; the two are kept in lockstep rather than half-shipping multi-currency).
+- **Workspace permanent delete exists but is narrowly scoped** — only an untouched `DRAFT` (no payments, no activity beyond creation) can be hard-deleted; everything else must be cancelled. See `MUTATION_ARCHITECTURE.md` → "Safe deletion rules."
+
+### Recommended Phase 5 scope
+
+Following `TECHNICAL_AUDIT.md`'s phased plan, now that real client/workspace mutations exist:
+
+1. **Object storage & file upload** for the workspace Deliverables step and Files tab — the UI already explains this is coming and creates workspaces without files today, so this is a purely additive next step, not a rework.
+2. **Preview generation + watermark rendering**, now that `Workspace.watermarkText` is real, persisted metadata rather than a UI-only field.
+3. Only after storage exists: begin the secure client review portal (`/review/[token]`) and Share Secure Link token issuance, which both currently have real, disabled UI waiting for them.
+
+Do not begin any of the above until Phase 4 is explicitly reviewed and approved.

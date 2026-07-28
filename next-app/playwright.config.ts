@@ -55,6 +55,15 @@ export default defineConfig({
       // each one manages its own auth state via the real UI.
     },
     {
+      name: "mutations-e2e",
+      testDir: "./e2e/mutations",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      // Same as auth-e2e: each spec logs in through the real UI itself
+      // rather than sharing the visual suite's storageState, since these
+      // tests create/mutate real records against the real dev database.
+    },
+    {
       name: "desktop-1440",
       testDir: "./e2e/visual",
       testMatch: /.*\.spec\.ts/,

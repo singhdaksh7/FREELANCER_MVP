@@ -5,8 +5,9 @@ import { Plus, UserSearch, Users } from "lucide-react";
 import type { ClientListItem } from "@/data-access/clients";
 import { SearchField } from "@/components/ui/search-field";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/link-button";
 import { Toast } from "@/components/ui/toast";
+import { FlashToast } from "@/components/ui/flash-toast";
 import { SectionHeader } from "@/components/ui/section-header";
 import { useToastMessage } from "@/hooks/use-toast-message";
 import { useUrlFilters } from "@/hooks/use-url-filters";
@@ -25,9 +26,8 @@ const SEARCH_DEBOUNCE_MS = 350;
 /**
  * Search updates the `q` URL param (debounced) so filtering happens via a
  * database-backed Server Component re-render, not client-side array
- * filtering. Add/Edit/Delete are visibly present but unimplemented in
- * this phase and show an "available in a later phase" toast instead of
- * pretending to save or delete anything.
+ * filtering. Add/Edit navigate to real routes; Delete is a real mutation
+ * gated by a confirm dialog (see src/actions/clients.ts).
  */
 export function ClientExplorer({ clients, hasAnyClients }: ClientExplorerProps) {
   const { getParam, setParam } = useUrlFilters();
@@ -46,9 +46,9 @@ export function ClientExplorer({ clients, hasAnyClients }: ClientExplorerProps) 
         title="Clients Directory"
         description="Manage client profiles, past project deliverables, and payment histories"
         action={
-          <Button onClick={() => showToast("Adding a new client is available in a later phase.", "info")}>
+          <LinkButton href="/clients/new">
             <Plus size={16} aria-hidden="true" /> Add New Client
-          </Button>
+          </LinkButton>
         }
       />
 
@@ -66,7 +66,7 @@ export function ClientExplorer({ clients, hasAnyClients }: ClientExplorerProps) 
           description={
             hasAnyClients
               ? "Try a different name, company, or email address."
-              : "Clients you invite into a workspace will appear here."
+              : "Add your first client to start creating workspaces for them."
           }
         />
       ) : (
@@ -74,14 +74,14 @@ export function ClientExplorer({ clients, hasAnyClients }: ClientExplorerProps) 
           <ClientTable
             clients={clients}
             caption="Clients matching the current search"
-            onDeferredAction={(message) => showToast(message, "info")}
+            onDeleted={(message) => showToast(message, "success")}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
             {clients.map((client) => (
               <ClientCard
                 key={client.id}
                 client={client}
-                onDeferredAction={(message) => showToast(message, "info")}
+                onDeleted={(message) => showToast(message, "success")}
               />
             ))}
           </div>
@@ -89,6 +89,7 @@ export function ClientExplorer({ clients, hasAnyClients }: ClientExplorerProps) 
       )}
 
       <Toast toast={toast} />
+      <FlashToast />
     </div>
   );
 }

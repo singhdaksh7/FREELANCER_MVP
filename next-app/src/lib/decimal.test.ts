@@ -25,4 +25,27 @@ describe("decimal helpers", () => {
     const fee = toDecimal("750.00");
     expect(toDisplayNumber(amount.minus(fee))).toBe(29250);
   });
+
+  describe("workspace amount parsing (Server Action → Decimal boundary)", () => {
+    // These mirror the exact string shapes the Zod amount schema
+    // (src/validation/workspace.ts) allows through before this conversion
+    // ever runs — see workspace.test.ts for the validation side.
+    it("parses a plain integer amount string with no precision loss", () => {
+      expect(toDisplayNumber(toDecimal("25000"))).toBe(25000);
+    });
+
+    it("parses a two-decimal amount string with no precision loss", () => {
+      expect(toDisplayNumber(toDecimal("25000.50"))).toBe(25000.5);
+    });
+
+    it("compares a re-submitted amount string against a stored Decimal by value, not by string identity", () => {
+      const stored = toDecimal("25000.00");
+      expect(toDecimal("25000").equals(stored)).toBe(true);
+      expect(toDecimal("25000.01").equals(stored)).toBe(false);
+    });
+
+    it("stays exact for a large amount within the schema's Decimal(12, 2) capacity", () => {
+      expect(toDisplayNumber(toDecimal("9999999999.99"))).toBe(9999999999.99);
+    });
+  });
 });

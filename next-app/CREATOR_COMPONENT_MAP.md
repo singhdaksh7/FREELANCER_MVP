@@ -80,13 +80,32 @@ These replace Phase 1's single mode-switched `AuthForm` component (deleted), whi
 |---|---|---|---|
 | `ActivityItem` | *New — no unified activity feed existed in the original; each workspace only had its own per-workspace activity log* | `src/components/creator/activity-item.tsx` | Server |
 
+## Client & workspace mutations (new in Phase 4)
+
+| Component | Location | Type | Notes |
+|---|---|---|---|
+| `ClientForm` | `src/components/creator/client-form.tsx` | **Client** (`useActionState`) | Shared create/edit form; `mode` prop selects `createClientAction`/`updateClientAction` |
+| `WorkspaceWizard` | `src/components/creator/workspace-wizard.tsx` | **Client** (`useActionState` + local step state) | Real five-step Create Workspace flow, replacing the deferred placeholder |
+| `WorkspaceEditForm` | `src/components/creator/workspace-edit-form.tsx` | **Client** (`useActionState`) | Single-page edit form; locks amount/currency/client once financially locked |
+| `WorkspaceDetailTabs` | `src/components/creator/workspace-detail-tabs.tsx` | **Client** (tab state) | Overview/Files/Comments/Payment/Activity |
+| `WorkspaceActions` | `src/components/creator/workspace-actions.tsx` | **Client** | Edit/Share(disabled)/Cancel/Delete action row on workspace details |
+| `ConfirmDialog` | `src/components/ui/confirm-dialog.tsx` | **Client** (`useActionState`) | Generic confirm-then-submit modal; reused for client delete + workspace cancel/delete |
+| `FlashToast` | `src/components/ui/flash-toast.tsx` | **Client** | Reads/strips the `?flash=` query param a redirecting Server Action leaves behind, shows it as a success toast |
+
+`ClientCard`/`ClientTable` (`src/components/creator/client-{card,table}.tsx`) were updated in place: Edit is now a real `<Link>` to `/clients/[id]/edit`, Delete is now a real `ConfirmDialog` bound to `deleteClientAction` — both previously showed a deferred-action toast (Phase 2/3).
+
 ## Routes
 
 | Route | File | Metadata title |
 |---|---|---|
 | `/dashboard` | `src/app/(creator)/dashboard/page.tsx` | Dashboard |
 | `/workspaces` | `src/app/(creator)/workspaces/page.tsx` | Workspaces |
+| `/workspaces/new` | `src/app/(creator)/workspaces/new/page.tsx` | New Workspace (Phase 4) |
+| `/workspaces/[id]` | `src/app/(creator)/workspaces/[id]/page.tsx` | Workspace title (dynamic, Phase 4) |
+| `/workspaces/[id]/edit` | `src/app/(creator)/workspaces/[id]/edit/page.tsx` | Edit Workspace (Phase 4) |
 | `/clients` | `src/app/(creator)/clients/page.tsx` | Clients |
+| `/clients/new` | `src/app/(creator)/clients/new/page.tsx` | Add New Client (Phase 4) |
+| `/clients/[id]/edit` | `src/app/(creator)/clients/[id]/edit/page.tsx` | Edit Client (Phase 4) |
 | `/payments` | `src/app/(creator)/payments/page.tsx` | Payments |
 | `/notifications` | `src/app/(creator)/notifications/page.tsx` | Notifications |
 | *(shared layout)* | `src/app/(creator)/layout.tsx` | — |
@@ -103,13 +122,15 @@ The `(creator)` segment is a Next.js **route group** — it organizes these rout
 | `src/data-access/credentials.ts` | `verifyCredentials` | Used by `src/auth.ts`'s `authorize()`; kept separate so it's unit/integration-testable without importing the full `next-auth` package |
 | `src/data-access/users.ts` | `createUser`, `DuplicateEmailError`, `isUniqueConstraintError` | Registration's transactional insert + duplicate-email handling |
 | `src/data-access/dashboard.ts` | `getDashboardData` | Powers `/dashboard`; delegates the pure summary math to `src/lib/dashboard-summary.ts` |
-| `src/data-access/workspaces.ts` | `getWorkspaces` | Powers `/workspaces` and the dashboard's "Recent Workspaces" |
-| `src/data-access/clients.ts` | `getClients` | Powers `/clients` |
-| `src/data-access/payments.ts` | `getPayments` | Powers `/payments` |
+| `src/data-access/workspaces.ts` | `getWorkspaces`, plus (Phase 4) `getOwnedWorkspaceDetail`, `getOwnedWorkspaceForEdit`, `createWorkspace`, `updateOwnedWorkspace`, `cancelOwnedWorkspace`, `deleteOwnedDraftWorkspace` | Powers `/workspaces`, `/workspaces/[id]`, `/workspaces/new`, `/workspaces/[id]/edit`, and the dashboard's "Recent Workspaces" |
+| `src/data-access/clients.ts` | `getClients`, plus (Phase 4) `getClientOptionsForCreator`, `getOwnedClientForEdit`, `createClient`, `updateOwnedClient`, `deleteOwnedUnusedClient` | Powers `/clients`, `/clients/new`, `/clients/[id]/edit`, and the workspace client-select dropdowns |
+| `src/data-access/payments.ts` | `getPayments` | Powers `/payments` and the workspace details Payment tab |
 | `src/data-access/notifications.ts` | `getNotifications`, `getUnreadNotificationCount` | Powers `/notifications` and the header/nav unread badge |
-| `src/data-access/scoping.test.ts`, `isolation.integration.test.ts` | — | Not modules, but worth knowing about here: the unit + integration proof that every module above scopes by the authenticated session, never a parameter |
+| `src/data-access/authorization.ts` (Phase 4) | `requireOwnedClient`, `requireOwnedWorkspace`, `requireClientAvailableToCreator`, `OwnershipError` | Centralized ownership checks — see `MUTATION_ARCHITECTURE.md` |
+| `src/data-access/activity.ts` (Phase 4) | `recordActivity` | Writes one `ActivityLog` row inside the caller's transaction — see `MUTATION_ARCHITECTURE.md` |
+| `src/data-access/scoping.test.ts`, `isolation.integration.test.ts`, `mutations.test.ts`, `mutations.integration.test.ts` | — | Not modules, but worth knowing about here: the unit + integration proof that every module above scopes by the authenticated session, never a parameter, and that mutation restrictions (paid-workspace lock, client-deletion block, status transitions) actually hold |
 
-Every module above starts with `import "server-only"` and is never imported from a Client Component.
+Every module above starts with `import "server-only"` and is never imported from a Client Component. `src/actions/{clients,workspaces}.ts` (Phase 4, `"use server"`) sit one layer above this — see `MUTATION_ARCHITECTURE.md` for the Server Action structure.
 
 ## Data & lib layer (Phase 2, now mostly superseded — see below)
 

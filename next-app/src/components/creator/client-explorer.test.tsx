@@ -11,6 +11,11 @@ const { useRouter, usePathname, useSearchParams } = vi.hoisted(() => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter, usePathname, useSearchParams }));
 
+const { deleteClientActionMock } = vi.hoisted(() => ({
+  deleteClientActionMock: vi.fn(),
+}));
+vi.mock("@/actions/clients", () => ({ deleteClientAction: deleteClientActionMock }));
+
 const CLIENTS: ClientListItem[] = [
   {
     id: "cli_rohit",
@@ -42,13 +47,21 @@ describe("ClientExplorer", () => {
     expect(screen.getAllByText("Rohit Sharma").length).toBeGreaterThan(0);
   });
 
-  it("shows an 'available in a later phase' toast instead of deleting a client", async () => {
+  it("links Edit to the real edit route for each client", () => {
+    render(<ClientExplorer clients={CLIENTS} hasAnyClients />);
+
+    const editLinks = screen.getAllByRole("link", { name: /edit/i });
+    expect(editLinks[0]).toHaveAttribute("href", "/clients/cli_rohit/edit");
+  });
+
+  it("opens a confirmation dialog instead of deleting immediately", async () => {
     const user = userEvent.setup();
     render(<ClientExplorer clients={CLIENTS} hasAnyClients />);
 
-    await user.click(screen.getAllByRole("button", { name: /delete/i })[0]);
+    await user.click(screen.getAllByRole("button", { name: /^delete$/i })[0]);
 
-    expect(await screen.findByRole("status")).toHaveTextContent(/available in a later phase/i);
+    expect(screen.getByRole("heading", { name: /delete rohit sharma\?/i })).toBeInTheDocument();
+    expect(deleteClientActionMock).not.toHaveBeenCalled();
   });
 
   it("shows a no-clients empty state when the creator has none at all", () => {
