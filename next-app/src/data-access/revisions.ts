@@ -58,7 +58,7 @@ export async function submitRevision(workspaceId: string): Promise<void> {
     .filter((f) => f.currentVersion && f.currentVersion.submittedAt === null)
     .map((f) => f.currentVersion!.id);
 
-  assertWorkspaceTransition(workspace.status, "IN_REVIEW");
+  assertWorkspaceTransition(workspace.status, "IN_REVIEW", workspace.deliveryMode);
 
   await prisma.$transaction(async (tx) => {
     if (versionIdsToSubmit.length > 0) {

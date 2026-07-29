@@ -41,7 +41,7 @@ function mapClient(client: ClientWithWorkspaces): ClientListItem {
   const activeWorkspaces = client.workspaces.filter(
     (w) => !TERMINAL_PAID_STATUSES.includes(w.status as (typeof TERMINAL_PAID_STATUSES)[number]),
   );
-  const outstandingAmount = toDisplayNumber(sumDecimals(activeWorkspaces.map((w) => w.amount)));
+  const outstandingAmount = toDisplayNumber(sumDecimals(activeWorkspaces.map((w) => w.amount ?? 0)));
   const lastActivityAt = client.workspaces.reduce<string | null>((latest, w) => {
     const iso = w.updatedAt.toISOString();
     return !latest || iso > latest ? iso : latest;
@@ -132,8 +132,18 @@ export interface MutateClientResult {
  * CLIENT_CREATED activity entry in the same transaction (see
  * MUTATION_ARCHITECTURE.md — clients are not tied to a workspace, so this
  * uses the nullable-workspaceId ActivityLog shape added in Phase 4).
+ *
+ * `source: "INLINE_WIZARD"` (Phase 7.5 — the workspace wizard's "Add New
+ * Client" flow, see actions/clients.ts's createInlineClientAction) also
+ * writes a second INLINE_CLIENT_CREATED activity entry, so the audit trail
+ * distinguishes a client created from its own page from one created without
+ * leaving workspace creation — same mutation, same validation, same
+ * ownership derivation either way; this is the only difference.
  */
-export async function createClient(input: ClientInput): Promise<MutateClientResult> {
+export async function createClient(
+  input: ClientInput,
+  options?: { source?: "INLINE_WIZARD" },
+): Promise<MutateClientResult> {
   const creator = await requireAuthenticatedUser();
 
   return prisma.$transaction(async (tx) => {
@@ -157,6 +167,17 @@ export async function createClient(input: ClientInput): Promise<MutateClientResu
       clientId: client.id,
       metadata: { name: client.name },
     });
+
+    if (options?.source === "INLINE_WIZARD") {
+      await recordActivity(tx, {
+        action: ActivityAction.INLINE_CLIENT_CREATED,
+        actorType: "CREATOR",
+        actorName: creator.name,
+        creatorId: creator.id,
+        clientId: client.id,
+        metadata: { clientName: client.name },
+      });
+    }
 
     return { id: client.id };
   });

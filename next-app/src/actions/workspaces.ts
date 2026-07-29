@@ -7,16 +7,21 @@ import {
   createWorkspace,
   updateOwnedWorkspace,
   cancelOwnedWorkspace,
+  closeWorkspaceForReview,
   deleteOwnedDraftWorkspace,
   InvalidStatusTransitionError,
   WorkspaceNotDeletableError,
 } from "@/data-access/workspaces";
+import { releaseApprovedFiles, WorkspaceNotReleasableError, NoApprovalFoundError } from "@/data-access/delivery-release";
 import { OwnershipError } from "@/data-access/authorization";
 
 export interface WorkspaceFormState {
   error?: string;
   fieldErrors?: Partial<
-    Record<"title" | "clientId" | "description" | "currency" | "amount" | "dueDate" | "watermarkText", string[]>
+    Record<
+      "title" | "clientId" | "description" | "deliveryMode" | "currency" | "amount" | "dueDate" | "watermarkText",
+      string[]
+    >
   >;
   values?: Record<string, string>;
 }
@@ -31,6 +36,7 @@ function parseWorkspaceFormData(formData: FormData) {
     title: String(formData.get("title") ?? ""),
     clientId: String(formData.get("clientId") ?? ""),
     description: String(formData.get("description") ?? ""),
+    deliveryMode: String(formData.get("deliveryMode") ?? "PAYMENT_REQUIRED"),
     currency: String(formData.get("currency") ?? "INR"),
     amount: String(formData.get("amount") ?? ""),
     dueDate: String(formData.get("dueDate") ?? ""),
@@ -122,6 +128,62 @@ export async function cancelWorkspaceAction(
   revalidatePath("/workspaces");
   revalidatePath("/dashboard");
   return { success: "Workspace cancelled." };
+}
+
+/**
+ * The creator's "Release Approved Files" action for an APPROVAL_ONLY
+ * workspace — see DELIVERY_MODES.md. Never redirects; the workspace detail
+ * page polls/reloads to reflect delivery-worker progress like the
+ * PAYMENT_REQUIRED "Retry"/"Refresh Status" actions already do.
+ */
+export async function releaseFilesAction(
+  _prevState: WorkspaceLifecycleState,
+  formData: FormData,
+): Promise<WorkspaceLifecycleState> {
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+
+  try {
+    await releaseApprovedFiles(workspaceId);
+  } catch (error) {
+    if (error instanceof WorkspaceNotReleasableError || error instanceof NoApprovalFoundError) {
+      return { error: error.message };
+    }
+    if (error instanceof OwnershipError) {
+      return { error: "This workspace could not be found." };
+    }
+    console.error("File release failed:", error);
+    return { error: GENERIC_ERROR };
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
+  revalidatePath("/dashboard");
+  return { success: "Files are being prepared for release." };
+}
+
+/** Closes a PREVIEW_ONLY workspace once review feedback is complete — see DELIVERY_MODES.md. Never redirects. */
+export async function closeWorkspaceAction(
+  _prevState: WorkspaceLifecycleState,
+  formData: FormData,
+): Promise<WorkspaceLifecycleState> {
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+
+  try {
+    await closeWorkspaceForReview(workspaceId);
+  } catch (error) {
+    if (error instanceof InvalidStatusTransitionError) {
+      return { error: error.message };
+    }
+    if (error instanceof OwnershipError) {
+      return { error: "This workspace could not be found." };
+    }
+    console.error("Workspace closure failed:", error);
+    return { error: GENERIC_ERROR };
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
+  revalidatePath("/workspaces");
+  revalidatePath("/dashboard");
+  return { success: "Project closed." };
 }
 
 /** Permanently deletes an untouched DRAFT workspace. Redirects to /workspaces on success; returns an error and stays put otherwise. */

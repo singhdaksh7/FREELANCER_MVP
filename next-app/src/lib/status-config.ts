@@ -36,6 +36,15 @@ const STATUS_STYLES = {
   Created: { background: "#F1F5F9", color: "#475569" },
   Failed: { background: "#FEF2F2", color: "#EF4444" },
   Refunded: { background: "#F5F3FF", color: "#8B5CF6" },
+  // Phase 7.5 — APPROVAL_ONLY/PREVIEW_ONLY terminal/waiting states.
+  "Awaiting Release": { background: "#FEF3C7", color: "#B45309" },
+  Closed: { background: "#F1F5F9", color: "#475569" },
+  // Phase 7.5 — support tickets.
+  Open: { background: "#DBEAFE", color: "#2563EB" },
+  "Under Review": { background: "#FEF3C7", color: "#D97706" },
+  "Waiting on Creator": { background: "#FEE2E2", color: "#DC2626" },
+  "Waiting on Client": { background: "#FEF3C7", color: "#B45309" },
+  Resolved: { background: "#D1FAE5", color: "#059669" },
 } as const satisfies Record<string, StatusStyle>;
 
 export type KnownStatus = keyof typeof STATUS_STYLES;

@@ -76,9 +76,9 @@ The client-side approval amount is always `workspace.amount` read live from the 
 
 Cancellation intentionally remains reachable from any non-financially-locked status (matching the pre-existing `FINANCIAL_LOCK_STATUSES` rule from `MUTATION_ARCHITECTURE.md`) — `APPROVED`/`PAYMENT_PENDING` are not locked, only `PAID`/`FILES_UNLOCKED`/`DELIVERED` are. Every explicitly forbidden transition from the brief (`CANCELLED → IN_REVIEW`, `APPROVED → CHANGES_REQUESTED`, `APPROVED → DRAFT`, `DELIVERED → IN_REVIEW`) is simply absent from the allow-list, not special-cased — `src/lib/workspace-transitions.test.ts` asserts the full matrix directly.
 
-## Deferred payment behavior
+## Deferred payment behavior (Phase 6 — superseded by Phase 7)
 
-Nothing in this phase sets `PAYMENT_PENDING`, `PAID`, or `FILES_UNLOCKED`, generates a Razorpay order, or grants any original-file download access. The approval confirmation screen explicitly states payment "isn't available yet in this environment" and shows the amount due (from the database) alongside a permanent "Original files remain securely locked until payment is completed" notice — present on every review-portal screen, not only after approval. No code path in this phase can reach `WorkspaceFile`'s original storage key from the client review portal at all (`getReviewableFiles`/the preview-url route handler only ever resolve `previewStorageKey`, exactly mirroring the structural guarantee `FILE_STORAGE_ARCHITECTURE.md` already documents for the creator-facing preview endpoint).
+**Historical note:** this section described Phase 6's scope, when nothing in this app set `PAYMENT_PENDING`/`PAID`/`FILES_UNLOCKED` or generated a Razorpay order. Phase 7 implements the full payment-to-delivery workflow — see `PAYMENT_ARCHITECTURE.md`, `WEBHOOK_SECURITY.md`, and `SECURE_DOWNLOAD_ARCHITECTURE.md`. The structural guarantee below still holds unchanged: the review portal's own preview path (`getReviewableFiles`/the preview-url route handler) still only ever resolves `previewStorageKey`, never an original — original access is exclusively through the separate, Phase 7 download-grant token space (`SECURE_DOWNLOAD_ARCHITECTURE.md` "Original authorization"), never through a review token.
 
 ## Review access and privacy
 

@@ -84,7 +84,7 @@ describe("owned-client selection validation", () => {
     expect(prismaMock.workspace.create).not.toHaveBeenCalled();
   });
 
-  it("createWorkspace succeeds and logs WORKSPACE_CREATED for an owned client", async () => {
+  it("createWorkspace succeeds and logs WORKSPACE_CREATED + DELIVERY_MODE_SELECTED for an owned client", async () => {
     const { createWorkspace } = await import("./workspaces");
     prismaMock.client.findFirst.mockResolvedValue({ id: "cli_1", name: "Rohit", creatorId: FAKE_CREATOR.id });
     prismaMock.workspace.create.mockResolvedValue({ id: "ws_new" });
@@ -92,14 +92,15 @@ describe("owned-client selection validation", () => {
     const result = await createWorkspace({
       title: "Brand Identity",
       clientId: "cli_1",
+      deliveryMode: "PAYMENT_REQUIRED",
       currency: "INR",
       amount: "25000",
     } as never);
 
     expect(result).toEqual({ id: "ws_new" });
     expect(prismaMock.workspace.create.mock.calls[0][0].data.creatorId).toBe(FAKE_CREATOR.id);
-    expect(prismaMock.activityLog.create).toHaveBeenCalledTimes(1);
-    expect(prismaMock.activityLog.create.mock.calls[0][0].data.action).toBe("WORKSPACE_CREATED");
+    const actions = prismaMock.activityLog.create.mock.calls.map((call) => call[0].data.action);
+    expect(actions).toEqual(["WORKSPACE_CREATED", "DELIVERY_MODE_SELECTED"]);
   });
 });
 
@@ -114,6 +115,7 @@ describe("paid-workspace edit restrictions", () => {
       currency: "INR",
       amount: { equals: (v: unknown) => String(v) === "30000", toString: () => "30000" },
       status: "PAID",
+      deliveryMode: "PAYMENT_REQUIRED",
       watermarkText: null,
       dueDate: null,
       client: { id: "cli_1", name: "Karan Mehta", company: null },
@@ -176,6 +178,56 @@ describe("paid-workspace edit restrictions", () => {
     const actions = prismaMock.activityLog.create.mock.calls.map((call) => call[0].data.action);
     expect(actions).toEqual(expect.arrayContaining(["CLIENT_CHANGED", "AMOUNT_CHANGED"]));
   });
+
+  it("locks amount/currency (but not client) for an APPROVED-but-not-yet-PAID workspace — Phase 7.5 security-gate fix", async () => {
+    const { toDecimal } = await import("@/lib/decimal");
+    const { updateOwnedWorkspace } = await import("./workspaces");
+
+    const existing = { ...existingWorkspace({ status: "APPROVED" }), amount: toDecimal("30000.00") };
+    prismaMock.workspace.findFirst.mockResolvedValue(existing);
+    prismaMock.client.findFirst.mockResolvedValue({ id: "cli_2", name: "Priya Verma", creatorId: FAKE_CREATOR.id });
+    prismaMock.workspace.update.mockResolvedValue({ id: "ws_1" });
+
+    await updateOwnedWorkspace("ws_1", {
+      title: existing.title,
+      clientId: "cli_2",
+      currency: "INR",
+      amount: "1.00", // attempted tamper between approval and payment — must be ignored
+      description: undefined,
+      watermarkText: undefined,
+      dueDate: undefined,
+    } as never);
+
+    const updateData = prismaMock.workspace.update.mock.calls[0][0].data;
+    expect(String(updateData.amount)).toBe("30000");
+    expect(updateData.currency).toBe("INR");
+    // Client is not financially locked yet at APPROVED (only PAID+) — so it may still change.
+    expect(updateData.clientId).toBe("cli_2");
+    const actions = prismaMock.activityLog.create.mock.calls.map((call) => call[0].data.action);
+    expect(actions).not.toContain("AMOUNT_CHANGED");
+  });
+
+  it("locks amount/currency for a PAYMENT_PENDING workspace", async () => {
+    const { toDecimal } = await import("@/lib/decimal");
+    const { updateOwnedWorkspace } = await import("./workspaces");
+
+    const existing = { ...existingWorkspace({ status: "PAYMENT_PENDING" }), amount: toDecimal("30000.00") };
+    prismaMock.workspace.findFirst.mockResolvedValue(existing);
+    prismaMock.workspace.update.mockResolvedValue({ id: "ws_1" });
+
+    await updateOwnedWorkspace("ws_1", {
+      title: existing.title,
+      clientId: "cli_1",
+      currency: "INR",
+      amount: "1.00",
+      description: undefined,
+      watermarkText: undefined,
+      dueDate: undefined,
+    } as never);
+
+    const updateData = prismaMock.workspace.update.mock.calls[0][0].data;
+    expect(String(updateData.amount)).toBe("30000");
+  });
 });
 
 describe("unsupported workspace status transitions", () => {
@@ -185,6 +237,7 @@ describe("unsupported workspace status transitions", () => {
       id: "ws_1",
       creatorId: FAKE_CREATOR.id,
       status: "PAID",
+      deliveryMode: "PAYMENT_REQUIRED",
       client: { id: "cli_1", name: "Karan" },
     });
 
@@ -198,6 +251,7 @@ describe("unsupported workspace status transitions", () => {
       id: "ws_1",
       creatorId: FAKE_CREATOR.id,
       status: "CANCELLED",
+      deliveryMode: "PAYMENT_REQUIRED",
       client: { id: "cli_1", name: "Karan" },
     });
 
@@ -210,6 +264,7 @@ describe("unsupported workspace status transitions", () => {
       id: "ws_1",
       creatorId: FAKE_CREATOR.id,
       status: "DRAFT",
+      deliveryMode: "PAYMENT_REQUIRED",
       client: { id: "cli_1", name: "Karan" },
     });
     prismaMock.workspace.update.mockResolvedValue({ id: "ws_1" });

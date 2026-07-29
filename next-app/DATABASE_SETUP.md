@@ -148,6 +148,16 @@ Migration `prisma/migrations/20260728085350_phase5_file_storage` (see `FILE_STOR
 
 Same update path as above (`npm run db:generate && npm run db:migrate`). This phase also requires **object storage**, not just the database — see `FILE_STORAGE_ARCHITECTURE.md` and `FILE_PROCESSING_RUNBOOK.md` for MinIO setup (`docker compose up -d minio minio-init`) and the file-processing worker (`npm run worker:files`), both of which the app now depends on for anything past creating an empty workspace. No seed changes were required here either — no file rows exist in the seed data by design (a creator uploads their own).
 
+## Phase 7 schema changes
+
+Three migrations (see `PAYMENT_ARCHITECTURE.md`/`SECURE_DOWNLOAD_ARCHITECTURE.md` for the full reasoning):
+
+- `20260728210000_phase7_payments_secure_delivery` — extends `Payment` (`approvalId`, `reviewLinkId`, `amountSubunits`, `gatewaySignatureVerifiedAt`, `capturedAt`/`failedAt`/`failureCode`, `attemptNumber`, `idempotencyKey`, `metadata`); new enums `WebhookProcessingStatus`/`DownloadGrantStatus`/`DeliveryBundleStatus`/`DownloadType`; new models `WebhookEvent`, `DownloadGrant`, `DownloadGrantFile`, `DownloadLog`, `DeliveryBundle`, `DeliveryBundleJob`.
+- `20260728211500_phase7_rate_limit_attempts` — new model `RateLimitAttempt` (minimal PostgreSQL-backed rate limiting, see `src/lib/rate-limit.ts`).
+- `20260728212500_phase7_download_grant_raw_token_handoff` — adds `DownloadGrant.rawTokenOnce` (a narrow, documented transient-storage exception — see `SECURE_DOWNLOAD_ARCHITECTURE.md` "Handoff without email").
+
+**Seed changes were required this time**: `Payment.approvalId`/`reviewLinkId`/`amountSubunits` are non-nullable, so `prisma/seed.ts`'s three pre-existing demo `Payment` rows needed matching (minimal, empty-snapshot) `ReviewLink`/`WorkspaceApproval` fixtures added ahead of them. If you're re-running `db:migrate`/`db:reset` from an older checkout, pull the latest `prisma/seed.ts` first or the seed step will fail with a "column contains null values" or "Argument ... is missing" error. This phase also requires the **delivery-bundle worker** (`npm run worker:deliveries`) for a captured payment to ever reach `FILES_UNLOCKED` — see the README's "Delivery-bundle worker" section.
+
 ## Troubleshooting
 
 - **"password authentication failed" / connection refused** — confirm `docker compose ps` shows the container healthy, and that `DATABASE_URL` in `.env` matches the port (`5433`) and credentials in `docker-compose.yml`.

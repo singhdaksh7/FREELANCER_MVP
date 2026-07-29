@@ -20,6 +20,23 @@ export class CommentNotFoundError extends Error {
   }
 }
 
+export class ReviewPortalReadOnlyError extends Error {
+  constructor(message = "This project is closed and its review portal is now read-only.") {
+    super(message);
+    this.name = "ReviewPortalReadOnlyError";
+  }
+}
+
+/**
+ * Terminal statuses after which the master review portal becomes
+ * read-only for the client — see "Master review link behaviour" in
+ * REQUIREMENTS_ALIGNMENT.md. DELIVERED covers PAYMENT_REQUIRED/
+ * APPROVAL_ONLY once originals are handed over; CLOSED covers a
+ * creator-closed PREVIEW_ONLY project. History remains visible either
+ * way — only new mutations (comments/replies) are blocked.
+ */
+const READ_ONLY_WORKSPACE_STATUSES = ["DELIVERED", "CLOSED"] as const;
+
 const MAX_BODY_LENGTH = 2000;
 const MAX_NAME_LENGTH = 120;
 
@@ -68,52 +85,82 @@ async function createComment(input: CreateCommentInput): Promise<{ id: string }>
   const body = validateBody(input.body);
   validatePinCoordinates(input.pinX, input.pinY);
 
-  if (input.workspaceFileId) {
-    const file = await prisma.workspaceFile.findFirst({
-      where: { id: input.workspaceFileId, workspaceId: input.workspaceId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!file) throw new CommentValidationError("This file does not belong to this project.");
-  }
-
-  if (input.fileVersionId) {
-    const version = await prisma.fileVersion.findFirst({
-      where: {
-        id: input.fileVersionId,
-        ...(input.workspaceFileId ? { fileId: input.workspaceFileId } : { file: { workspaceId: input.workspaceId } }),
-      },
-      select: { id: true },
-    });
-    if (!version) throw new CommentValidationError("This file version does not belong to this project.");
-  }
-
   let parentId: string | undefined;
+  // A reply always inherits its parent's file/version — never whatever a
+  // caller separately submitted — so a reply can never appear to "switch"
+  // to a different file/version than the conversation it's replying to.
+  // See "Version-specific conversations" in REQUIREMENTS_ALIGNMENT.md.
+  let workspaceFileId = input.workspaceFileId;
+  let fileVersionId = input.fileVersionId;
+
   if (input.parentId) {
     const parent = await prisma.reviewComment.findFirst({
       where: { id: input.parentId, workspaceId: input.workspaceId },
-      select: { id: true, parentId: true },
+      select: { id: true, parentId: true, workspaceFileId: true, fileVersionId: true },
     });
     if (!parent) throw new CommentValidationError("The comment being replied to could not be found.");
     if (parent.parentId !== null) {
       throw new CommentValidationError("Replies can only be one level deep.");
     }
     parentId = parent.id;
+    workspaceFileId = parent.workspaceFileId ?? undefined;
+    fileVersionId = parent.fileVersionId ?? undefined;
   }
 
+  if (workspaceFileId) {
+    const file = await prisma.workspaceFile.findFirst({
+      where: { id: workspaceFileId, workspaceId: input.workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!file) throw new CommentValidationError("This file does not belong to this project.");
+  }
+
+  if (fileVersionId) {
+    const version = await prisma.fileVersion.findFirst({
+      where: {
+        id: fileVersionId,
+        ...(workspaceFileId ? { fileId: workspaceFileId } : { file: { workspaceId: input.workspaceId } }),
+      },
+      select: { id: true },
+    });
+    if (!version) throw new CommentValidationError("This file version does not belong to this project.");
+  }
+
+  // A reply is never itself a new pin — it inherits the parent's context
+  // and discussion, not a separate marker on the image.
+  const pinX = parentId ? undefined : input.pinX;
+  const pinY = parentId ? undefined : input.pinY;
+  const isPin = pinX !== undefined && pinY !== undefined;
+
   return prisma.$transaction(async (tx) => {
+    // Deterministic, stable per-version ordinal — MAX(pinNumber)+1 for this
+    // fileVersionId, computed inside the same transaction as the insert so
+    // two concurrent pin placements on the same version can never collide.
+    // Never recomputed later, never carried forward to a later version —
+    // see IMAGE_ANNOTATION_ARCHITECTURE.md.
+    let pinNumber: number | undefined;
+    if (isPin && fileVersionId) {
+      const result = await tx.reviewComment.aggregate({
+        where: { fileVersionId, pinNumber: { not: null } },
+        _max: { pinNumber: true },
+      });
+      pinNumber = (result._max.pinNumber ?? 0) + 1;
+    }
+
     const comment = await tx.reviewComment.create({
       data: {
         workspaceId: input.workspaceId,
-        workspaceFileId: input.workspaceFileId ?? null,
-        fileVersionId: input.fileVersionId ?? null,
+        workspaceFileId: workspaceFileId ?? null,
+        fileVersionId: fileVersionId ?? null,
         parentId: parentId ?? null,
         authorType: input.authorType,
         creatorAuthorId: input.creatorAuthorId ?? null,
         reviewerName: input.reviewerName ?? null,
         reviewerEmail: input.reviewerEmail ?? null,
         body,
-        pinX: input.pinX ?? null,
-        pinY: input.pinY ?? null,
+        pinX: pinX ?? null,
+        pinY: pinY ?? null,
+        pinNumber: pinNumber ?? null,
       },
       select: { id: true },
     });
@@ -125,6 +172,15 @@ async function createComment(input: CreateCommentInput): Promise<{ id: string }>
       workspaceId: input.workspaceId,
       metadata: { reviewerName: input.reviewerName ?? input.actorName, commentPreview: body.slice(0, 80) },
     });
+    if (pinNumber !== undefined) {
+      await recordActivity(tx, {
+        action: ActivityAction.IMAGE_PIN_ADDED,
+        actorType: input.authorType,
+        actorName: input.actorName,
+        workspaceId: input.workspaceId,
+        metadata: { pinNumber },
+      });
+    }
 
     return { id: comment.id };
   });
@@ -143,6 +199,10 @@ export interface ClientCommentInput {
 
 /** Client (token-holder) comment/reply. `reviewerName`/`reviewerEmail` are unverified, client-entered identity — never treated as proof. */
 export async function addClientReviewComment(context: ReviewContext, input: ClientCommentInput): Promise<{ id: string }> {
+  if ((READ_ONLY_WORKSPACE_STATUSES as readonly string[]).includes(context.workspace.status)) {
+    throw new ReviewPortalReadOnlyError();
+  }
+
   const reviewerName = (input.reviewerName ?? "").trim().slice(0, MAX_NAME_LENGTH) || "Reviewer";
   return createComment({
     workspaceId: context.workspaceId,
@@ -214,8 +274,12 @@ export interface ReviewCommentThreadItem {
   status: string;
   createdAt: string;
   workspaceFileId: string | null;
+  /** Phase 7.5 — which FileVersion this comment belongs to, so a client viewing v2 never sees v1's conversation and vice versa. null for a workspace-level general comment (no file selected). */
+  fileVersionId: string | null;
   pinX: number | null;
   pinY: number | null;
+  /** Stable per-version ordinal for a pin comment — null for a non-pin comment or a reply. */
+  pinNumber: number | null;
   resolvedAt: string | null;
   replies: ReviewCommentThreadItem[];
 }
@@ -243,8 +307,10 @@ export async function getReviewCommentThreads(workspaceId: string): Promise<Revi
       status: c.status,
       createdAt: c.createdAt.toISOString(),
       workspaceFileId: c.workspaceFileId,
+      fileVersionId: c.fileVersionId,
       pinX: c.pinX,
       pinY: c.pinY,
+      pinNumber: c.pinNumber,
       resolvedAt: c.resolvedAt ? c.resolvedAt.toISOString() : null,
       replies: c.replies.map((r) => ({
         id: r.id,
@@ -254,8 +320,10 @@ export async function getReviewCommentThreads(workspaceId: string): Promise<Revi
         status: r.status,
         createdAt: r.createdAt.toISOString(),
         workspaceFileId: r.workspaceFileId,
+        fileVersionId: r.fileVersionId,
         pinX: r.pinX,
         pinY: r.pinY,
+        pinNumber: r.pinNumber,
         resolvedAt: r.resolvedAt ? r.resolvedAt.toISOString() : null,
         replies: [],
       })),

@@ -23,6 +23,7 @@ const CONTEXT = {
     watermarkText: null,
     creatorName: "Arjun Raj",
     client: { name: "Rohit Sharma" },
+    deliveryMode: "PAYMENT_REQUIRED" as const,
   },
 };
 

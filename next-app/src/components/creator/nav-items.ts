@@ -3,6 +3,7 @@ import {
   CreditCard,
   FolderKanban,
   LayoutDashboard,
+  LifeBuoy,
   Settings,
   Users,
   type LucideIcon,
@@ -29,7 +30,8 @@ export const CREATOR_NAV_ITEMS: CreatorNavItem[] = [
   { id: "clients", label: "Clients", href: "/clients", icon: Users },
   { id: "payments", label: "Payments", href: "/payments", icon: CreditCard },
   { id: "notifications", label: "Notifications", href: "/notifications", icon: Bell },
-  { id: "settings", label: "Settings", href: "/settings", icon: Settings, deferred: true },
+  { id: "support", label: "Support", href: "/support", icon: LifeBuoy },
+  { id: "settings", label: "Settings", href: "/settings", icon: Settings },
 ];
 
 /** Bottom bar only ever showed the first 5 items in the original (`navItems.slice(0, 5)`) — Settings was never reachable on mobile. */

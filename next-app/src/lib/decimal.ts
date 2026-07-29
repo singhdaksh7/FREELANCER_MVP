@@ -28,3 +28,12 @@ export function sumDecimals(values: DecimalLike[]): Decimal {
 export function toDisplayNumber(value: DecimalLike): number {
   return toDecimal(value).toNumber();
 }
+
+/**
+ * Null-safe variant for APPROVAL_ONLY/PREVIEW_ONLY workspaces, whose
+ * `amount` column is optional (see DELIVERY_MODES.md) — `null` means "no
+ * price was set," not zero, so callers must not conflate the two.
+ */
+export function toDisplayNumberOrNull(value: DecimalLike | null): number | null {
+  return value === null ? null : toDisplayNumber(value);
+}

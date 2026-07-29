@@ -140,12 +140,58 @@ export function getWorkerConfig(): WorkerConfig {
 }
 
 export interface ReviewLinkConfig {
-  expiryDays: number;
+  /**
+   * Phase 7.5 — master review links are project-duration by default (no
+   * fixed TTL; see DELIVERY_MODES.md "Master review link behaviour"), not
+   * "permanent": the creator can revoke/regenerate at any time, and a
+   * completed project's link becomes read-only. Set
+   * REVIEW_LINK_EXPIRY_DAYS to a positive number to opt back into a fixed
+   * expiry instead.
+   */
+  expiryDays: number | null;
+  /**
+   * How long a completed project's history (comments, versions, activity)
+   * is retained and shown through its now-read-only master link before an
+   * operator-run cleanup would be expected to remove it. Informational
+   * only in this phase — no automated deletion job runs yet.
+   */
+  retentionDays: number;
 }
 
-/** Phase 6 — see REVIEW_TOKEN_SECURITY.md. */
+/** Phase 6/7.5 — see REVIEW_TOKEN_SECURITY.md and DELIVERY_MODES.md. */
 export function getReviewLinkConfig(): ReviewLinkConfig {
+  const rawExpiryDays = intEnv("REVIEW_LINK_EXPIRY_DAYS", 0);
   return {
-    expiryDays: intEnv("REVIEW_LINK_EXPIRY_DAYS", 30),
+    expiryDays: rawExpiryDays > 0 ? rawExpiryDays : null,
+    retentionDays: intEnv("REVIEW_LINK_RETENTION_DAYS", 180),
+  };
+}
+
+export interface DownloadGrantConfig {
+  /** Seconds until an issued DownloadGrant expires. */
+  ttlSeconds: number;
+  maxDownloads: number;
+}
+
+/** Phase 7 — see SECURE_DOWNLOAD_ARCHITECTURE.md. */
+export function getDownloadGrantConfig(): DownloadGrantConfig {
+  return {
+    ttlSeconds: intEnv("DOWNLOAD_GRANT_TTL", 60 * 60 * 24 * 14),
+    maxDownloads: intEnv("DOWNLOAD_GRANT_MAX_DOWNLOADS", 20),
+  };
+}
+
+export interface DeliveryWorkerConfig {
+  maxAttempts: number;
+  bundlePrefix: string;
+  pollIntervalMs: number;
+}
+
+/** Phase 7 — see SECURE_DOWNLOAD_ARCHITECTURE.md "ZIP worker." */
+export function getDeliveryWorkerConfig(): DeliveryWorkerConfig {
+  return {
+    maxAttempts: intEnv("DELIVERY_WORKER_MAX_ATTEMPTS", 3),
+    bundlePrefix: process.env.DELIVERY_BUNDLE_PREFIX || "deliveries",
+    pollIntervalMs: intEnv("FILE_WORKER_POLL_INTERVAL_MS", 2000),
   };
 }

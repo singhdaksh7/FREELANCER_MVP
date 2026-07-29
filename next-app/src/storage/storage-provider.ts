@@ -34,6 +34,6 @@ export interface StorageProvider {
   putObjectBuffer(key: string, body: Buffer, contentType: string): Promise<void>;
   copyObject(sourceKey: string, destinationKey: string): Promise<void>;
   deleteObject(key: string): Promise<void>;
-  /** Short-lived, read-only presigned GET URL. Callers choose the expiry — never generate a long-lived one. */
-  createPresignedDownloadUrl(key: string, expiresInSeconds: number): Promise<string>;
+  /** Short-lived, read-only presigned GET URL. Callers choose the expiry — never generate a long-lived one. `responseContentDisposition`, when set, signs a Content-Disposition override into the URL (see src/lib/filename-sanitize.ts's buildContentDisposition) — never trust a caller-supplied disposition beyond an already-sanitized filename. */
+  createPresignedDownloadUrl(key: string, expiresInSeconds: number, options?: { responseContentDisposition?: string }): Promise<string>;
 }

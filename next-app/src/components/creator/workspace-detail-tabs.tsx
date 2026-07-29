@@ -6,7 +6,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatINR } from "@/lib/format-currency";
 import { formatDateTime } from "@/lib/format-date";
-import { paymentStatusLabel, workspaceStatusLabel } from "@/lib/status-labels";
+import { workspaceStatusLabel } from "@/lib/status-labels";
 import type { WorkspaceDetail } from "@/data-access/workspaces";
 import type { WorkspaceFileListItem } from "@/data-access/files";
 import type { UploadLimits } from "@/hooks/use-file-upload-queue";
@@ -15,6 +15,7 @@ import type { ActiveChangeRequest } from "@/data-access/change-requests";
 import { FilesTab } from "./files-tab";
 import { CommentsTab } from "./comments-tab";
 import { ChangeRequestBanner } from "./change-request-banner";
+import { PaymentStatusCard } from "./payment-status-card";
 
 export interface WorkspaceDetailTabsProps {
   workspace: WorkspaceDetail;
@@ -137,7 +138,7 @@ export function WorkspaceDetailTabs({
 
         {activeTab === "comments" && (
           <div id="panel-comments" role="tabpanel" aria-labelledby="tab-comments">
-            <CommentsTab workspaceId={workspace.id} comments={comments} />
+            <CommentsTab workspaceId={workspace.id} comments={comments} files={files} />
           </div>
         )}
 
@@ -147,22 +148,13 @@ export function WorkspaceDetailTabs({
               <EmptyState
                 icon={CreditCard}
                 title="No payment records yet"
-                description="Payment collection isn't wired up in this phase — records will appear here once created."
+                description="A payment order appears here once the client starts checkout on an approved workspace."
               />
             ) : (
               <ul className="flex flex-col gap-3">
                 {workspace.payments.map((payment) => (
-                  <li
-                    key={payment.id}
-                    className="flex items-center justify-between gap-4 rounded-md border border-line p-4 text-sm"
-                  >
-                    <div>
-                      <div className="font-semibold text-ink">{formatINR(payment.amount)}</div>
-                      <div className="text-xs text-ink-muted">
-                        {payment.paidAt ? `Paid ${formatDateTime(payment.paidAt)}` : `Created ${formatDateTime(payment.createdAt)}`}
-                      </div>
-                    </div>
-                    <StatusBadge status={paymentStatusLabel(payment.status)} />
+                  <li key={payment.id}>
+                    <PaymentStatusCard workspaceId={workspace.id} payment={payment} />
                   </li>
                 ))}
               </ul>

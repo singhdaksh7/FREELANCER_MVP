@@ -17,7 +17,8 @@ export interface ReviewLinkActionState {
   success?: string;
   /** The complete review link URL — present only immediately after a successful create/regenerate, never persisted, never shown again after this render. */
   rawLink?: string;
-  expiresAt?: string;
+  /** null for a project-duration link. */
+  expiresAt?: string | null;
 }
 
 export async function createReviewLinkAction(

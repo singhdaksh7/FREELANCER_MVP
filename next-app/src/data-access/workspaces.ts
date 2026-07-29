@@ -4,7 +4,7 @@ import { requireAuthenticatedUser } from "./auth";
 import { requireOwnedWorkspace, requireClientAvailableToCreator } from "./authorization";
 import { recordActivity } from "./activity";
 import { ActivityAction, formatActivityLabel } from "@/lib/activity-log";
-import { toDecimal, toDisplayNumber } from "@/lib/decimal";
+import { toDecimal, toDisplayNumber, toDisplayNumberOrNull } from "@/lib/decimal";
 import { parseEnumParam, parseQueryParam, type RawSearchParams } from "@/lib/search-params";
 import type { WorkspaceCreateInput, WorkspaceUpdateInput } from "@/validation/workspace";
 import { WorkspaceStatus, type Prisma } from "@/generated/prisma/client";
@@ -16,7 +16,8 @@ export interface WorkspaceListItem {
   id: string;
   title: string;
   description: string | null;
-  amount: number;
+  /** null for APPROVAL_ONLY/PREVIEW_ONLY workspaces that were never given a price. */
+  amount: number | null;
   currency: string;
   status: string;
   progress: number;
@@ -58,7 +59,7 @@ function mapWorkspace(
     id: workspace.id,
     title: workspace.title,
     description: workspace.description,
-    amount: toDisplayNumber(workspace.amount),
+    amount: toDisplayNumberOrNull(workspace.amount),
     currency: workspace.currency,
     status: workspace.status,
     progress: workspace.progress,
@@ -130,16 +131,54 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
   };
 }
 
-/** Statuses past which financial truth (amount/currency) must not change, and past which the workspace can no longer be cancelled. */
+/** Statuses past which the workspace can no longer be cancelled, and (for the client field) can no longer be reassigned. */
 export const FINANCIAL_LOCK_STATUSES = ["PAID", "FILES_UNLOCKED", "DELIVERED"] as const;
+
+/**
+ * Statuses past which amount/currency must never change. Once a workspace
+ * is APPROVED, WorkspaceApproval has already frozen an immutable
+ * approvedAmount/approvedCurrency snapshot (see approvals.ts) that payment
+ * orders are created from — allowing Workspace.amount itself to keep
+ * drifting after that point would be confusing even though it can no
+ * longer affect what a client is actually charged. Locking here closes
+ * that gap at the source instead of relying solely on the snapshot.
+ */
+export const AMOUNT_LOCK_STATUSES = [
+  "APPROVED",
+  "PAYMENT_PENDING",
+  "PAID",
+  "FILES_UNLOCKED",
+  "DELIVERED",
+  "AWAITING_CREATOR_RELEASE",
+  "CLOSED",
+] as const;
 
 export interface WorkspacePaymentEntry {
   id: string;
   amount: number;
   currency: string;
   status: string;
+  /** Safe to show a creator — never the key secret/webhook secret/signature. */
+  gatewayOrderId: string | null;
+  capturedAt: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
   paidAt: string | null;
   createdAt: string;
+  delivery: {
+    bundleStatus: string;
+    processingError: string | null;
+    downloadCount: number;
+    maxDownloads: number;
+    grantStatus: string | null;
+    grantExpiresAt: string | null;
+  } | null;
+  /** Frozen at order-creation time — see PLATFORM_FEE_AND_PAYOUT_LEDGER.md. Null only if this Payment predates Phase 7.5. */
+  breakdown: {
+    platformFeeBps: number;
+    platformFeeAmount: number;
+    freelancerPayableAmount: number;
+  } | null;
 }
 
 export interface WorkspaceActivityEntry {
@@ -155,8 +194,9 @@ export interface WorkspaceDetail {
   title: string;
   description: string | null;
   currency: string;
-  amount: number;
+  amount: number | null;
   status: string;
+  deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
   progress: number;
   dueDate: string | null;
   watermarkText: string | null;
@@ -169,6 +209,10 @@ export interface WorkspaceDetail {
   financiallyLocked: boolean;
   canCancel: boolean;
   canDelete: boolean;
+  /** APPROVAL_ONLY only — workspace is AWAITING_CREATOR_RELEASE and no release has been triggered yet. */
+  canReleaseFiles: boolean;
+  /** PREVIEW_ONLY only — workspace is still open (IN_REVIEW/CHANGES_REQUESTED) and can be closed. */
+  canCloseForReview: boolean;
   client: { id: string; name: string; email: string; company: string | null; phone: string | null };
   payments: WorkspacePaymentEntry[];
   activity: WorkspaceActivityEntry[];
@@ -176,7 +220,8 @@ export interface WorkspaceDetail {
   reviewLink: {
     status: string;
     tokenPrefix: string;
-    expiresAt: string;
+    /** null for a project-duration master link — see MASTER_LINK "Available for the duration of the project." */
+    expiresAt: string | null;
     revokedAt: string | null;
     lastViewedAt: string | null;
     viewCount: number;
@@ -196,9 +241,13 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
     where: { id: workspaceId, creatorId: creator.id },
     include: {
       client: { select: { id: true, name: true, email: true, company: true, phone: true } },
-      payments: { orderBy: [{ createdAt: "desc" }, { id: "asc" }] },
+      payments: {
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        include: { deliveryBundle: true, downloadGrant: true, breakdown: true },
+      },
       activityLogs: { orderBy: [{ createdAt: "desc" }, { id: "asc" }] },
       reviewLinks: { orderBy: [{ createdAt: "desc" }], take: 1 },
+      deliveryBundles: { select: { id: true }, take: 1 },
     },
   });
   if (!workspace) return null;
@@ -210,8 +259,9 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
     title: workspace.title,
     description: workspace.description,
     currency: workspace.currency,
-    amount: toDisplayNumber(workspace.amount),
+    amount: toDisplayNumberOrNull(workspace.amount),
     status: workspace.status,
+    deliveryMode: workspace.deliveryMode,
     progress: workspace.progress,
     dueDate: workspace.dueDate ? workspace.dueDate.toISOString() : null,
     watermarkText: workspace.watermarkText,
@@ -222,6 +272,13 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
     deliveredAt: workspace.deliveredAt ? workspace.deliveredAt.toISOString() : null,
     cancelledAt: workspace.cancelledAt ? workspace.cancelledAt.toISOString() : null,
     financiallyLocked: locked,
+    canReleaseFiles:
+      workspace.deliveryMode === "APPROVAL_ONLY" &&
+      workspace.status === "AWAITING_CREATOR_RELEASE" &&
+      workspace.deliveryBundles.length === 0,
+    canCloseForReview:
+      workspace.deliveryMode === "PREVIEW_ONLY" &&
+      (workspace.status === "IN_REVIEW" || workspace.status === "CHANGES_REQUESTED"),
     canCancel: !locked && workspace.status !== "CANCELLED",
     canDelete:
       workspace.status === "DRAFT" &&
@@ -233,8 +290,29 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
       amount: toDisplayNumber(payment.amount),
       currency: payment.currency,
       status: payment.status,
+      gatewayOrderId: payment.gatewayOrderId,
+      capturedAt: payment.capturedAt ? payment.capturedAt.toISOString() : null,
+      failureCode: payment.failureCode,
+      failureReason: payment.failureReason,
       paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
       createdAt: payment.createdAt.toISOString(),
+      delivery: payment.deliveryBundle
+        ? {
+            bundleStatus: payment.deliveryBundle.status,
+            processingError: payment.deliveryBundle.processingError,
+            downloadCount: payment.downloadGrant?.downloadCount ?? 0,
+            maxDownloads: payment.downloadGrant?.maxDownloads ?? 0,
+            grantStatus: payment.downloadGrant?.status ?? null,
+            grantExpiresAt: payment.downloadGrant?.expiresAt ? payment.downloadGrant.expiresAt.toISOString() : null,
+          }
+        : null,
+      breakdown: payment.breakdown
+        ? {
+            platformFeeBps: payment.breakdown.platformFeeBps,
+            platformFeeAmount: Number(payment.breakdown.platformFeeSubunits) / 100,
+            freelancerPayableAmount: Number(payment.breakdown.freelancerPayableSubunits) / 100,
+          }
+        : null,
     })),
     activity: workspace.activityLogs.map((entry) => ({
       id: entry.id,
@@ -249,11 +327,13 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
           // ACTIVE -> EXPIRED in the database, so an ACTIVE row whose
           // expiresAt has passed is still shown as expired here.
           status:
-            workspace.reviewLinks[0].status === "ACTIVE" && workspace.reviewLinks[0].expiresAt <= new Date()
+            workspace.reviewLinks[0].status === "ACTIVE" &&
+            workspace.reviewLinks[0].expiresAt !== null &&
+            workspace.reviewLinks[0].expiresAt <= new Date()
               ? "EXPIRED"
               : workspace.reviewLinks[0].status,
           tokenPrefix: workspace.reviewLinks[0].tokenPrefix,
-          expiresAt: workspace.reviewLinks[0].expiresAt.toISOString(),
+          expiresAt: workspace.reviewLinks[0].expiresAt ? workspace.reviewLinks[0].expiresAt.toISOString() : null,
           revokedAt: workspace.reviewLinks[0].revokedAt ? workspace.reviewLinks[0].revokedAt.toISOString() : null,
           lastViewedAt: workspace.reviewLinks[0].lastViewedAt
             ? workspace.reviewLinks[0].lastViewedAt.toISOString()
@@ -270,11 +350,12 @@ export interface WorkspaceEditDetail {
   description: string | null;
   clientId: string;
   currency: string;
-  amount: number;
+  amount: number | null;
   dueDate: string | null;
   watermarkText: string | null;
   status: string;
   financiallyLocked: boolean;
+  amountLocked: boolean;
 }
 
 /** Returns null (never throws) for a nonexistent/not-owned workspace, so the edit route can render a not-found state. */
@@ -289,11 +370,12 @@ export async function getOwnedWorkspaceForEdit(workspaceId: string): Promise<Wor
     description: workspace.description,
     clientId: workspace.clientId,
     currency: workspace.currency,
-    amount: toDisplayNumber(workspace.amount),
+    amount: toDisplayNumberOrNull(workspace.amount),
     dueDate: workspace.dueDate ? workspace.dueDate.toISOString().slice(0, 10) : null,
     watermarkText: workspace.watermarkText,
     status: workspace.status,
     financiallyLocked: (FINANCIAL_LOCK_STATUSES as readonly string[]).includes(workspace.status),
+    amountLocked: (AMOUNT_LOCK_STATUSES as readonly string[]).includes(workspace.status),
   };
 }
 
@@ -319,7 +401,8 @@ export async function createWorkspace(input: WorkspaceCreateInput): Promise<Muta
         title: input.title,
         description: input.description ?? null,
         currency: input.currency,
-        amount: toDecimal(input.amount),
+        amount: input.amount === undefined ? null : toDecimal(input.amount),
+        deliveryMode: input.deliveryMode,
         watermarkText: input.watermarkText ?? null,
         dueDate: input.dueDate ? new Date(input.dueDate) : null,
         status: "DRAFT",
@@ -335,6 +418,14 @@ export async function createWorkspace(input: WorkspaceCreateInput): Promise<Muta
       creatorId: creator.id,
       workspaceId: workspace.id,
       metadata: { title: input.title },
+    });
+    await recordActivity(tx, {
+      action: ActivityAction.DELIVERY_MODE_SELECTED,
+      actorType: "CREATOR",
+      actorName: creator.name,
+      creatorId: creator.id,
+      workspaceId: workspace.id,
+      metadata: { deliveryMode: input.deliveryMode },
     });
 
     return { id: workspace.id };
@@ -357,6 +448,7 @@ export async function updateOwnedWorkspace(
 ): Promise<MutateWorkspaceResult> {
   const { creator, workspace: existing } = await requireOwnedWorkspace(workspaceId);
   const locked = (FINANCIAL_LOCK_STATUSES as readonly string[]).includes(existing.status);
+  const amountLocked = (AMOUNT_LOCK_STATUSES as readonly string[]).includes(existing.status);
 
   let targetClientId = existing.clientId;
   let clientChangeMetadata: { fromClientName: string; toClientName: string } | null = null;
@@ -366,11 +458,17 @@ export async function updateOwnedWorkspace(
     clientChangeMetadata = { fromClientName: existing.client.name, toClientName: newClient.name };
   }
 
-  const submittedAmount = toDecimal(input.amount);
-  const targetAmount = locked ? existing.amount : submittedAmount;
-  const targetCurrency = locked ? existing.currency : input.currency;
+  // Delivery mode is fixed at creation — never editable afterward (no
+  // mode-switch UI exists; switching mid-workflow would strand whatever
+  // approval/payment state already exists under the old mode's rules).
+  const submittedAmount = input.amount === undefined ? null : toDecimal(input.amount);
+  const targetAmount = amountLocked ? existing.amount : submittedAmount;
+  const targetCurrency = amountLocked ? existing.currency : input.currency;
   const amountOrCurrencyChanged =
-    !locked && (!submittedAmount.equals(existing.amount) || input.currency !== existing.currency);
+    !amountLocked &&
+    ((existing.amount === null) !== (submittedAmount === null) ||
+      (existing.amount !== null && submittedAmount !== null && !submittedAmount.equals(existing.amount)) ||
+      input.currency !== existing.currency);
 
   const targetDueDate = input.dueDate ? new Date(input.dueDate) : null;
   const existingDueDateIso = existing.dueDate ? existing.dueDate.toISOString().slice(0, 10) : null;
@@ -414,8 +512,8 @@ export async function updateOwnedWorkspace(
         creatorId: creator.id,
         workspaceId,
         metadata: {
-          fromAmount: toDisplayNumber(existing.amount),
-          toAmount: toDisplayNumber(targetAmount),
+          fromAmount: toDisplayNumberOrNull(existing.amount) ?? undefined,
+          toAmount: toDisplayNumberOrNull(targetAmount) ?? undefined,
           currency: targetCurrency,
         },
       });
@@ -449,7 +547,7 @@ export async function updateOwnedWorkspace(
 export async function cancelOwnedWorkspace(workspaceId: string): Promise<void> {
   const { creator, workspace } = await requireOwnedWorkspace(workspaceId);
 
-  assertWorkspaceTransition(workspace.status, "CANCELLED");
+  assertWorkspaceTransition(workspace.status, "CANCELLED", workspace.deliveryMode);
 
   await prisma.$transaction(async (tx) => {
     await tx.workspace.update({
@@ -460,6 +558,37 @@ export async function cancelOwnedWorkspace(workspaceId: string): Promise<void> {
       action: ActivityAction.WORKSPACE_CANCELLED,
       actorType: "CREATOR",
       actorName: creator.name,
+      creatorId: creator.id,
+      workspaceId,
+    });
+  });
+}
+
+/**
+ * Creator-triggered closure of a PREVIEW_ONLY workspace once feedback is
+ * complete — see DELIVERY_MODES.md. Moves IN_REVIEW/CHANGES_REQUESTED to
+ * the terminal CLOSED status, after which the master review link becomes
+ * read-only (no further comments/annotations, no version switching writes
+ * anything new). There is no payment or file-release step in this mode.
+ */
+export async function closeWorkspaceForReview(workspaceId: string): Promise<void> {
+  const { creator, workspace } = await requireOwnedWorkspace(workspaceId);
+
+  assertWorkspaceTransition(workspace.status, "CLOSED", workspace.deliveryMode);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.workspace.update({ where: { id: workspaceId }, data: { status: "CLOSED" } });
+    await recordActivity(tx, {
+      action: ActivityAction.WORKSPACE_CLOSED,
+      actorType: "CREATOR",
+      actorName: creator.name,
+      creatorId: creator.id,
+      workspaceId,
+    });
+    await recordActivity(tx, {
+      action: ActivityAction.REVIEW_LINK_READ_ONLY,
+      actorType: "SYSTEM",
+      actorName: "System",
       creatorId: creator.id,
       workspaceId,
     });

@@ -64,6 +64,8 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
           canCancel={workspace.canCancel}
           canDelete={workspace.canDelete}
           financiallyLocked={workspace.financiallyLocked}
+          canReleaseFiles={workspace.canReleaseFiles}
+          canCloseForReview={workspace.canCloseForReview}
         />
       </div>
 

@@ -8,7 +8,8 @@ import {
   ReviewLinkRevokedError,
   WorkspaceUnavailableError,
 } from "@/data-access/review-auth";
-import { addClientReviewComment, CommentValidationError } from "@/data-access/review-comments";
+import { addClientReviewComment, CommentValidationError, ReviewPortalReadOnlyError } from "@/data-access/review-comments";
+import { addClientAnnotatedComment, AnnotationValidationError } from "@/data-access/annotations";
 import { createChangeRequest, ChangeRequestValidationError, ChangeRequestAlreadyOpenError } from "@/data-access/change-requests";
 import { approveWorkspace, ApprovalValidationError, ApprovalBlockedError, ApprovalAlreadyCompletedError } from "@/data-access/approvals";
 
@@ -74,7 +75,58 @@ export async function addReviewCommentAction(
     const tokenMessage = friendlyTokenError(error);
     if (tokenMessage) return { error: tokenMessage };
     if (error instanceof CommentValidationError) return { error: error.message };
+    if (error instanceof ReviewPortalReadOnlyError) return { error: error.message };
     console.error("Client comment failed:", error);
+    return { error: GENERIC_ERROR };
+  }
+}
+
+/**
+ * Client submits a freehand/circle annotation together with its related
+ * comment — see IMAGE_ANNOTATION_ARCHITECTURE.md. `annotationGeometry`
+ * travels as a JSON string form field (never raw markup/SVG); it's parsed
+ * once here and then validated field-by-field against annotationInputSchema
+ * inside addClientAnnotatedComment before anything reaches storage.
+ */
+export async function addAnnotatedCommentAction(
+  _prevState: ReviewClientActionState,
+  formData: FormData,
+): Promise<ReviewClientActionState> {
+  const token = String(formData.get("token") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const workspaceFileId = String(formData.get("workspaceFileId") ?? "");
+  const fileVersionId = String(formData.get("fileVersionId") ?? "");
+  const annotationType = String(formData.get("annotationType") ?? "");
+  const geometryRaw = String(formData.get("geometry") ?? "");
+  const reviewerName = String(formData.get("reviewerName") ?? "") || undefined;
+  const reviewerEmail = String(formData.get("reviewerEmail") ?? "") || undefined;
+
+  let geometry: unknown;
+  try {
+    geometry = JSON.parse(geometryRaw);
+  } catch {
+    return { error: "Invalid annotation data." };
+  }
+
+  try {
+    const context = await authorizeReviewToken(token);
+    await addClientAnnotatedComment(context, {
+      body,
+      workspaceFileId,
+      fileVersionId,
+      annotation: { type: annotationType, geometry },
+      reviewerName,
+      reviewerEmail,
+    });
+    revalidatePath(`/review/${token}`);
+    return { success: "Annotation added." };
+  } catch (error) {
+    const tokenMessage = friendlyTokenError(error);
+    if (tokenMessage) return { error: tokenMessage };
+    if (error instanceof CommentValidationError) return { error: error.message };
+    if (error instanceof AnnotationValidationError) return { error: error.message };
+    if (error instanceof ReviewPortalReadOnlyError) return { error: error.message };
+    console.error("Client annotation failed:", error);
     return { error: GENERIC_ERROR };
   }
 }

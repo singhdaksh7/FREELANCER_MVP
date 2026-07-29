@@ -97,9 +97,17 @@ export const s3StorageProvider: StorageProvider = {
     await getClient().send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
   },
 
-  async createPresignedDownloadUrl(key: string, expiresInSeconds: number): Promise<string> {
+  async createPresignedDownloadUrl(
+    key: string,
+    expiresInSeconds: number,
+    options?: { responseContentDisposition?: string },
+  ): Promise<string> {
     const config = getStorageConfig();
-    const command = new GetObjectCommand({ Bucket: config.bucket, Key: key });
+    const command = new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      ResponseContentDisposition: options?.responseContentDisposition,
+    });
     return getSignedUrl(getClient(), command, { expiresIn: expiresInSeconds });
   },
 };

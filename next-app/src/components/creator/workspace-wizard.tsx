@@ -5,6 +5,7 @@ import { Check, FileText, Shield, CreditCard, ClipboardList, Upload } from "luci
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/format-currency";
 import { createWorkspaceAction, type WorkspaceFormState } from "@/actions/workspaces";
+import { InlineClientModal } from "./inline-client-modal";
 import type { ClientOption } from "@/data-access/clients";
 
 export interface WorkspaceWizardProps {
@@ -15,7 +16,7 @@ const STEPS = [
   { id: 1, label: "Project Details", icon: FileText },
   { id: 2, label: "Deliverables", icon: Upload },
   { id: 3, label: "Protection", icon: Shield },
-  { id: 4, label: "Payment", icon: CreditCard },
+  { id: 4, label: "Delivery", icon: CreditCard },
   { id: 5, label: "Review & Create", icon: ClipboardList },
 ] as const;
 
@@ -24,10 +25,34 @@ const FIELD_STEP: Record<string, number> = {
   clientId: 1,
   description: 1,
   watermarkText: 3,
+  deliveryMode: 4,
   currency: 4,
   amount: 4,
   dueDate: 1,
 };
+
+type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
+
+const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string; description: string }> = [
+  {
+    value: "PAYMENT_REQUIRED",
+    label: "Payment Required",
+    description:
+      "Your client reviews and approves the work, completes payment, and then receives the approved original files.",
+  },
+  {
+    value: "APPROVAL_ONLY",
+    label: "Approval Only",
+    description:
+      "Your client reviews and approves the work. You decide when to release the original files. No online payment is collected.",
+  },
+  {
+    value: "PREVIEW_ONLY",
+    label: "Preview Only",
+    description:
+      "Your client can view and comment on protected previews. Original files are not released through Project Vault.",
+  },
+];
 
 const initialState: WorkspaceFormState = {};
 
@@ -39,9 +64,13 @@ const initialState: WorkspaceFormState = {};
  * File objects or base64 payloads are stored, and creating the workspace
  * here always produces a DRAFT with no files attached.
  */
-export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
+export function WorkspaceWizard({ clientOptions: initialClientOptions }: WorkspaceWizardProps) {
   const [state, formAction, pending] = useActionState(createWorkspaceAction, initialState);
   const [step, setStep] = useState(1);
+  // Clients created inline (via "Add New Client" below) are appended here
+  // so they show up in the selector immediately, without a page reload or
+  // losing any other wizard field the creator has already filled in.
+  const [clientOptions, setClientOptions] = useState(initialClientOptions);
 
   // `fields` is the single source of truth for what's currently typed —
   // it's what gets submitted, so it never needs to be re-synced from the
@@ -52,6 +81,7 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
     description: "",
     dueDate: "",
     watermarkText: "",
+    deliveryMode: "PAYMENT_REQUIRED" as DeliveryMode,
     currency: "INR",
     amount: "",
   }));
@@ -110,8 +140,9 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
         <input type="hidden" name="description" value={fields.description} />
         <input type="hidden" name="dueDate" value={fields.dueDate} />
         <input type="hidden" name="watermarkText" value={fields.watermarkText} />
+        <input type="hidden" name="deliveryMode" value={fields.deliveryMode} />
         <input type="hidden" name="currency" value={fields.currency} />
-        <input type="hidden" name="amount" value={fields.amount} />
+        <input type="hidden" name="amount" value={fields.deliveryMode === "PREVIEW_ONLY" ? "" : fields.amount} />
 
         {state.error && (
           <p id={errorId} role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
@@ -140,12 +171,20 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
             </div>
 
             <div>
-              <label htmlFor={clientId} className="mb-1.5 block text-sm font-semibold text-ink">
-                Client <span aria-hidden="true">*</span>
-              </label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label htmlFor={clientId} className="block text-sm font-semibold text-ink">
+                  Client <span aria-hidden="true">*</span>
+                </label>
+                <InlineClientModal
+                  onCreated={(client) => {
+                    setClientOptions((prev) => [...prev, client]);
+                    setFields((prev) => ({ ...prev, clientId: client.id }));
+                  }}
+                />
+              </div>
               {clientOptions.length === 0 ? (
                 <p className="text-sm text-ink-muted">
-                  You have no clients yet. <a href="/clients/new" className="font-semibold text-vault-blue">Add a client</a> before creating a workspace.
+                  You have no clients yet. Use &ldquo;Add New Client&rdquo; above to create one.
                 </p>
               ) : (
                 <select
@@ -240,19 +279,70 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
 
         {step === 4 && (
           <fieldset className="flex flex-col gap-5">
-            <legend className="mb-1 text-base font-bold text-ink">Payment</legend>
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-ink">Currency</label>
-                <input
-                  value={fields.currency}
-                  disabled
-                  className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted"
-                />
+            <legend className="mb-1 text-base font-bold text-ink">Delivery Type</legend>
+            <div className="flex flex-col gap-3">
+              {DELIVERY_MODE_OPTIONS.map((option) => (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer flex-col gap-1 rounded-md border px-4 py-3 text-sm ${
+                    fields.deliveryMode === option.value
+                      ? "border-vault-blue bg-vault-blue/5"
+                      : "border-line hover:border-vault-blue/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 font-semibold text-ink">
+                    <input
+                      type="radio"
+                      name="deliveryModeChoice"
+                      value={option.value}
+                      checked={fields.deliveryMode === option.value}
+                      onChange={() => setFields((prev) => ({ ...prev, deliveryMode: option.value }))}
+                      className="h-4 w-4 accent-vault-blue"
+                    />
+                    {option.label}
+                  </span>
+                  <span className="pl-6 text-xs text-ink-muted">{option.description}</span>
+                </label>
+              ))}
+              {state.fieldErrors?.deliveryMode && (
+                <p className="text-xs font-medium text-danger">{state.fieldErrors.deliveryMode[0]}</p>
+              )}
+            </div>
+
+            {fields.deliveryMode === "PAYMENT_REQUIRED" && (
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-ink">Currency</label>
+                  <input
+                    value={fields.currency}
+                    disabled
+                    className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted"
+                  />
+                </div>
+                <div>
+                  <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-ink">
+                    Amount <span aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    id={amountId}
+                    inputMode="decimal"
+                    value={fields.amount}
+                    onChange={set("amount")}
+                    placeholder="25000"
+                    required
+                    className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                  />
+                  {state.fieldErrors?.amount && (
+                    <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.amount[0]}</p>
+                  )}
+                </div>
               </div>
+            )}
+
+            {fields.deliveryMode === "APPROVAL_ONLY" && (
               <div>
                 <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-ink">
-                  Amount <span aria-hidden="true">*</span>
+                  Amount <span className="font-normal text-ink-muted">(optional — for your reference only)</span>
                 </label>
                 <input
                   id={amountId}
@@ -260,14 +350,22 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
                   value={fields.amount}
                   onChange={set("amount")}
                   placeholder="25000"
-                  required
-                  className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                  className="w-full max-w-xs rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
                 />
                 {state.fieldErrors?.amount && (
                   <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.amount[0]}</p>
                 )}
+                <p className="mt-1.5 text-xs text-ink-muted">
+                  No online payment is collected for approval-only projects.
+                </p>
               </div>
-            </div>
+            )}
+
+            {fields.deliveryMode === "PREVIEW_ONLY" && (
+              <p className="rounded-md bg-slate-50 px-3.5 py-2.5 text-xs text-ink-muted">
+                No amount or payment controls apply to preview-only projects.
+              </p>
+            )}
           </fieldset>
         )}
 
@@ -283,10 +381,18 @@ export function WorkspaceWizard({ clientOptions }: WorkspaceWizardProps) {
               <dd className="text-right font-medium text-ink">{fields.dueDate || "Not set"}</dd>
               <dt className="text-ink-muted">Watermark Text</dt>
               <dd className="text-right font-medium text-ink">{fields.watermarkText || "Not set"}</dd>
-              <dt className="text-ink-muted">Amount</dt>
-              <dd className="text-right font-semibold text-ink">
-                {fields.amount ? formatINR(Number(fields.amount)) : "—"}
+              <dt className="text-ink-muted">Delivery Type</dt>
+              <dd className="text-right font-medium text-ink">
+                {DELIVERY_MODE_OPTIONS.find((o) => o.value === fields.deliveryMode)?.label}
               </dd>
+              {fields.deliveryMode !== "PREVIEW_ONLY" && (
+                <>
+                  <dt className="text-ink-muted">Amount</dt>
+                  <dd className="text-right font-semibold text-ink">
+                    {fields.amount ? formatINR(Number(fields.amount)) : fields.deliveryMode === "APPROVAL_ONLY" ? "Not set" : "—"}
+                  </dd>
+                </>
+              )}
             </dl>
             <p className="text-xs text-ink-muted">
               This creates the workspace as a <strong>Draft</strong>. Deliverables can be added once file upload

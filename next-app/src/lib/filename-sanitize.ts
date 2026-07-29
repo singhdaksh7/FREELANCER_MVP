@@ -27,3 +27,17 @@ export function extensionHintFromFileName(rawName: string): string | undefined {
   const match = /\.([a-zA-Z0-9]{1,8})$/.exec(rawName.trim());
   return match?.[1]?.toLowerCase();
 }
+
+/**
+ * Builds a safe `Content-Disposition: attachment` header value — an ASCII
+ * fallback (`filename=`, non-ASCII stripped) plus an RFC 5987-encoded
+ * `filename*=` for full Unicode support. Never interpolates a raw,
+ * unsanitized filename — callers should already have passed the name
+ * through sanitizeDisplayFileName. Phase 7 — see
+ * SECURE_DOWNLOAD_ARCHITECTURE.md "Original authorization."
+ */
+export function buildContentDisposition(filename: string): string {
+  const safe = sanitizeDisplayFileName(filename);
+  const asciiFallback = safe.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
+}

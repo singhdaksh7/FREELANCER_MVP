@@ -10,7 +10,7 @@ export interface RecordActivityInput {
    * workspace) so the row appears in the creator's own audit trail, but the
    * actor performing the action is not an authenticated User.
    */
-  actorType: "CREATOR" | "CLIENT" | "SYSTEM";
+  actorType: "CREATOR" | "CLIENT" | "SYSTEM" | "ADMIN";
   actorName: string;
   creatorId?: string;
   workspaceId?: string;

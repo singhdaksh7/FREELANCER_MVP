@@ -9,13 +9,15 @@ const INITIAL_STATE: ApproveActionState = {};
 
 export interface ApproveProjectModalProps {
   token: string;
-  amount: number;
+  /** null for an APPROVAL_ONLY workspace with no price set. */
+  amount: number | null;
+  deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
   files: ReviewableFile[];
   reviewerName: string;
   onApproved: () => void;
 }
 
-export function ApproveProjectModal({ token, amount, files, reviewerName, onApproved }: ApproveProjectModalProps) {
+export function ApproveProjectModal({ token, amount, deliveryMode, files, reviewerName, onApproved }: ApproveProjectModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, action, pending] = useActionState(approveWorkspaceAction, INITIAL_STATE);
   const [name, setName] = useState(reviewerName);
@@ -67,16 +69,25 @@ export function ApproveProjectModal({ token, amount, files, reviewerName, onAppr
             })}
           </ul>
 
-          <div className="rounded-md bg-slate-50 p-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-ink-muted">Amount due</span>
-              <span className="font-semibold text-ink">{formatINR(amount)}</span>
+          {deliveryMode === "PAYMENT_REQUIRED" ? (
+            <div className="rounded-md bg-slate-50 p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-ink-muted">Amount due</span>
+                <span className="font-semibold text-ink">{formatINR(amount)}</span>
+              </div>
+              <p className="mt-1 text-xs text-ink-muted">
+                Your client reviews and approves the work, completes payment, and then receives the approved
+                original files.
+              </p>
             </div>
-            <p className="mt-1 text-xs text-ink-muted">
-              Original files remain securely locked until payment is completed. Payment isn&apos;t available yet in
-              this environment.
-            </p>
-          </div>
+          ) : (
+            <div className="rounded-md bg-slate-50 p-3 text-sm">
+              <p className="text-xs text-ink-muted">
+                Your client reviews and approves the work. You decide when to release the original files. No online
+                payment is collected.
+              </p>
+            </div>
+          )}
 
           <div>
             <label htmlFor="approve-name" className="text-xs font-semibold text-ink-muted">

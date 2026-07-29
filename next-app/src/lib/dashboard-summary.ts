@@ -18,7 +18,8 @@ export interface DashboardSummary {
 }
 
 export interface DashboardWorkspaceRecord {
-  amount: DecimalLike;
+  /** null for APPROVAL_ONLY/PREVIEW_ONLY workspaces that were never given a price — treated as 0 in the totals below. */
+  amount: DecimalLike | null;
   status: string;
 }
 
@@ -40,8 +41,8 @@ export function computeDashboardSummaryFromWorkspaces(
   );
 
   return {
-    outstandingAmount: toDisplayNumber(sumDecimals(unpaid.map((w) => w.amount))),
-    receivedRevenue: toDisplayNumber(sumDecimals(paid.map((w) => w.amount))),
+    outstandingAmount: toDisplayNumber(sumDecimals(unpaid.map((w) => w.amount ?? 0))),
+    receivedRevenue: toDisplayNumber(sumDecimals(paid.map((w) => w.amount ?? 0))),
     totalWorkspaceCount: workspaces.length,
     activeWorkspaceCount: unpaid.length,
     awaitingReviewCount: workspaces.filter((w) => w.status === WorkspaceStatus.IN_REVIEW).length,

@@ -23,6 +23,14 @@ export interface DeleteClientFormState {
   success?: string;
 }
 
+export interface InlineClientFormState {
+  error?: string;
+  fieldErrors?: Partial<Record<"name" | "email" | "company" | "phone", string[]>>;
+  values?: { name?: string; email?: string; company?: string; phone?: string };
+  /** Set only on success — the newly created client, safe to add straight to a selector. */
+  client?: { id: string; name: string };
+}
+
 function parseClientFormData(formData: FormData) {
   return {
     name: String(formData.get("name") ?? ""),
@@ -89,6 +97,41 @@ export async function updateClientAction(
   revalidatePath("/clients");
   revalidatePath(`/clients/${clientId}/edit`);
   redirect(`/clients?flash=${encodeURIComponent(`${parsed.data.name} was updated.`)}`);
+}
+
+/**
+ * Creates a client from inside the workspace wizard's "Add New Client"
+ * modal (Phase 7.5). Same validation and secure mutation layer as
+ * createClientAction — the only differences are that this never redirects
+ * (it returns the created client so the modal can add it to the wizard's
+ * in-memory client selector and select it automatically, preserving the
+ * rest of the wizard's draft state) and it tags the resulting activity
+ * entry as INLINE_CLIENT_CREATED. creatorId is still derived from the
+ * session inside createClient — never trusted from the form.
+ */
+export async function createInlineClientAction(
+  _prevState: InlineClientFormState,
+  formData: FormData,
+): Promise<InlineClientFormState> {
+  const raw = {
+    name: String(formData.get("name") ?? ""),
+    email: String(formData.get("email") ?? ""),
+    company: String(formData.get("company") ?? ""),
+    phone: String(formData.get("phone") ?? ""),
+  };
+  const parsed = clientSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return { fieldErrors: parsed.error.flatten().fieldErrors, values: raw };
+  }
+
+  try {
+    const client = await createClient(parsed.data, { source: "INLINE_WIZARD" });
+    return { client: { id: client.id, name: parsed.data.name } };
+  } catch (error) {
+    console.error("Inline client creation failed:", error);
+    return { error: GENERIC_ERROR, values: raw };
+  }
 }
 
 /**

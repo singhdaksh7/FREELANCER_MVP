@@ -39,13 +39,22 @@ const watermarkTextSchema = z
   .optional()
   .transform((value) => (value ? value : undefined));
 
+/**
+ * Phase 7.5 — a workspace's amount is conditionally required depending on
+ * DeliveryMode (see DELIVERY_MODES.md): required and greater than zero for
+ * PAYMENT_REQUIRED, optional for APPROVAL_ONLY/PREVIEW_ONLY. This schema
+ * validates the *shape* of a submitted amount when one is present; the
+ * required-for-PAYMENT_REQUIRED rule is enforced by the superRefine below,
+ * where deliveryMode is in scope.
+ */
 const amountSchema = z
   .string()
   .trim()
-  .min(1, "Amount is required.")
-  .regex(AMOUNT_PATTERN, "Enter a valid amount with up to 2 decimal places.")
-  .refine((value) => Number(value) > 0, "Amount must be greater than zero.")
-  .refine((value) => Number(value) <= 9999999999.99, "Amount is too large.");
+  .optional()
+  .transform((value) => (value ? value : undefined))
+  .refine((value) => value === undefined || AMOUNT_PATTERN.test(value), "Enter a valid amount with up to 2 decimal places.")
+  .refine((value) => value === undefined || Number(value) > 0, "Amount must be greater than zero.")
+  .refine((value) => value === undefined || Number(value) <= 9999999999.99, "Amount is too large.");
 
 const currencySchema = z.enum(SUPPORTED_CURRENCIES, {
   error: "Select a supported currency.",
@@ -60,18 +69,40 @@ const dueDateSchema = z
 
 const clientIdSchema = z.string().trim().min(1, "Select a client.");
 
-export const workspaceCreateSchema = z.object({
+export const DELIVERY_MODES = ["PAYMENT_REQUIRED", "APPROVAL_ONLY", "PREVIEW_ONLY"] as const;
+export type DeliveryModeInput = (typeof DELIVERY_MODES)[number];
+
+const deliveryModeSchema = z.enum(DELIVERY_MODES, { error: "Select a delivery type." });
+
+const workspaceBaseSchema = z.object({
   title: titleSchema,
   clientId: clientIdSchema,
   description: descriptionSchema,
+  deliveryMode: deliveryModeSchema,
   currency: currencySchema,
   amount: amountSchema,
   dueDate: dueDateSchema,
   watermarkText: watermarkTextSchema,
 });
 
+/**
+ * PAYMENT_REQUIRED requires an amount (section 5 of REQUIREMENTS_ALIGNMENT.md
+ * — "Amount required, amount greater than zero"); APPROVAL_ONLY and
+ * PREVIEW_ONLY never require one. The shape/positivity of a *submitted*
+ * amount is already checked by amountSchema above regardless of mode.
+ */
+function requireAmountForPaymentRequired(
+  data: { deliveryMode: DeliveryModeInput; amount: string | undefined },
+  ctx: z.RefinementCtx,
+) {
+  if (data.deliveryMode === "PAYMENT_REQUIRED" && data.amount === undefined) {
+    ctx.addIssue({ code: "custom", path: ["amount"], message: "Amount is required for payment-required workspaces." });
+  }
+}
+
+export const workspaceCreateSchema = workspaceBaseSchema.superRefine(requireAmountForPaymentRequired);
 export type WorkspaceCreateInput = z.infer<typeof workspaceCreateSchema>;
 
 /** Same shape as create — every editable field may be resubmitted. Financial-lock enforcement (amount/currency) happens in the data-access layer, where the workspace's current status is known. */
-export const workspaceUpdateSchema = workspaceCreateSchema;
+export const workspaceUpdateSchema = workspaceBaseSchema.superRefine(requireAmountForPaymentRequired);
 export type WorkspaceUpdateInput = z.infer<typeof workspaceUpdateSchema>;

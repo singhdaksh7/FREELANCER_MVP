@@ -46,8 +46,10 @@ export interface ReviewContext {
     id: string;
     title: string;
     description: string | null;
-    amount: number;
+    /** null for an APPROVAL_ONLY/PREVIEW_ONLY workspace with no price set. */
+    amount: number | null;
     currency: string;
+    deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
     status: string;
     watermarkText: string | null;
     /** Approved business-facing identity only — never email/internal ids. */
@@ -89,7 +91,7 @@ export async function authorizeReviewToken(rawToken: string): Promise<ReviewCont
   if (link.status === "REVOKED") {
     throw new ReviewLinkRevokedError();
   }
-  if (link.status === "EXPIRED" || link.expiresAt <= new Date()) {
+  if (link.status === "EXPIRED" || (link.expiresAt !== null && link.expiresAt <= new Date())) {
     throw new ReviewLinkExpiredError();
   }
   if (link.workspace.status === "CANCELLED") {
@@ -103,8 +105,9 @@ export async function authorizeReviewToken(rawToken: string): Promise<ReviewCont
       id: link.workspace.id,
       title: link.workspace.title,
       description: link.workspace.description,
-      amount: Number(link.workspace.amount),
+      amount: link.workspace.amount === null ? null : Number(link.workspace.amount),
       currency: link.workspace.currency,
+      deliveryMode: link.workspace.deliveryMode,
       status: link.workspace.status,
       watermarkText: link.workspace.watermarkText,
       creatorName: link.workspace.creator.name,

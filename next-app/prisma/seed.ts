@@ -171,39 +171,95 @@ async function seedArjun() {
     ],
   });
 
+  // Phase 7 — Payment/WorkspaceApproval now require a reviewLinkId. These
+  // seeded workspaces predate the real review/approval pipeline (no real
+  // WorkspaceFile/FileVersion rows), so a minimal (already-consumed,
+  // decorative) ReviewLink + empty-snapshot WorkspaceApproval are created
+  // here purely to satisfy required relations for this demo data — never
+  // how a real approval is produced (see src/data-access/approvals.ts and
+  // src/data-access/review-links.ts for the real flows).
+  await prisma.reviewLink.createMany({
+    data: [
+      {
+        id: "rl_product_pkg",
+        workspaceId: productPkg.id,
+        tokenHash: "seed_hash_product_pkg",
+        tokenPrefix: "seedpkg1",
+        expiresAt: new Date("2026-08-16T11:00:00Z"),
+        createdById: arjun.id,
+      },
+      {
+        id: "rl_ecommerce",
+        workspaceId: ecommerce.id,
+        tokenHash: "seed_hash_ecommerce",
+        tokenPrefix: "seedecom1",
+        expiresAt: new Date("2026-08-26T16:20:00Z"),
+        createdById: arjun.id,
+      },
+    ],
+  });
+
+  await prisma.workspaceApproval.createMany({
+    data: [
+      {
+        id: "appr_product_pkg",
+        workspaceId: productPkg.id,
+        reviewLinkId: "rl_product_pkg",
+        approvedFileVersionSnapshot: [],
+        reviewerName: "Karan Mehta",
+        status: "APPROVED",
+        termsAccepted: true,
+        approvedAt: new Date("2026-07-17T11:00:00Z"),
+      },
+      {
+        id: "appr_ecommerce",
+        workspaceId: ecommerce.id,
+        reviewLinkId: "rl_ecommerce",
+        approvedFileVersionSnapshot: [],
+        reviewerName: "Priya Verma",
+        status: "APPROVED",
+        termsAccepted: true,
+        approvedAt: new Date("2026-07-27T16:20:00Z"),
+      },
+    ],
+  });
+
   await prisma.payment.createMany({
     data: [
       {
         id: "pay_101",
         workspaceId: productPkg.id,
+        approvalId: "appr_product_pkg",
+        reviewLinkId: "rl_product_pkg",
         amount: "30000.00",
+        amountSubunits: BigInt(3_000_000),
         currency: "INR",
         status: PaymentStatus.PAID,
         gateway: "razorpay",
         gatewayOrderId: "order_demo_pay_101",
         gatewayPaymentId: "pay_gw_demo_101",
+        gatewaySignatureVerifiedAt: new Date("2026-07-18T15:44:00Z"),
+        capturedAt: new Date("2026-07-18T15:45:00Z"),
         feeAmount: "750.00",
         paidAt: new Date("2026-07-18T15:45:00Z"),
+        attemptNumber: 1,
+        idempotencyKey: "seed-idem-pay-101",
         createdAt: new Date("2026-07-17T11:00:00Z"),
       },
       {
         id: "pay_102",
         workspaceId: ecommerce.id,
+        approvalId: "appr_ecommerce",
+        reviewLinkId: "rl_ecommerce",
         amount: "45000.00",
+        amountSubunits: BigInt(4_500_000),
         currency: "INR",
         status: PaymentStatus.PENDING,
         gateway: "razorpay",
         gatewayOrderId: "order_demo_pay_102",
+        attemptNumber: 1,
+        idempotencyKey: "seed-idem-pay-102",
         createdAt: new Date("2026-07-27T16:25:00Z"),
-      },
-      {
-        id: "pay_103",
-        workspaceId: brandIdentity.id,
-        amount: "25000.00",
-        currency: "INR",
-        status: PaymentStatus.CREATED,
-        gateway: "razorpay",
-        createdAt: new Date("2026-07-20T10:36:00Z"),
       },
     ],
   });
@@ -283,7 +339,7 @@ async function seedArjun() {
     ],
   });
 
-  console.log(`✓ Seeded Arjun Raj (${arjun.email}) — 4 clients, 4 workspaces, 3 payments, 7 notifications.`);
+  console.log(`✓ Seeded Arjun Raj (${arjun.email}) — 4 clients, 4 workspaces, 2 payments, 7 notifications.`);
 }
 
 async function seedMeera() {
@@ -368,18 +424,49 @@ async function seedMeera() {
     ],
   });
 
+  await prisma.reviewLink.create({
+    data: {
+      id: "rl_menu_design",
+      workspaceId: menuDesign.id,
+      tokenHash: "seed_hash_menu_design",
+      tokenPrefix: "seedmenu1",
+      expiresAt: new Date("2026-08-13T09:00:00Z"),
+      createdById: meera.id,
+    },
+  });
+
+  await prisma.workspaceApproval.create({
+    data: {
+      id: "appr_menu_design",
+      workspaceId: menuDesign.id,
+      reviewLinkId: "rl_menu_design",
+      approvedFileVersionSnapshot: [],
+      reviewerName: "Farhan Ali",
+      status: "APPROVED",
+      termsAccepted: true,
+      approvedAt: new Date("2026-07-14T09:00:00Z"),
+    },
+  });
+
   await prisma.payment.create({
     data: {
       id: "pay_201",
       workspaceId: menuDesign.id,
+      approvalId: "appr_menu_design",
+      reviewLinkId: "rl_menu_design",
       amount: "15000.00",
+      amountSubunits: BigInt(1_500_000),
       currency: "INR",
       status: PaymentStatus.PAID,
       gateway: "razorpay",
       gatewayOrderId: "order_demo_pay_201",
       gatewayPaymentId: "pay_gw_demo_201",
+      gatewaySignatureVerifiedAt: new Date("2026-07-15T13:29:00Z"),
+      capturedAt: new Date("2026-07-15T13:30:00Z"),
       feeAmount: "375.00",
       paidAt: new Date("2026-07-15T13:30:00Z"),
+      attemptNumber: 1,
+      idempotencyKey: "seed-idem-pay-201",
       createdAt: new Date("2026-07-14T09:05:00Z"),
     },
   });
@@ -412,9 +499,30 @@ async function seedMeera() {
   console.log(`✓ Seeded Meera Shah (${meera.email}) — 2 clients, 2 workspaces, 1 payment, 2 notifications.`);
 }
 
+/** Phase 7.5 — a demo ADMIN account so the /admin portal is reachable in dev/test without a manual DB edit. Has no clients/workspaces of its own. */
+async function seedAdmin() {
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
+
+  const admin = await prisma.user.upsert({
+    where: { email: "admin@example.com" },
+    update: { name: "Priya Admin", passwordHash, role: "ADMIN" },
+    create: {
+      id: "usr_admin",
+      name: "Priya Admin",
+      email: "admin@example.com",
+      passwordHash,
+      role: "ADMIN",
+      image: null,
+    },
+  });
+
+  console.log(`✓ Seeded admin account (${admin.email}).`);
+}
+
 async function main() {
   await seedArjun();
   await seedMeera();
+  await seedAdmin();
 }
 
 main()

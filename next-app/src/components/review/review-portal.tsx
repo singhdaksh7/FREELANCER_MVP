@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lock, ShieldCheck, MessageSquare, X } from "lucide-react";
+import { Lock, ShieldCheck, MessageSquare, X, MapPin } from "lucide-react";
 import { ReviewCommentsPanel } from "./review-comments-panel";
 import { RequestChangesModal } from "./request-changes-modal";
 import { ApproveProjectModal } from "./approve-project-modal";
+import { PaymentPanel } from "./payment-panel";
+import { PinOverlay } from "./pin-overlay";
+import { AnnotationCanvas } from "./annotation-canvas";
+import { ClientSupportModal } from "./client-support-modal";
+import type { SupportTicketSummary } from "@/data-access/support-tickets";
 import { formatDateTime } from "@/lib/format-date";
 import type { ReviewableFile } from "@/data-access/review-files";
 import type { ReviewCommentThreadItem } from "@/data-access/review-comments";
@@ -15,13 +20,17 @@ export interface ReviewPortalProps {
   token: string;
   workspace: {
     title: string;
-    amount: number;
+    /** null for an APPROVAL_ONLY/PREVIEW_ONLY workspace with no price set. */
+    amount: number | null;
     currency: string;
     creatorName: string;
     client: { name: string };
+    deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
+    status: string;
   };
   files: ReviewableFile[];
   comments: ReviewCommentThreadItem[];
+  supportTickets: SupportTicketSummary[];
   activeChangeRequest: ActiveChangeRequest | null;
   approval: ApprovalSummary | null;
 }
@@ -34,7 +43,7 @@ interface PreviewState {
   error: string | null;
 }
 
-export function ReviewPortal({ token, workspace, files, comments, activeChangeRequest, approval }: ReviewPortalProps) {
+export function ReviewPortal({ token, workspace, files, comments, supportTickets, activeChangeRequest, approval }: ReviewPortalProps) {
   const [activeFileId, setActiveFileId] = useState(files[0]?.id ?? null);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(files[0]?.currentVersionId ?? null);
   const [reviewerName, setReviewerName] = useState(workspace.client.name ?? "");
@@ -45,8 +54,21 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
   // the server-revalidated `activeChangeRequest` prop alone.
   const [changeRequestJustSubmitted, setChangeRequestJustSubmitted] = useState(false);
   const [preview, setPreview] = useState<PreviewState>({ loading: false, url: null, locked: false, message: null, error: null });
+  const [addPinMode, setAddPinMode] = useState(false);
+  const [pendingPin, setPendingPin] = useState<{ x: number; y: number } | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+  const [annotateMode, setAnnotateMode] = useState(false);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
+  // Terminal statuses after which the portal becomes read-only — history
+  // stays visible, but no further comments/approval/payment/requests/pins
+  // are possible. See "Master review link behaviour" in
+  // REQUIREMENTS_ALIGNMENT.md.
+  const isReadOnly = workspace.status === "DELIVERED" || workspace.status === "CLOSED";
+  const canPin = activeFile?.fileKind === "IMAGE" && !isReadOnly;
+  const visiblePins = comments.filter(
+    (c) => c.workspaceFileId === activeFileId && c.fileVersionId === activeVersionId && c.pinNumber !== null,
+  );
 
   useEffect(() => {
     if (!activeFileId || !activeVersionId) return;
@@ -81,11 +103,17 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
   function selectFile(file: ReviewableFile) {
     setActiveFileId(file.id);
     setActiveVersionId(file.currentVersionId);
+    setAddPinMode(false);
+    setPendingPin(null);
   }
 
+  const isPreviewOnly = workspace.deliveryMode === "PREVIEW_ONLY";
   const hasOpenChangeRequest = Boolean(activeChangeRequest) || changeRequestJustSubmitted;
-  const canRequestChanges = !approved && !hasOpenChangeRequest;
-  const canApprove = !approved && !hasOpenChangeRequest;
+  const canRequestChanges = !approved && !hasOpenChangeRequest && !isReadOnly;
+  // A preview-only client can never approve for delivery — leaving a
+  // comment or requesting changes is the only available action. See
+  // DELIVERY_MODES.md.
+  const canApprove = !approved && !hasOpenChangeRequest && !isPreviewOnly && !isReadOnly;
   const currentVersionNumber = activeFile?.versions.find((v) => v.id === activeVersionId)?.versionNumber;
 
   return (
@@ -100,13 +128,16 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setMobileCommentsOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1.5 text-xs font-semibold text-white sm:hidden"
-        >
-          <MessageSquare size={14} aria-hidden="true" /> Comments ({comments.length})
-        </button>
+        <div className="flex items-center gap-2">
+          <ClientSupportModal token={token} tickets={supportTickets} reviewerName={reviewerName} />
+          <button
+            type="button"
+            onClick={() => setMobileCommentsOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1.5 text-xs font-semibold text-white sm:hidden"
+          >
+            <MessageSquare size={14} aria-hidden="true" /> Comments ({comments.length})
+          </button>
+        </div>
       </header>
 
       {files.length === 0 ? (
@@ -137,7 +168,11 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
                   <button
                     key={v.id}
                     type="button"
-                    onClick={() => setActiveVersionId(v.id)}
+                    onClick={() => {
+                      setActiveVersionId(v.id);
+                      setAddPinMode(false);
+                      setPendingPin(null);
+                    }}
                     className={`rounded px-2 py-1 ${
                       v.id === activeVersionId ? "bg-white/20 font-semibold text-white" : "text-slate-400 hover:text-white"
                     }`}
@@ -148,7 +183,43 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
               </div>
             )}
 
-            <div className="flex flex-1 items-center justify-center bg-black/40 p-4 sm:p-8">
+            {canPin && !annotateMode && (
+              <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-vault-navy px-4 py-1.5 sm:px-6">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddPinMode((prev) => !prev);
+                      setPendingPin(null);
+                    }}
+                    aria-pressed={addPinMode}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ${
+                      addPinMode ? "bg-vault-blue text-white" : "text-slate-300 hover:bg-white/10"
+                    }`}
+                  >
+                    <MapPin size={12} aria-hidden="true" /> {addPinMode ? "Click the image to place a pin" : "Add Pin"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnnotateMode(true)}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                  >
+                    Annotate
+                  </button>
+                </div>
+                {pendingPin && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingPin(null)}
+                    className="text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Cancel pin
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="relative flex flex-1 items-center justify-center bg-black/40 p-4 sm:p-8">
               {preview.loading && <p className="text-sm text-slate-400">Loading protected preview…</p>}
               {preview.error && <p className="text-sm text-danger">{preview.error}</p>}
               {preview.locked && (
@@ -158,12 +229,39 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
                 </div>
               )}
               {preview.url && (
-                // eslint-disable-next-line @next/next/no-img-element -- short-lived signed preview URL, not a static asset
-                <img
-                  src={preview.url}
-                  alt={`Protected preview of ${activeFile?.displayName ?? "file"}`}
-                  className="max-h-[70vh] w-full max-w-3xl rounded-md object-contain"
-                />
+                <div className="relative inline-block max-h-[70vh] w-full max-w-3xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed preview URL, not a static asset */}
+                  <img
+                    src={preview.url}
+                    alt={`Protected preview of ${activeFile?.displayName ?? "file"}`}
+                    className="max-h-[70vh] w-full rounded-md object-contain"
+                  />
+                  {annotateMode && activeFileId && activeVersionId ? (
+                    <AnnotationCanvas
+                      token={token}
+                      workspaceFileId={activeFileId}
+                      fileVersionId={activeVersionId}
+                      reviewerName={reviewerName}
+                      onClose={() => setAnnotateMode(false)}
+                    />
+                  ) : (
+                    <PinOverlay
+                      pins={visiblePins}
+                      addPinMode={addPinMode}
+                      pendingPin={pendingPin}
+                      highlightedCommentId={highlightedCommentId}
+                      onPlacePin={(x, y) => {
+                        setPendingPin({ x, y });
+                        setAddPinMode(false);
+                        setMobileCommentsOpen(true);
+                      }}
+                      onSelectPin={(commentId) => {
+                        setHighlightedCommentId(commentId);
+                        setMobileCommentsOpen(true);
+                      }}
+                    />
+                  )}
+                </div>
               )}
             </div>
 
@@ -173,17 +271,44 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
 
             <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-vault-navy-light p-3 sm:p-4">
               {approved || approval ? (
-                <div className="flex flex-col items-center gap-1 text-center">
+                <div className="flex w-full max-w-sm flex-col items-center gap-3 text-center">
                   <p className="text-sm font-semibold text-success">
                     Approved{approval ? ` by ${approval.reviewerName} on ${formatDateTime(approval.approvedAt)}` : ""}
                   </p>
-                  <p className="text-xs text-slate-400">
-                    Amount due: this workspace&apos;s price, shown from the project record. Payment isn&apos;t available yet
-                    (Phase 7).
-                  </p>
+                  {workspace.deliveryMode === "PAYMENT_REQUIRED" ? (
+                    <PaymentPanel
+                      token={token}
+                      amount={workspace.amount ?? 0}
+                      currency={workspace.currency}
+                      workspaceTitle={workspace.title}
+                      creatorName={workspace.creatorName}
+                      clientName={workspace.client.name}
+                    />
+                  ) : workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED" ? (
+                    <p className="text-xs text-slate-400">
+                      Files released — use your download link from earlier in this conversation, or ask the creator
+                      to resend it.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-400">
+                      Approved — waiting for the creator to release files.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <>
+                  {isPreviewOnly && isReadOnly && (
+                    <p role="status" className="w-full text-center text-xs text-slate-400">
+                      This project is closed. Comment and version history remain visible, but no further comments or
+                      changes can be submitted.
+                    </p>
+                  )}
+                  {isPreviewOnly && !isReadOnly && (
+                    <p role="status" className="w-full text-center text-xs text-slate-400">
+                      This is a preview-only project — leave a comment or request changes below. Original files are
+                      not released through Project Vault.
+                    </p>
+                  )}
                   {hasOpenChangeRequest && (
                     <p role="status" className="w-full text-center text-xs text-warning">
                       Change request submitted — waiting on a new revision before you can approve.
@@ -200,6 +325,7 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
                     <ApproveProjectModal
                       token={token}
                       amount={workspace.amount}
+                      deliveryMode={workspace.deliveryMode}
                       files={files}
                       reviewerName={reviewerName}
                       onApproved={() => setApproved(true)}
@@ -217,8 +343,14 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
                 token={token}
                 comments={comments}
                 activeFileId={activeFileId}
+                activeVersionId={activeVersionId}
                 reviewerName={reviewerName}
                 onReviewerNameChange={setReviewerName}
+                readOnly={isReadOnly}
+                pendingPin={pendingPin}
+                onPinCommentSubmitted={() => setPendingPin(null)}
+                highlightedCommentId={highlightedCommentId}
+                onSelectComment={setHighlightedCommentId}
               />
             </div>
           </aside>
@@ -247,8 +379,14 @@ export function ReviewPortal({ token, workspace, files, comments, activeChangeRe
               token={token}
               comments={comments}
               activeFileId={activeFileId}
+              activeVersionId={activeVersionId}
               reviewerName={reviewerName}
               onReviewerNameChange={setReviewerName}
+              readOnly={isReadOnly}
+              pendingPin={pendingPin}
+              onPinCommentSubmitted={() => setPendingPin(null)}
+              highlightedCommentId={highlightedCommentId}
+              onSelectComment={setHighlightedCommentId}
             />
           </div>
         </div>

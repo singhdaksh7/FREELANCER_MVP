@@ -28,6 +28,7 @@ const CONTEXT = {
     watermarkText: null,
     creatorName: "Arjun Raj",
     client: { name: "Rohit Sharma" },
+    deliveryMode: "PAYMENT_REQUIRED" as const,
   },
 };
 
@@ -41,7 +42,7 @@ describe("createChangeRequest — validation", () => {
 describe("createChangeRequest — duplicate prevention", () => {
   it("refuses a second OPEN change request instead of creating a duplicate", async () => {
     const { createChangeRequest, ChangeRequestAlreadyOpenError } = await import("./change-requests");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED" });
     prismaMock.changeRequest.findFirst.mockResolvedValue({ id: "cr_existing", status: "OPEN" });
 
     await expect(createChangeRequest(CONTEXT, { summary: "Please fix the logo colors" })).rejects.toBeInstanceOf(
@@ -55,7 +56,7 @@ describe("createChangeRequest — workflow transition", () => {
   it("refuses when the workspace isn't IN_REVIEW", async () => {
     const { createChangeRequest } = await import("./change-requests");
     const { InvalidStatusTransitionError } = await import("@/lib/workspace-transitions");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "DRAFT" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "DRAFT", deliveryMode: "PAYMENT_REQUIRED" });
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
 
     await expect(createChangeRequest(CONTEXT, { summary: "Please fix the logo colors" })).rejects.toBeInstanceOf(
@@ -65,7 +66,7 @@ describe("createChangeRequest — workflow transition", () => {
 
   it("creates the change request and moves the workspace to CHANGES_REQUESTED", async () => {
     const { createChangeRequest } = await import("./change-requests");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED" });
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
 
     await createChangeRequest(CONTEXT, { summary: "Please fix the logo colors", reviewerName: "Rohit" });
@@ -77,7 +78,7 @@ describe("createChangeRequest — workflow transition", () => {
 
   it("does not automatically resolve any open comments", async () => {
     const { createChangeRequest } = await import("./change-requests");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED" });
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
 
     await createChangeRequest(CONTEXT, { summary: "Please fix the logo colors" });

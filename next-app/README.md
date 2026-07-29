@@ -1,6 +1,6 @@
-# Project Vault — Next.js App (Phase 6)
+# Project Vault — Next.js App (Phase 7)
 
-This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 through 6**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, real PostgreSQL persistence + creator authentication (Phase 3), real client/workspace mutations (Phase 4), secure creator file uploads/protected previews (Phase 5), and — new in Phase 6 — the full secure client-review portal: review-link issuance/revocation/regeneration, token-authorized preview access, comments/replies, change requests, file-version re-upload, revision submission, and approval (without payment or file unlocking, which remain Phase 7). See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `MUTATION_ARCHITECTURE.md` for the Phase 4 mutation architecture, `FILE_STORAGE_ARCHITECTURE.md` for the Phase 5 storage/upload/processing architecture, `FILE_PROCESSING_RUNBOOK.md` for hands-on worker/storage operations, `CLIENT_REVIEW_ARCHITECTURE.md` for the Phase 6 review-workflow architecture, `REVIEW_TOKEN_SECURITY.md` for the review-token security design, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
+This is the Next.js App Router rewrite of Project Vault, developed side-by-side with the original Vite prototype (which lives at the repository root, one directory up from here, and remains untouched and runnable). This app now covers **Phase 1 through 7**: foundation/visual-parity for public screens, the creator shell + read-only creator screens, real PostgreSQL persistence + creator authentication (Phase 3), real client/workspace mutations (Phase 4), secure creator file uploads/protected previews (Phase 5), the full secure client-review portal (Phase 6), and — new in Phase 7 — the complete verified payment-to-delivery workflow: Razorpay payment orders, Checkout signature verification, webhook-verified capture, a centralized idempotent finalization service, a standalone delivery-bundle worker, and hash-at-rest secure download grants for individual/bundle original downloads (emails, refunds, and tax invoices remain out of scope). See `MIGRATION_STATUS.md` for full scope, `AUTH_DATABASE_ARCHITECTURE.md` for the auth/database architecture, `MUTATION_ARCHITECTURE.md` for the Phase 4 mutation architecture, `FILE_STORAGE_ARCHITECTURE.md` for the Phase 5 storage/upload/processing architecture, `FILE_PROCESSING_RUNBOOK.md` for hands-on worker/storage operations, `CLIENT_REVIEW_ARCHITECTURE.md` for the Phase 6 review-workflow architecture, `REVIEW_TOKEN_SECURITY.md` for the review-token security design, `PAYMENT_ARCHITECTURE.md`/`WEBHOOK_SECURITY.md`/`SECURE_DOWNLOAD_ARCHITECTURE.md` for the Phase 7 payment/delivery architecture, `RAZORPAY_TEST_MODE_CHECKLIST.md` for manual staging verification, `DATABASE_SETUP.md` for hands-on database setup, `VISUAL_PARITY.md` for a screen-by-screen comparison against the original, and `CREATOR_COMPONENT_MAP.md` for the creator-screen component inventory.
 
 ## Requirements
 
@@ -64,6 +64,14 @@ npm run worker:files
 ```
 
 A separate, long-lived process — required alongside `npm run dev` for uploaded files to ever leave the `Processing` state. See `FILE_PROCESSING_RUNBOOK.md` for full operational detail. `npm run worker:files:once` processes at most one pending job and exits (used by integration tests and manual debugging).
+
+## Delivery-bundle worker (Phase 7)
+
+```bash
+npm run worker:deliveries
+```
+
+A separate, long-lived process — required alongside `npm run dev` for a captured payment's originals to ever become downloadable (`FILES_UNLOCKED`). Without it running, a `PAID` workspace will sit "preparing files" indefinitely — expected, not a bug (see `SECURE_DOWNLOAD_ARCHITECTURE.md`). `npm run worker:deliveries:once` processes at most one pending job and exits (used by integration tests). Payments themselves default to the deterministic `fake` gateway (`PAYMENT_PROVIDER="fake"`) unless real Razorpay credentials are configured — see `PAYMENT_ARCHITECTURE.md` and `RAZORPAY_TEST_MODE_CHECKLIST.md`.
 
 ## Build
 

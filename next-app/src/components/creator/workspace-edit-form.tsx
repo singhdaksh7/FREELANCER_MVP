@@ -14,11 +14,17 @@ export interface WorkspaceEditFormProps {
 
 const initialState: WorkspaceFormState = {};
 
-/** Single-page workspace edit form. Amount/currency/client are locked (with an explanatory note) once the workspace has reached a paid/delivered status. */
+/**
+ * Single-page workspace edit form. Client is locked once the workspace has
+ * reached a paid/delivered status; amount/currency lock earlier, from
+ * APPROVED onward, since that's when WorkspaceApproval freezes the amount
+ * a payment order will be created from.
+ */
 export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFormProps) {
   const [state, formAction, pending] = useActionState(updateWorkspaceAction, initialState);
   const router = useRouter();
   const locked = workspace.financiallyLocked;
+  const amountLocked = workspace.amountLocked;
 
   const values = state.values ?? {
     title: workspace.title,
@@ -27,7 +33,7 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
     dueDate: workspace.dueDate ?? "",
     watermarkText: workspace.watermarkText ?? "",
     currency: workspace.currency,
-    amount: String(workspace.amount),
+    amount: workspace.amount === null ? "" : String(workspace.amount),
   };
 
   const titleId = useId();
@@ -40,8 +46,8 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
   return (
     <form action={formAction} noValidate className="flex max-w-xl flex-col gap-5">
       <input type="hidden" name="workspaceId" value={workspace.id} />
-      {locked && <input type="hidden" name="currency" value={workspace.currency} />}
-      {locked && <input type="hidden" name="amount" value={String(workspace.amount)} />}
+      {amountLocked && <input type="hidden" name="currency" value={workspace.currency} />}
+      {amountLocked && <input type="hidden" name="amount" value={workspace.amount === null ? "" : String(workspace.amount)} />}
       {locked && <input type="hidden" name="clientId" value={workspace.clientId} />}
 
       {state.error && (
@@ -50,11 +56,18 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
         </p>
       )}
 
-      {locked && (
+      {locked ? (
         <p className="rounded-md bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted">
           This workspace has been paid, so its client, amount, and currency can no longer be changed. You can still
           edit the title, description, due date, and watermark text.
         </p>
+      ) : (
+        amountLocked && (
+          <p className="rounded-md bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted">
+            This workspace has been approved, so its amount and currency can no longer be changed. You can still
+            edit the title, description, client, due date, and watermark text.
+          </p>
+        )
       )}
 
       <div>
@@ -121,7 +134,7 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-ink">Currency</label>
-          {locked ? (
+          {amountLocked ? (
             <input disabled value={workspace.currency} className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
           ) : (
             <input name="currency" defaultValue={values.currency} disabled className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
@@ -131,8 +144,8 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
           <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-ink">
             Amount <span aria-hidden="true">*</span>
           </label>
-          {locked ? (
-            <input disabled value={workspace.amount} className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
+          {amountLocked ? (
+            <input disabled value={workspace.amount ?? ""} className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted" />
           ) : (
             <input
               id={amountId}

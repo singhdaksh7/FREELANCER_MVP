@@ -126,6 +126,76 @@ test.describe("workspace CRUD", () => {
     await expect(page.getByText("Draft", { exact: true }).first()).toBeVisible();
   });
 
+  test("creates a client inline during workspace creation, without leaving the wizard", async ({ page }) => {
+    const inlineClientName = `Playwright Inline Client ${RUN_ID}`;
+    const inlineClientEmail = `playwright-inline-${RUN_ID}@example.com`;
+    const inlineWorkspaceTitle = `Playwright Inline-Client Workspace ${RUN_ID}`;
+
+    await page.goto("/workspaces/new");
+    await page.getByLabel(/^title/i).fill(inlineWorkspaceTitle);
+
+    await page.getByRole("button", { name: /add new client/i }).click();
+    const dialog = page.getByRole("dialog", { name: /add new client/i });
+    await expect(dialog).toBeVisible();
+
+    // Submitting empty shows real validation instead of silently closing.
+    await dialog.getByRole("button", { name: /^add client$/i }).click();
+    await expect(dialog.getByText(/name is required/i)).toBeVisible();
+
+    await dialog.getByLabel(/client name/i).fill(inlineClientName);
+    await dialog.getByLabel(/^email/i).fill(inlineClientEmail);
+    await dialog.getByRole("button", { name: /^add client$/i }).click();
+
+    // Dialog closes and the new client is selected automatically — the
+    // wizard never left step 1, so the title typed above is preserved.
+    await expect(dialog).toBeHidden();
+    await expect(page.getByLabel(/^title/i)).toHaveValue(inlineWorkspaceTitle);
+    // The select (a combobox), not the now-closed modal's "Client name" textbox.
+    await expect(page.getByRole("combobox", { name: /^client/i })).toHaveValue(/.+/);
+    await expect(page.getByRole("combobox", { name: /^client/i }).locator("option:checked")).toHaveText(inlineClientName);
+
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4
+    await page.getByLabel(/^amount/i).fill("9999");
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5
+
+    await expect(page.getByText(inlineClientName, { exact: true })).toBeVisible();
+    await clickAndWaitForURL(
+      page,
+      page.getByRole("button", { name: /create draft workspace/i }),
+      /\/workspaces\/(?!new$)[a-z0-9]+$/,
+    );
+
+    await expect(page.getByRole("heading", { name: inlineWorkspaceTitle })).toBeVisible();
+    await expect(page.getByText(inlineClientName, { exact: true }).first()).toBeVisible();
+  });
+
+  test("creates an APPROVAL_ONLY workspace with no amount required, and the workspace detail page reflects it", async ({ page }) => {
+    const approvalOnlyTitle = `Playwright Approval-Only Workspace ${RUN_ID}`;
+
+    await page.goto("/workspaces/new");
+    await page.getByLabel(/^title/i).fill(approvalOnlyTitle);
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4
+
+    await page.getByRole("radio", { name: /approval only/i }).check();
+    // No online payment is collected for approval-only projects — amount field is optional/informational.
+    await expect(page.getByText(/no online payment is collected/i).first()).toBeVisible();
+
+    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5
+    await expect(page.getByText(/approval only/i)).toBeVisible();
+
+    await clickAndWaitForURL(
+      page,
+      page.getByRole("button", { name: /create draft workspace/i }),
+      /\/workspaces\/(?!new$)[a-z0-9]+$/,
+    );
+
+    await expect(page.getByRole("heading", { name: approvalOnlyTitle })).toBeVisible();
+  });
+
   test("a direct refresh of the workspace details page keeps the same data", async ({ page }) => {
     await page.goto(workspaceUrl);
     await page.reload();

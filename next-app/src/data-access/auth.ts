@@ -50,3 +50,17 @@ export async function requireCreatorRole(): Promise<AuthenticatedCreator> {
   }
   return user;
 }
+
+/**
+ * Same as requireAuthenticatedUser(), plus a role check for ADMIN-only
+ * data — see ADMIN_ARCHITECTURE.md. Required definitively in both the
+ * server layout (src/app/admin/layout.tsx) and every admin data-access
+ * function itself, never trusted from a single layer alone.
+ */
+export async function requireAdminRole(): Promise<AuthenticatedCreator> {
+  const user = await requireAuthenticatedUser();
+  if (user.role !== "ADMIN") {
+    redirect("/permission-denied");
+  }
+  return user;
+}

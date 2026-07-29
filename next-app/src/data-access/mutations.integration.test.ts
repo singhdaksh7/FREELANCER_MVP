@@ -135,6 +135,7 @@ describe("workspace mutations", () => {
       title: `IntegrationTest Workspace ${RUN_ID}`,
       clientId: createdClientIds[0],
       currency: "INR",
+      deliveryMode: "PAYMENT_REQUIRED",
       amount: "12345.00",
       description: undefined,
       dueDate: undefined,
@@ -158,6 +159,7 @@ describe("workspace mutations", () => {
         title: "Should Fail",
         clientId: "cli_devika",
         currency: "INR",
+        deliveryMode: "PAYMENT_REQUIRED",
         amount: "1000",
         description: undefined,
         dueDate: undefined,
@@ -176,6 +178,7 @@ describe("workspace mutations", () => {
       title: `IntegrationTest Workspace ${RUN_ID} (updated)`,
       clientId: createdClientIds[0],
       currency: "INR",
+      deliveryMode: "PAYMENT_REQUIRED",
       amount: "12345.00",
       description: undefined,
       dueDate: undefined,
@@ -200,6 +203,7 @@ describe("workspace mutations", () => {
         title: "Hijacked",
         clientId: createdClientIds[0],
         currency: "INR",
+        deliveryMode: "PAYMENT_REQUIRED",
         amount: "1",
         description: undefined,
         dueDate: undefined,
@@ -222,6 +226,7 @@ describe("workspace mutations", () => {
       title: before.title,
       clientId: before.clientId,
       currency: "INR",
+      deliveryMode: "PAYMENT_REQUIRED",
       amount: "1.00", // attempted tamper — must be ignored
       description: before.description ?? undefined,
       dueDate: undefined,
@@ -229,7 +234,7 @@ describe("workspace mutations", () => {
     });
 
     const after = await prisma.workspace.findUniqueOrThrow({ where: { id: "ws_product_pkg" } });
-    expect(after.amount.toString()).toBe(before.amount.toString());
+    expect(after.amount?.toString()).toBe(before.amount?.toString());
     expect(after.currency).toBe(before.currency);
   });
 
@@ -253,5 +258,84 @@ describe("workspace mutations", () => {
 
     const stored = await prisma.workspace.findUniqueOrThrow({ where: { id: "ws_product_pkg" } });
     expect(stored.status).toBe("PAID");
+  });
+});
+
+// Declared last (rather than inline with "client mutations" above) so that
+// pushing to the shared createdClientIds/createdWorkspaceIds arrays here
+// can't shift the createdClientIds[0]/createdWorkspaceIds[0] indices the
+// earlier describe blocks above rely on.
+describe("inline client creation (workspace wizard)", () => {
+  it("creates a client inline (workspace-wizard source) and logs both CLIENT_CREATED and INLINE_CLIENT_CREATED", async () => {
+    signInAs(ARJUN_ID);
+    const { createClient } = await import("./clients");
+
+    const { id } = await createClient(
+      {
+        name: `IntegrationTest Inline Client ${RUN_ID}`,
+        email: `integration-inline-client-${RUN_ID}@example.com`,
+        company: undefined,
+        phone: undefined,
+        notes: undefined,
+      },
+      { source: "INLINE_WIZARD" },
+    );
+    createdClientIds.push(id);
+
+    const stored = await prisma.client.findUniqueOrThrow({ where: { id } });
+    expect(stored.creatorId).toBe(ARJUN_ID);
+
+    const actions = await prisma.activityLog.findMany({ where: { clientId: id }, select: { action: true } });
+    expect(actions.map((a) => a.action)).toEqual(
+      expect.arrayContaining(["CLIENT_CREATED", "INLINE_CLIENT_CREATED"]),
+    );
+  });
+
+  it("a workspace created right after inline client creation can reference the new client, and another creator cannot", async () => {
+    signInAs(ARJUN_ID);
+    const { createClient } = await import("./clients");
+    const { createWorkspace } = await import("./workspaces");
+    const { OwnershipError } = await import("./authorization");
+
+    const { id: inlineClientId } = await createClient(
+      {
+        name: `IntegrationTest Inline Client B ${RUN_ID}`,
+        email: `integration-inline-client-b-${RUN_ID}@example.com`,
+        company: undefined,
+        phone: undefined,
+        notes: undefined,
+      },
+      { source: "INLINE_WIZARD" },
+    );
+    createdClientIds.push(inlineClientId);
+
+    const { id: workspaceId } = await createWorkspace({
+      title: `IntegrationTest Workspace via inline client ${RUN_ID}`,
+      clientId: inlineClientId,
+      deliveryMode: "PAYMENT_REQUIRED",
+      currency: "INR",
+      amount: "5000",
+      description: undefined,
+      dueDate: undefined,
+      watermarkText: undefined,
+    });
+    createdWorkspaceIds.push(workspaceId);
+
+    const stored = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+    expect(stored.clientId).toBe(inlineClientId);
+
+    signInAs(MEERA_ID);
+    await expect(
+      createWorkspace({
+        title: "Should Fail — not Meera's client",
+        clientId: inlineClientId,
+        deliveryMode: "PAYMENT_REQUIRED",
+        currency: "INR",
+        amount: "5000",
+        description: undefined,
+        dueDate: undefined,
+        watermarkText: undefined,
+      }),
+    ).rejects.toBeInstanceOf(OwnershipError);
   });
 });

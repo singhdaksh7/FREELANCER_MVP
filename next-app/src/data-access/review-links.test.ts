@@ -84,6 +84,16 @@ describe("createReviewLink — eligibility rules", () => {
     const activityCall = prismaMock.activityLog.create.mock.calls[0][0].data;
     expect(JSON.stringify(activityCall.metadata)).not.toContain(result.rawToken);
   });
+
+  it("creates a project-duration link (expiresAt null) by default — not a permanent claim, just no fixed TTL", async () => {
+    const { createReviewLink } = await import("./review-links");
+    prismaMock.workspaceFile.findMany.mockResolvedValue([{ status: "READY" }]);
+
+    const result = await createReviewLink("ws_1");
+    expect(result.expiresAt).toBeNull();
+    const createData = prismaMock.reviewLink.create.mock.calls[0][0].data;
+    expect(createData.expiresAt).toBeNull();
+  });
 });
 
 describe("createReviewLink — ownership boundary", () => {

@@ -43,7 +43,10 @@ export async function createChangeRequest(context: ReviewContext, input: Request
     throw new ChangeRequestValidationError(`Summary must be ${MAX_SUMMARY_LENGTH} characters or fewer.`);
   }
 
-  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: context.workspaceId }, select: { status: true } });
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: context.workspaceId },
+    select: { status: true, deliveryMode: true },
+  });
 
   const existingOpen = await prisma.changeRequest.findFirst({
     where: { workspaceId: context.workspaceId, status: "OPEN" },
@@ -52,7 +55,7 @@ export async function createChangeRequest(context: ReviewContext, input: Request
     throw new ChangeRequestAlreadyOpenError();
   }
 
-  assertWorkspaceTransition(workspace.status, "CHANGES_REQUESTED");
+  assertWorkspaceTransition(workspace.status, "CHANGES_REQUESTED", workspace.deliveryMode);
 
   const fullSummary =
     input.referencedCommentBodies && input.referencedCommentBodies.length > 0

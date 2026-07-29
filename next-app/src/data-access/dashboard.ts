@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from "./auth";
-import { toDisplayNumber } from "@/lib/decimal";
+import { toDisplayNumber, toDisplayNumberOrNull } from "@/lib/decimal";
 import { computeDashboardSummaryFromWorkspaces, type DashboardSummary } from "@/lib/dashboard-summary";
 import { formatActivityLabel } from "@/lib/activity-log";
 import type { WorkspaceListItem } from "./workspaces";
@@ -82,7 +82,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       title: w.title,
       description: w.description,
       currency: w.currency,
-      amount: toDisplayNumber(w.amount),
+      amount: toDisplayNumberOrNull(w.amount),
       status: w.status,
       progress: w.progress,
       hasActiveReviewLink: w.reviewLinks.length > 0,

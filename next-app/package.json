@@ -19,7 +19,9 @@
     "db:seed:test": "node scripts/guard-local-db.mjs --allow-test-suffix && node scripts/seed-test-db.mjs",
     "test:integration": "npm run db:seed:test && vitest run --config vitest.integration.config.ts",
     "worker:files": "tsx src/worker/process-files.ts",
-    "worker:files:once": "tsx src/worker/process-files.ts --once"
+    "worker:files:once": "tsx src/worker/process-files.ts --once",
+    "worker:deliveries": "tsx src/worker/process-deliveries.ts",
+    "worker:deliveries:once": "tsx src/worker/process-deliveries.ts --once"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1096.0",
@@ -28,6 +30,7 @@
     "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.3",
     "file-type": "^19.6.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.27.0",
     "next": "16.2.12",
     "next-auth": "^5.0.0-beta.32",

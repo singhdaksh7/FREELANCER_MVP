@@ -51,7 +51,7 @@ export async function approveWorkspace(context: ReviewContext, input: ApproveWor
 
   const workspace = await prisma.workspace.findUniqueOrThrow({
     where: { id: context.workspaceId },
-    select: { status: true },
+    select: { status: true, deliveryMode: true, amount: true, currency: true },
   });
 
   const existingApproval = await prisma.workspaceApproval.findFirst({
@@ -85,7 +85,15 @@ export async function approveWorkspace(context: ReviewContext, input: ApproveWor
     throw new ApprovalBlockedError("All submitted files must be ready before this project can be approved.");
   }
 
-  assertWorkspaceTransition(workspace.status, "APPROVED");
+  try {
+    assertWorkspaceTransition(workspace.status, "APPROVED", workspace.deliveryMode);
+  } catch {
+    throw new ApprovalBlockedError(
+      workspace.deliveryMode === "PREVIEW_ONLY"
+        ? "Preview-only projects cannot be approved for delivery — leave a comment or request changes instead."
+        : "This project is not currently open for approval.",
+    );
+  }
 
   const snapshot = submittedFiles.map((f) => ({
     workspaceFileId: f.id,
@@ -100,6 +108,12 @@ export async function approveWorkspace(context: ReviewContext, input: ApproveWor
         workspaceId: context.workspaceId,
         reviewLinkId: context.reviewLinkId,
         approvedFileVersionSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        // Phase 7.5 security-gate fix — freeze the amount/currency a
+        // payment order will use, at the moment of approval, independent
+        // of whatever Workspace.amount/currency read afterward. See
+        // PAYMENT_ARCHITECTURE.md "Order lifecycle."
+        approvedAmount: workspace.amount,
+        approvedCurrency: workspace.amount !== null ? workspace.currency : null,
         reviewerName,
         reviewerEmail: input.reviewerEmail?.trim() || null,
         status: "APPROVED",
@@ -108,7 +122,16 @@ export async function approveWorkspace(context: ReviewContext, input: ApproveWor
       },
       select: { id: true },
     });
-    await tx.workspace.update({ where: { id: context.workspaceId }, data: { status: "APPROVED", approvedAt: new Date() } });
+    // APPROVAL_ONLY has no client-driven step between approval and the
+    // creator's release action (unlike PAYMENT_REQUIRED, where creating a
+    // payment order is what moves APPROVED -> PAYMENT_PENDING) — so it
+    // moves straight to AWAITING_CREATOR_RELEASE here, in the same
+    // transaction as the approval itself. See DELIVERY_MODES.md.
+    const finalStatus = workspace.deliveryMode === "APPROVAL_ONLY" ? "AWAITING_CREATOR_RELEASE" : "APPROVED";
+    if (finalStatus === "AWAITING_CREATOR_RELEASE") {
+      assertWorkspaceTransition("APPROVED", finalStatus, workspace.deliveryMode);
+    }
+    await tx.workspace.update({ where: { id: context.workspaceId }, data: { status: finalStatus, approvedAt: new Date() } });
     await recordActivity(tx, {
       action: ActivityAction.PROJECT_APPROVED,
       actorType: "CLIENT",

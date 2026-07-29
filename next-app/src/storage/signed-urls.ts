@@ -20,3 +20,23 @@ export async function createUploadPresignedUrl(key: string, contentType: string)
 export async function createPreviewPresignedUrl(previewStorageKey: string): Promise<string> {
   return s3StorageProvider.createPresignedDownloadUrl(previewStorageKey, PREVIEW_URL_EXPIRY_SECONDS);
 }
+
+/**
+ * Phase 7 — very short-lived original/bundle download URLs. See
+ * SECURE_DOWNLOAD_ARCHITECTURE.md "Original authorization." Never
+ * long-lived or publicly cacheable; a fresh one is issued per authorized
+ * download request, never reused across requests.
+ */
+const ORIGINAL_DOWNLOAD_URL_EXPIRY_SECONDS = 60;
+
+export async function createOriginalDownloadPresignedUrl(originalStorageKey: string, contentDisposition?: string): Promise<string> {
+  return s3StorageProvider.createPresignedDownloadUrl(originalStorageKey, ORIGINAL_DOWNLOAD_URL_EXPIRY_SECONDS, {
+    responseContentDisposition: contentDisposition,
+  });
+}
+
+export async function createDeliveryBundlePresignedUrl(bundleStorageKey: string, contentDisposition?: string): Promise<string> {
+  return s3StorageProvider.createPresignedDownloadUrl(bundleStorageKey, ORIGINAL_DOWNLOAD_URL_EXPIRY_SECONDS, {
+    responseContentDisposition: contentDisposition,
+  });
+}

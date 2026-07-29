@@ -296,6 +296,166 @@ describe("comments", () => {
     expect(resolved.status).toBe("RESOLVED");
     expect(resolved.resolvedById).toBe(ARJUN_ID);
   });
+
+  it("keeps version 1 and version 2 conversations isolated — a comment on v1 never appears attached to v2 and vice versa", async () => {
+    signInAs(ARJUN_ID);
+    const { file, version: v1 } = await createReadyFile(ARJUN_WORKSPACE_ID, "it-version-isolation.jpg");
+    const v2 = await prisma.fileVersion.create({
+      data: {
+        fileId: file.id,
+        versionNumber: 2,
+        originalStorageKey: `originals/it-${file.id}-v2.jpg`,
+        previewStorageKey: `previews/it-${file.id}-v2.jpg`,
+        originalChecksum: "checksum-c",
+        previewChecksum: "checksum-d",
+        originalSizeBytes: BigInt(1000),
+        mimeType: "image/jpeg",
+        status: "READY",
+        submittedAt: new Date(),
+      },
+    });
+    await prisma.workspaceFile.update({ where: { id: file.id }, data: { currentVersionId: v2.id } });
+
+    const { createReviewLink } = await import("./review-links");
+    const { authorizeReviewToken } = await import("./review-auth");
+    const { addClientReviewComment, addCreatorReviewComment, getOwnedReviewCommentThreads } = await import("./review-comments");
+
+    const { rawToken } = await createReviewLink(ARJUN_WORKSPACE_ID);
+    createdReviewLinkIds.push((await prisma.reviewLink.findFirstOrThrow({ where: { workspaceId: ARJUN_WORKSPACE_ID, status: "ACTIVE" }, orderBy: { createdAt: "desc" } })).id);
+    const context = await authorizeReviewToken(rawToken);
+
+    const { id: v1CommentId } = await addClientReviewComment(context, {
+      body: "v1 feedback",
+      reviewerName: "Rohit",
+      workspaceFileId: file.id,
+      fileVersionId: v1.id,
+    });
+    const { id: v2CommentId } = await addClientReviewComment(context, {
+      body: "v2 feedback",
+      reviewerName: "Rohit",
+      workspaceFileId: file.id,
+      fileVersionId: v2.id,
+    });
+
+    // A reply to the v1 comment must inherit v1's version, even though v2 is now current.
+    const { id: replyId } = await addCreatorReviewComment(ARJUN_WORKSPACE_ID, { body: "Fixed in the next version.", parentId: v1CommentId });
+    const reply = await prisma.reviewComment.findUniqueOrThrow({ where: { id: replyId } });
+    expect(reply.fileVersionId).toBe(v1.id);
+
+    const threads = await getOwnedReviewCommentThreads(ARJUN_WORKSPACE_ID);
+    const v1Thread = threads.find((t) => t.id === v1CommentId)!;
+    const v2Thread = threads.find((t) => t.id === v2CommentId)!;
+    expect(v1Thread.fileVersionId).toBe(v1.id);
+    expect(v2Thread.fileVersionId).toBe(v2.id);
+    expect(v1Thread.replies.map((r) => r.id)).toContain(replyId);
+    expect(v2Thread.replies).toHaveLength(0);
+
+    // Client-side version filtering: viewing only v1 or only v2 sees a disjoint set.
+    const v1Visible = threads.filter((t) => t.workspaceFileId === file.id && t.fileVersionId === v1.id);
+    const v2Visible = threads.filter((t) => t.workspaceFileId === file.id && t.fileVersionId === v2.id);
+    expect(v1Visible.map((t) => t.id)).toEqual([v1CommentId]);
+    expect(v2Visible.map((t) => t.id)).toEqual([v2CommentId]);
+  });
+
+  it("assigns deterministic, per-version pin numbers — never carried forward to a new version", async () => {
+    signInAs(ARJUN_ID);
+    const { file, version: v1 } = await createReadyFile(ARJUN_WORKSPACE_ID, "it-pin-numbering.jpg");
+    const v2 = await prisma.fileVersion.create({
+      data: {
+        fileId: file.id,
+        versionNumber: 2,
+        originalStorageKey: `originals/it-${file.id}-pin-v2.jpg`,
+        previewStorageKey: `previews/it-${file.id}-pin-v2.jpg`,
+        originalChecksum: "checksum-e",
+        previewChecksum: "checksum-f",
+        originalSizeBytes: BigInt(1000),
+        mimeType: "image/jpeg",
+        status: "READY",
+        submittedAt: new Date(),
+      },
+    });
+
+    const { createReviewLink } = await import("./review-links");
+    const { authorizeReviewToken } = await import("./review-auth");
+    const { addClientReviewComment } = await import("./review-comments");
+
+    const { rawToken } = await createReviewLink(ARJUN_WORKSPACE_ID);
+    createdReviewLinkIds.push((await prisma.reviewLink.findFirstOrThrow({ where: { workspaceId: ARJUN_WORKSPACE_ID, status: "ACTIVE" }, orderBy: { createdAt: "desc" } })).id);
+    const context = await authorizeReviewToken(rawToken);
+
+    const pinA = await addClientReviewComment(context, { body: "first pin", reviewerName: "Rohit", workspaceFileId: file.id, fileVersionId: v1.id, pinX: 0.1, pinY: 0.1 });
+    const pinB = await addClientReviewComment(context, { body: "second pin", reviewerName: "Rohit", workspaceFileId: file.id, fileVersionId: v1.id, pinX: 0.2, pinY: 0.2 });
+    // A new version starts pin numbering over at 1 — never continues v1's sequence.
+    const pinC = await addClientReviewComment(context, { body: "first pin on v2", reviewerName: "Rohit", workspaceFileId: file.id, fileVersionId: v2.id, pinX: 0.3, pinY: 0.3 });
+
+    const commentA = await prisma.reviewComment.findUniqueOrThrow({ where: { id: pinA.id } });
+    const commentB = await prisma.reviewComment.findUniqueOrThrow({ where: { id: pinB.id } });
+    const commentC = await prisma.reviewComment.findUniqueOrThrow({ where: { id: pinC.id } });
+    expect(commentA.pinNumber).toBe(1);
+    expect(commentB.pinNumber).toBe(2);
+    expect(commentC.pinNumber).toBe(1);
+  });
+});
+
+describe("image annotations", () => {
+  it("client submits a freehand annotation with its related comment, stored together and safely", async () => {
+    signInAs(ARJUN_ID);
+    const { file, version } = await createReadyFile(ARJUN_WORKSPACE_ID, "it-annotation.jpg");
+
+    const { createReviewLink } = await import("./review-links");
+    const { authorizeReviewToken } = await import("./review-auth");
+    const { addClientAnnotatedComment } = await import("./annotations");
+
+    const { rawToken } = await createReviewLink(ARJUN_WORKSPACE_ID);
+    createdReviewLinkIds.push((await prisma.reviewLink.findFirstOrThrow({ where: { workspaceId: ARJUN_WORKSPACE_ID, status: "ACTIVE" }, orderBy: { createdAt: "desc" } })).id);
+    const context = await authorizeReviewToken(rawToken);
+
+    const { commentId, annotationId } = await addClientAnnotatedComment(context, {
+      body: "Please fix this area",
+      workspaceFileId: file.id,
+      fileVersionId: version.id,
+      annotation: { type: "FREEHAND", geometry: { strokes: [[[0.1, 0.1], [0.2, 0.2], [0.3, 0.1]]] } },
+      reviewerName: "Rohit",
+    });
+
+    const comment = await prisma.reviewComment.findUniqueOrThrow({ where: { id: commentId } });
+    expect(comment.workspaceFileId).toBe(file.id);
+    expect(comment.fileVersionId).toBe(version.id);
+
+    const annotation = await prisma.reviewAnnotation.findUniqueOrThrow({ where: { id: annotationId } });
+    expect(annotation.commentId).toBe(commentId);
+    expect(annotation.type).toBe("FREEHAND");
+    expect(annotation.geometry).toEqual({ strokes: [[[0.1, 0.1], [0.2, 0.2], [0.3, 0.1]]] });
+  });
+
+  it("rejects an annotation with out-of-range coordinates before writing anything", async () => {
+    signInAs(ARJUN_ID);
+    const { file, version } = await createReadyFile(ARJUN_WORKSPACE_ID, "it-annotation-invalid.jpg");
+
+    const { createReviewLink } = await import("./review-links");
+    const { authorizeReviewToken } = await import("./review-auth");
+    const { addClientAnnotatedComment, AnnotationValidationError } = await import("./annotations");
+
+    const { rawToken } = await createReviewLink(ARJUN_WORKSPACE_ID);
+    createdReviewLinkIds.push((await prisma.reviewLink.findFirstOrThrow({ where: { workspaceId: ARJUN_WORKSPACE_ID, status: "ACTIVE" }, orderBy: { createdAt: "desc" } })).id);
+    const context = await authorizeReviewToken(rawToken);
+
+    const beforeCommentCount = await prisma.reviewComment.count({ where: { workspaceFileId: file.id } });
+
+    await expect(
+      addClientAnnotatedComment(context, {
+        body: "Bad geometry",
+        workspaceFileId: file.id,
+        fileVersionId: version.id,
+        annotation: { type: "CIRCLE", geometry: { cx: 5, cy: 0.5, r: 0.1 } },
+        reviewerName: "Rohit",
+      }),
+    ).rejects.toBeInstanceOf(AnnotationValidationError);
+
+    // Validation fails before the comment is ever created — no orphaned comment.
+    const afterCommentCount = await prisma.reviewComment.count({ where: { workspaceFileId: file.id } });
+    expect(afterCommentCount).toBe(beforeCommentCount);
+  });
 });
 
 describe("change requests", () => {
@@ -324,7 +484,7 @@ describe("change requests", () => {
     const context = {
       reviewLinkId: link.id,
       workspaceId: ARJUN_WORKSPACE_ID,
-      workspace: { id: ARJUN_WORKSPACE_ID, title: "x", description: null, amount: 0, currency: "INR", status: "CHANGES_REQUESTED", watermarkText: null, creatorName: "Arjun Raj", client: { name: "Rohit" } },
+      workspace: { id: ARJUN_WORKSPACE_ID, title: "x", description: null, amount: 0, currency: "INR", status: "CHANGES_REQUESTED", watermarkText: null, creatorName: "Arjun Raj", client: { name: "Rohit" }, deliveryMode: "PAYMENT_REQUIRED" as const },
     };
 
     await expect(createChangeRequest(context, { summary: "Another request" })).rejects.toBeInstanceOf(ChangeRequestAlreadyOpenError);

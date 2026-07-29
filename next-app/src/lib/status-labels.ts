@@ -16,6 +16,8 @@ const WORKSPACE_STATUS_LABELS: Record<string, string> = {
   FILES_UNLOCKED: "Files Unlocked",
   DELIVERED: "Delivered",
   CANCELLED: "Cancelled",
+  AWAITING_CREATOR_RELEASE: "Awaiting Release",
+  CLOSED: "Closed",
 };
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -32,4 +34,30 @@ export function workspaceStatusLabel(status: string): string {
 
 export function paymentStatusLabel(status: string): string {
   return PAYMENT_STATUS_LABELS[status] ?? status;
+}
+
+const SUPPORT_TICKET_STATUS_LABELS: Record<string, string> = {
+  OPEN: "Open",
+  UNDER_REVIEW: "Under Review",
+  WAITING_FOR_CREATOR: "Waiting on Creator",
+  WAITING_FOR_CLIENT: "Waiting on Client",
+  RESOLVED: "Resolved",
+  CLOSED: "Closed",
+};
+
+export function supportTicketStatusLabel(status: string): string {
+  return SUPPORT_TICKET_STATUS_LABELS[status] ?? status;
+}
+
+const SUPPORT_TICKET_CATEGORY_LABELS: Record<string, string> = {
+  PAYMENT: "Payment",
+  DELIVERY: "Delivery",
+  QUALITY_DISPUTE: "Quality Dispute",
+  FILE_PROCESSING: "File Processing",
+  ACCOUNT: "Account",
+  OTHER: "Other",
+};
+
+export function supportTicketCategoryLabel(category: string): string {
+  return SUPPORT_TICKET_CATEGORY_LABELS[category] ?? category;
 }

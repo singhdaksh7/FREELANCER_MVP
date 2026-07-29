@@ -14,6 +14,8 @@ const ENV_KEYS = [
   "UPLOAD_MAX_TOTAL_WORKSPACE_BYTES",
   "UPLOAD_SESSION_EXPIRY_SECONDS",
   "E2E_LOCAL_BUILD",
+  "REVIEW_LINK_EXPIRY_DAYS",
+  "REVIEW_LINK_RETENTION_DAYS",
 ];
 
 const originalEnv: Record<string, string | undefined> = {};
@@ -124,5 +126,31 @@ describe("getUploadLimits", () => {
     process.env.UPLOAD_MAX_FILE_SIZE_BYTES = "not-a-number";
     const { getUploadLimits } = await import("./storage-config");
     expect(() => getUploadLimits()).toThrow();
+  });
+});
+
+describe("getReviewLinkConfig", () => {
+  it("defaults to a project-duration link (expiryDays null) — Phase 7.5 master-link behaviour", async () => {
+    delete process.env.REVIEW_LINK_EXPIRY_DAYS;
+    const { getReviewLinkConfig } = await import("./storage-config");
+    expect(getReviewLinkConfig().expiryDays).toBeNull();
+  });
+
+  it("defaults retentionDays to 180", async () => {
+    delete process.env.REVIEW_LINK_RETENTION_DAYS;
+    const { getReviewLinkConfig } = await import("./storage-config");
+    expect(getReviewLinkConfig().retentionDays).toBe(180);
+  });
+
+  it("opts into a fixed expiry when REVIEW_LINK_EXPIRY_DAYS is a positive number", async () => {
+    process.env.REVIEW_LINK_EXPIRY_DAYS = "30";
+    const { getReviewLinkConfig } = await import("./storage-config");
+    expect(getReviewLinkConfig().expiryDays).toBe(30);
+  });
+
+  it("respects an explicit retention override", async () => {
+    process.env.REVIEW_LINK_RETENTION_DAYS = "365";
+    const { getReviewLinkConfig } = await import("./storage-config");
+    expect(getReviewLinkConfig().retentionDays).toBe(365);
   });
 });

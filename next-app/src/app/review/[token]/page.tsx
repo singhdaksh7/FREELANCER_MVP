@@ -13,6 +13,7 @@ import { getReviewableFiles } from "@/data-access/review-files";
 import { getReviewCommentThreads } from "@/data-access/review-comments";
 import { getActiveChangeRequest } from "@/data-access/change-requests";
 import { getApprovalSummary } from "@/data-access/approvals";
+import { getClientSupportTickets } from "@/data-access/support-tickets";
 import { ReviewSystemState } from "@/components/review/review-system-state";
 import { ReviewPortal } from "@/components/review/review-portal";
 
@@ -63,11 +64,12 @@ async function loadReviewPortal(token: string): Promise<LoadResult> {
     const context = await authorizeReviewToken(token);
     await recordReviewLinkView(context.reviewLinkId);
 
-    const [files, comments, activeChangeRequest, approval] = await Promise.all([
+    const [files, comments, activeChangeRequest, approval, supportTickets] = await Promise.all([
       getReviewableFiles(context),
       getReviewCommentThreads(context.workspaceId),
       getActiveChangeRequest(context.workspaceId),
       getApprovalSummary(context.workspaceId),
+      getClientSupportTickets(context),
     ]);
 
     if (files.length === 0) {
@@ -84,9 +86,12 @@ async function loadReviewPortal(token: string): Promise<LoadResult> {
           currency: context.workspace.currency,
           creatorName: context.workspace.creatorName,
           client: context.workspace.client,
+          deliveryMode: context.workspace.deliveryMode,
+          status: context.workspace.status,
         },
         files,
         comments,
+        supportTickets,
         activeChangeRequest,
         approval,
       },

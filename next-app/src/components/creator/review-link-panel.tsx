@@ -19,7 +19,8 @@ export interface ReviewLinkPanelProps {
   reviewLink: {
     status: string;
     tokenPrefix: string;
-    expiresAt: string;
+    /** null for a project-duration master link — never call this "permanent" in UI copy. */
+    expiresAt: string | null;
     revokedAt: string | null;
     lastViewedAt: string | null;
     viewCount: number;
@@ -47,7 +48,7 @@ function useClipboardCopy() {
   return { copied, fallback, copy };
 }
 
-function OneTimeLinkReveal({ rawLink, expiresAt }: { rawLink: string; expiresAt?: string }) {
+function OneTimeLinkReveal({ rawLink, expiresAt }: { rawLink: string; expiresAt?: string | null }) {
   // Lazy initializer (not an effect): this component only ever mounts
   // client-side (rendered from a useActionState result after a form
   // submission), so `window` is always available here.
@@ -59,6 +60,11 @@ function OneTimeLinkReveal({ rawLink, expiresAt }: { rawLink: string; expiresAt?
     <div className="flex flex-col gap-2 rounded-md border border-vault-blue/30 bg-vault-blue-light p-4">
       <p className="text-sm font-semibold text-ink">
         Secure review link created{expiresAt ? ` — expires ${formatDate(expiresAt)}` : ""}.
+        {!expiresAt && (
+          <span className="block font-normal text-ink-muted">
+            Available for the duration of the project and retained according to your workspace history settings.
+          </span>
+        )}
       </p>
       <p className="text-xs text-ink-muted">
         Copy and share this link now. For security, the complete link is shown only this once — if it&apos;s lost,
@@ -176,7 +182,11 @@ export function ReviewLinkPanel({ workspaceId, workspaceTitle, reviewLink }: Rev
             Status: <span className="font-semibold text-ink">{reviewLink.status}</span> (token {reviewLink.tokenPrefix}
             …)
           </span>
-          <span>Expires {formatDate(reviewLink.expiresAt)}</span>
+          <span>
+            {reviewLink.expiresAt
+              ? `Expires ${formatDate(reviewLink.expiresAt)}`
+              : "Available for the duration of the project and retained according to your workspace history settings."}
+          </span>
           {reviewLink.viewCount > 0 && (
             <span>
               Viewed {reviewLink.viewCount} time{reviewLink.viewCount === 1 ? "" : "s"}

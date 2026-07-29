@@ -39,6 +39,9 @@ async function assertReviewLinkEligible(workspaceId: string, workspaceStatus: st
   if (workspaceStatus === "DELIVERED") {
     throw new ReviewLinkNotEligibleError("A delivered workspace cannot have a new review link.");
   }
+  if (workspaceStatus === "CLOSED") {
+    throw new ReviewLinkNotEligibleError("A closed workspace cannot have a new review link.");
+  }
 
   const files = await prisma.workspaceFile.findMany({
     where: { workspaceId, deletedAt: null },
@@ -59,7 +62,8 @@ async function assertReviewLinkEligible(workspaceId: string, workspaceStatus: st
 export interface CreatedReviewLink {
   /** Shown to the creator exactly once — never retrievable again after this call returns. */
   rawToken: string;
-  expiresAt: string;
+  /** null for a project-duration link — see ReviewLinkConfig. */
+  expiresAt: string | null;
 }
 
 /**
@@ -104,7 +108,8 @@ export async function createReviewLink(workspaceId: string): Promise<CreatedRevi
   const rawToken = generateReviewToken();
   const tokenHash = hashReviewToken(rawToken);
   const tokenPrefix = reviewTokenPrefix(rawToken);
-  const expiresAt = new Date(Date.now() + getReviewLinkConfig().expiryDays * 24 * 60 * 60 * 1000);
+  const { expiryDays } = getReviewLinkConfig();
+  const expiresAt = expiryDays === null ? null : new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
 
   await prisma.$transaction(async (tx) => {
     await tx.reviewLink.create({
@@ -112,7 +117,7 @@ export async function createReviewLink(workspaceId: string): Promise<CreatedRevi
     });
 
     if (workspace.status === "DRAFT") {
-      assertWorkspaceTransition("DRAFT", "IN_REVIEW");
+      assertWorkspaceTransition("DRAFT", "IN_REVIEW", workspace.deliveryMode);
       await tx.workspace.update({ where: { id: workspaceId }, data: { status: "IN_REVIEW" } });
     }
 
@@ -130,7 +135,7 @@ export async function createReviewLink(workspaceId: string): Promise<CreatedRevi
     });
   });
 
-  return { rawToken, expiresAt: expiresAt.toISOString() };
+  return { rawToken, expiresAt: expiresAt ? expiresAt.toISOString() : null };
 }
 
 /** Revokes the workspace's currently ACTIVE review link, if any. Old link stops working immediately (status check happens at authorization time). */
@@ -163,7 +168,8 @@ export async function regenerateReviewLink(workspaceId: string): Promise<Created
   const rawToken = generateReviewToken();
   const tokenHash = hashReviewToken(rawToken);
   const tokenPrefix = reviewTokenPrefix(rawToken);
-  const expiresAt = new Date(Date.now() + getReviewLinkConfig().expiryDays * 24 * 60 * 60 * 1000);
+  const { expiryDays } = getReviewLinkConfig();
+  const expiresAt = expiryDays === null ? null : new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const previousActive = await tx.reviewLink.findFirst({
@@ -196,5 +202,5 @@ export async function regenerateReviewLink(workspaceId: string): Promise<Created
     });
   });
 
-  return { rawToken, expiresAt: expiresAt.toISOString() };
+  return { rawToken, expiresAt: expiresAt ? expiresAt.toISOString() : null };
 }

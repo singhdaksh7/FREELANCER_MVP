@@ -13,7 +13,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/data-access/authorization", () => ({
   requireOwnedWorkspace: vi.fn().mockResolvedValue({
     creator: { id: "usr_1", name: "Arjun Raj" },
-    workspace: { id: "ws_1", status: "CHANGES_REQUESTED" },
+    workspace: { id: "ws_1", status: "CHANGES_REQUESTED", deliveryMode: "PAYMENT_REQUIRED" },
   }),
 }));
 

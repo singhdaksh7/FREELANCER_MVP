@@ -37,6 +37,7 @@ const CONTEXT = {
     watermarkText: null,
     creatorName: "Arjun Raj",
     client: { name: "Rohit Sharma" },
+    deliveryMode: "PAYMENT_REQUIRED" as const,
   },
 };
 
@@ -68,7 +69,7 @@ describe("approveWorkspace — validation", () => {
 describe("approveWorkspace — blocking rules", () => {
   it("blocks approval while a change request remains open", async () => {
     const { approveWorkspace, ApprovalBlockedError } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
     prismaMock.changeRequest.findFirst.mockResolvedValue({ id: "cr_1", status: "OPEN" });
 
@@ -80,7 +81,7 @@ describe("approveWorkspace — blocking rules", () => {
 
   it("blocks approval while a submitted file is still processing", async () => {
     const { approveWorkspace, ApprovalBlockedError } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
     prismaMock.workspaceFile.findMany.mockResolvedValue([
@@ -94,7 +95,7 @@ describe("approveWorkspace — blocking rules", () => {
 
   it("blocks approval while a submitted file is FAILED", async () => {
     const { approveWorkspace, ApprovalBlockedError } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
     prismaMock.workspaceFile.findMany.mockResolvedValue([
@@ -108,7 +109,7 @@ describe("approveWorkspace — blocking rules", () => {
 
   it("blocks approval when the workspace is not IN_REVIEW", async () => {
     const { approveWorkspace, ApprovalBlockedError } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "DRAFT" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "DRAFT", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
 
     await expect(
@@ -118,7 +119,7 @@ describe("approveWorkspace — blocking rules", () => {
 
   it("rejects a second approval attempt as already completed", async () => {
     const { approveWorkspace, ApprovalAlreadyCompletedError } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue({ id: "appr_existing", status: "APPROVED" });
 
     await expect(
@@ -130,7 +131,7 @@ describe("approveWorkspace — blocking rules", () => {
 describe("approveWorkspace — snapshot generation and unlock guarantees", () => {
   it("creates an immutable snapshot of exactly the submitted current versions", async () => {
     const { approveWorkspace } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
     prismaMock.workspaceFile.findMany.mockResolvedValue([readyFile(), readyFile({ id: "file_2", currentVersion: null })]);
@@ -147,7 +148,7 @@ describe("approveWorkspace — snapshot generation and unlock guarantees", () =>
 
   it("sets workspace status to APPROVED — never PAID or FILES_UNLOCKED", async () => {
     const { approveWorkspace } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
     prismaMock.workspaceFile.findMany.mockResolvedValue([readyFile()]);
@@ -163,7 +164,7 @@ describe("approveWorkspace — snapshot generation and unlock guarantees", () =>
 
   it("blocks approval when there is nothing submitted for review yet", async () => {
     const { approveWorkspace, ApprovalBlockedError } = await import("./approvals");
-    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW" });
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "PAYMENT_REQUIRED", amount: 25000, currency: "INR" });
     prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
     prismaMock.changeRequest.findFirst.mockResolvedValue(null);
     prismaMock.workspaceFile.findMany.mockResolvedValue([readyFile({ currentVersion: null })]);

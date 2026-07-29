@@ -5,6 +5,7 @@ const VALID = {
   title: "Brand Identity Design",
   clientId: "cli_rohit",
   description: "Logo + guidelines",
+  deliveryMode: "PAYMENT_REQUIRED",
   currency: "INR",
   amount: "25000",
   dueDate: "2026-08-15",
@@ -66,6 +67,7 @@ describe("workspaceCreateSchema", () => {
     const result = workspaceCreateSchema.safeParse({
       title: "Untitled Project",
       clientId: "cli_rohit",
+      deliveryMode: "PAYMENT_REQUIRED",
       currency: "INR",
       amount: "1000",
     });
@@ -79,6 +81,44 @@ describe("workspaceCreateSchema", () => {
 
   it("rejects watermark text longer than the maximum length", () => {
     const result = workspaceCreateSchema.safeParse({ ...VALID, watermarkText: "a".repeat(201) });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unrecognized delivery mode", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "ESCROW" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("workspaceCreateSchema — delivery-mode-conditional amount validation", () => {
+  it("requires an amount for PAYMENT_REQUIRED", () => {
+    const withoutAmount: Partial<typeof VALID> = { ...VALID };
+    delete withoutAmount.amount;
+    const result = workspaceCreateSchema.safeParse({ ...withoutAmount, deliveryMode: "PAYMENT_REQUIRED" });
+    expect(result.success).toBe(false);
+  });
+
+  it("allows APPROVAL_ONLY with no amount", () => {
+    const withoutAmount: Partial<typeof VALID> = { ...VALID };
+    delete withoutAmount.amount;
+    const result = workspaceCreateSchema.safeParse({ ...withoutAmount, deliveryMode: "APPROVAL_ONLY" });
+    expect(result.success).toBe(true);
+  });
+
+  it("allows APPROVAL_ONLY with an amount (for the creator's own reference)", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "APPROVAL_ONLY", amount: "5000" });
+    expect(result.success).toBe(true);
+  });
+
+  it("allows PREVIEW_ONLY with no amount", () => {
+    const withoutAmount: Partial<typeof VALID> = { ...VALID };
+    delete withoutAmount.amount;
+    const result = workspaceCreateSchema.safeParse({ ...withoutAmount, deliveryMode: "PREVIEW_ONLY" });
+    expect(result.success).toBe(true);
+  });
+
+  it("still rejects a malformed amount for APPROVAL_ONLY when one is submitted", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "APPROVAL_ONLY", amount: "not-a-number" });
     expect(result.success).toBe(false);
   });
 });
