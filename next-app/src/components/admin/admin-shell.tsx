@@ -4,6 +4,9 @@ import { ShieldCheck } from "lucide-react";
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard" },
+  { href: "/admin/users", label: "Users" },
+  { href: "/admin/workspaces", label: "Workspaces" },
+  { href: "/admin/payments", label: "Payments" },
   { href: "/admin/support", label: "Support" },
   { href: "/admin/payouts", label: "Payouts" },
 ] as const;

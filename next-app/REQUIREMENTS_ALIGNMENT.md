@@ -148,17 +148,30 @@ all integration tests passing (79), production build succeeds.
   freelancer profiles/ratings/trust scores/leaderboards, AI watermark
   detection — all explicitly out of scope per the phase brief, and none
   were implemented.
-- `/admin/users`, `/admin/workspaces`, `/admin/payments` per-row browsing
-  (dashboard aggregates cover the required summary figures).
-- `REVIEW_LINK_ARCHIVED`/`REVIEW_LINK_READ_ONLY` activity-event wiring
-  (behavior is enforced; the audit-trail entry for it is not yet written).
-- Automated retention-period cleanup job for closed/delivered projects.
-- Full Playwright/visual-baseline suite for every flow listed in the phase
-  brief — a representative subset was added this session (inline client
-  creation); the remainder (delivery-mode flows, pin/annotation capture,
-  fee breakdown, admin screens, support tickets) has real integration-test
-  coverage but not yet browser-level E2E coverage. See each feature's own
-  test-coverage section above/in the linked docs for exactly what exists.
+- `REVIEW_LINK_ARCHIVED` activity-event wiring (no archive action exists in
+  the UI, so nothing emits it — see the note in §16 above; `REVIEW_LINK_READ_ONLY`
+  is wired, from `closeWorkspaceForReview` and the first-download
+  DELIVERED transition).
+- Automated retention-period cleanup job for closed/delivered projects —
+  see `RETENTION_POLICY.md` for current behavior and what a future job
+  would need to do safely.
+
+## Admin browsing and E2E/visual coverage (this session)
+
+- `/admin/users`, `/admin/workspaces`, `/admin/payments` are now built —
+  see `ADMIN_ARCHITECTURE.md`.
+- Full Playwright coverage added for the previously integration-test-only
+  flows: inline client creation, delivery-mode flows (PAYMENT_REQUIRED,
+  APPROVAL_ONLY, PREVIEW_ONLY, completed master link), version-isolated
+  conversations, image pins (desktop + mobile) and doodle annotations,
+  platform-fee breakdown, freelancer balance, admin-only payout
+  simulation, support-ticket creation (creator + client) and admin status
+  update, and non-admin denial from every admin route. New Playwright
+  projects: `payment-e2e` (`e2e/payment/`) and `requirements-alignment-e2e`
+  (`e2e/requirements-alignment/`).
+- New visual baselines for all of the above plus the three new admin
+  screens (`e2e/visual/admin/`, run under a separate admin-authenticated
+  set of viewport projects — see `playwright.config.ts`).
 
 ## Remaining business decisions
 

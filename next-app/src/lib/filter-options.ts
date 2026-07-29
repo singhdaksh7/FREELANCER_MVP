@@ -4,8 +4,8 @@
  * `@/generated/prisma/enums` entrypoint — never `.../client`, which pulls
  * in the full Prisma Client (Node-only) module graph.
  */
-import { WorkspaceStatus, PaymentStatus } from "@/generated/prisma/enums";
-import { workspaceStatusLabel, paymentStatusLabel } from "./status-labels";
+import { WorkspaceStatus, PaymentStatus, DeliveryMode } from "@/generated/prisma/enums";
+import { workspaceStatusLabel, paymentStatusLabel, deliveryModeLabel } from "./status-labels";
 
 export interface FilterOption {
   label: string;
@@ -24,6 +24,14 @@ export const PAYMENT_STATUS_OPTIONS: FilterOption[] = [
   { label: "All Statuses", value: "All" },
   ...Object.values(PaymentStatus).map((value) => ({
     label: paymentStatusLabel(value),
+    value,
+  })),
+];
+
+export const DELIVERY_MODE_OPTIONS: FilterOption[] = [
+  { label: "All Delivery Modes", value: "All" },
+  ...Object.values(DeliveryMode).map((value) => ({
+    label: deliveryModeLabel(value),
     value,
   })),
 ];

@@ -264,6 +264,25 @@ async function seedArjun() {
     ],
   });
 
+  // Phase 7.5 — a deterministic PaymentBreakdown for the one already-PAID
+  // seeded payment (pay_101), so the platform-fee-breakdown UI
+  // (payment-status-card.tsx) and its E2E/visual coverage have a real,
+  // non-zero breakdown to render without depending on the full
+  // order-creation -> webhook capture pipeline. See
+  // PLATFORM_FEE_AND_PAYOUT_LEDGER.md for the 2% (200 bps) fee.
+  await prisma.paymentBreakdown.create({
+    data: {
+      paymentId: "pay_101",
+      projectAmountSubunits: BigInt(3_000_000),
+      clientChargedSubunits: BigInt(3_000_000),
+      platformFeeBps: 200,
+      platformFeeSubunits: BigInt(60_000),
+      freelancerPayableSubunits: BigInt(2_940_000),
+      currency: "INR",
+      calculatedAt: new Date("2026-07-17T11:00:00Z"),
+    },
+  });
+
   await prisma.notification.createMany({
     data: [
       {

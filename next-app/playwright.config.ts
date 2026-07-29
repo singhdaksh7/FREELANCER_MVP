@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 4500;
 const BASE_URL = `http://localhost:${PORT}`;
 const AUTH_FILE = "e2e/visual/.auth/creator.json";
+const ADMIN_AUTH_FILE = "e2e/visual/.auth/admin.json";
 
 /**
  * Visual regression + authentication E2E config. Runs against a
@@ -63,6 +64,17 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
+    {
+      // Delivery-bundle worker (Phase 6/7.5) — required for any test that
+      // waits for an APPROVAL_ONLY "Release Approved Files" action or a
+      // PAYMENT_REQUIRED capture to actually reach FILES_UNLOCKED/DELIVERED
+      // (see e2e/requirements-alignment/approval-only.spec.ts). Same
+      // "long-running process, no HTTP health check" shape as the
+      // file-processing worker above.
+      command: "npm run worker:deliveries",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
   ],
   projects: [
     {
@@ -111,9 +123,28 @@ export default defineConfig({
       // CLIENT_REVIEW_ARCHITECTURE.md.
     },
     {
+      name: "payment-e2e",
+      testDir: "./e2e/payment",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      // Isolated like mutations-e2e/uploads-e2e/review-e2e: each spec logs
+      // in through the real UI and creates its own workspace(s), so it
+      // never shares state with the visual suite or the other E2E projects.
+    },
+    {
+      name: "requirements-alignment-e2e",
+      testDir: "./e2e/requirements-alignment",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      // Same isolation reasoning — one file per concern, each creating its
+      // own workspace/client/ticket via the real UI with a distinct,
+      // timestamped title so parallel specs never collide.
+    },
+    {
       name: "desktop-1440",
       testDir: "./e2e/visual",
       testMatch: /.*\.spec\.ts/,
+      testIgnore: /visual[\\/]admin[\\/]/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: AUTH_FILE },
       dependencies: ["setup"],
     },
@@ -121,6 +152,7 @@ export default defineConfig({
       name: "tablet-768",
       testDir: "./e2e/visual",
       testMatch: /.*\.spec\.ts/,
+      testIgnore: /visual[\\/]admin[\\/]/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 }, storageState: AUTH_FILE },
       dependencies: ["setup"],
     },
@@ -128,8 +160,36 @@ export default defineConfig({
       name: "mobile-390",
       testDir: "./e2e/visual",
       testMatch: /.*\.spec\.ts/,
+      testIgnore: /visual[\\/]admin[\\/]/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, storageState: AUTH_FILE },
       dependencies: ["setup"],
+    },
+    {
+      name: "admin-setup",
+      testDir: "./e2e/visual",
+      testMatch: /admin-auth\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "admin-desktop-1440",
+      testDir: "./e2e/visual/admin",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: ADMIN_AUTH_FILE },
+      dependencies: ["admin-setup"],
+    },
+    {
+      name: "admin-tablet-768",
+      testDir: "./e2e/visual/admin",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 }, storageState: ADMIN_AUTH_FILE },
+      dependencies: ["admin-setup"],
+    },
+    {
+      name: "admin-mobile-390",
+      testDir: "./e2e/visual/admin",
+      testMatch: /.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, storageState: ADMIN_AUTH_FILE },
+      dependencies: ["admin-setup"],
     },
   ],
 });

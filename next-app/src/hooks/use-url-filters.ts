@@ -20,13 +20,22 @@ export function useUrlFilters() {
   );
 
   const setParam = useCallback(
-    (key: string, value: string, emptyValues: readonly string[] = ["All", "all", ""]) => {
+    (
+      key: string,
+      value: string,
+      emptyValues: readonly string[] = ["All", "all", ""],
+      resetKeys: readonly string[] = [],
+    ) => {
       const params = new URLSearchParams(searchParams.toString());
       if (value && !emptyValues.includes(value)) {
         params.set(key, value);
       } else {
         params.delete(key);
       }
+      // A filter/search change invalidates whatever page a paginated list
+      // was on (e.g. "page" would otherwise keep pointing past the end of
+      // the newly-filtered result set).
+      for (const resetKey of resetKeys) params.delete(resetKey);
       const query = params.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     },

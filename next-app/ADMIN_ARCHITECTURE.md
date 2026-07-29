@@ -31,12 +31,13 @@ dashboard normally.
 | `/admin/support` | Paginated ticket list. |
 | `/admin/support/[ticketId]` | Ticket detail — reply, change status. |
 | `/admin/payouts` | Paginated payout-ledger view + test-mode payout simulation controls (`PayoutSimulationControls`). |
+| `/admin/users` | Paginated, searchable creator directory — name, email, role, workspace count, captured-payment volume, pending payable, join date (`getAdminUsers`). |
+| `/admin/workspaces` | Paginated, searchable/filterable (status, delivery mode) workspace directory — workspace, creator, client, delivery mode, status, amount, file count, review-link state, updated date (`getAdminWorkspaces`). |
+| `/admin/payments` | Paginated, searchable/filterable (gateway status) payment ledger — reference, workspace, creator, client, gross amount, platform fee, freelancer payable, gateway status, delivery status, created/captured dates (`getAdminPayments`). |
 
-`/admin/users`, `/admin/workspaces`, and `/admin/payments` (listed as
-*suggested* routes in the requirements) were **not** built this phase —
-see "Deferred" below. The dashboard already surfaces the workspace/payment
-aggregate figures the requirements call for; per-row browsing of those
-tables is the deferred part.
+All three are read-only browsing screens (search + pagination, filters on
+the workspaces/payments screens) — no row is ever editable from these
+pages.
 
 ## What an admin can write — and the boundary around it
 
@@ -74,17 +75,25 @@ check inside them that could be misconfigured later.
 
 ## Pagination and filters
 
-`getAdminPayoutLedger(page, pageSize)` and `getAdminSupportTickets(page,
-pageSize)` both take/return a bounded page (`skip`/`take`, default page
-size 25) plus a total count — no unbounded list query anywhere in the
-admin portal.
+`getAdminPayoutLedger`, `getAdminSupportTickets`, `getAdminUsers`,
+`getAdminWorkspaces`, and `getAdminPayments` all take/return a bounded page
+(`skip`/`take`, default page size 25) plus a total count — no unbounded
+list query anywhere in the admin portal. `getAdminWorkspaces` and
+`getAdminPayments` also take a `q`/filter object (parsed and validated the
+same way `src/lib/search-params.ts` already validates the creator-facing
+list pages' params — never trusted raw). None of the three new queries
+selects `passwordHash`, a `tokenHash`, a `originalStorageKey`/
+`previewStorageKey`, or `WebhookEvent.payload` — the "review-link state"
+column on `/admin/workspaces` is derived in the page component from the
+link's own `status`/`expiresAt` plus the workspace's terminal status, never
+from a stored "state" field.
 
 ## Deferred
 
-- `/admin/users`, `/admin/workspaces`, `/admin/payments` (per-row browsing
-  — the dashboard aggregates already cover the required summary figures).
 - Admin action audit *list view* (the activity entries are written and
   queryable via `ActivityLog`, but there's no dedicated admin screen to
   browse them yet — the same data any creator's activity feed already
   reads from).
 - Any bulk/destructive admin action of any kind.
+- Automated retention/cleanup for completed projects — see
+  `RETENTION_POLICY.md`.

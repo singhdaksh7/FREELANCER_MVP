@@ -36,6 +36,16 @@ export function paymentStatusLabel(status: string): string {
   return PAYMENT_STATUS_LABELS[status] ?? status;
 }
 
+const DELIVERY_MODE_LABELS: Record<string, string> = {
+  PAYMENT_REQUIRED: "Payment Required",
+  APPROVAL_ONLY: "Approval Only",
+  PREVIEW_ONLY: "Preview Only",
+};
+
+export function deliveryModeLabel(mode: string): string {
+  return DELIVERY_MODE_LABELS[mode] ?? mode;
+}
+
 const SUPPORT_TICKET_STATUS_LABELS: Record<string, string> = {
   OPEN: "Open",
   UNDER_REVIEW: "Under Review",
