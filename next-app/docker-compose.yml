@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: project-vault-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: project_vault
+      POSTGRES_PASSWORD: project_vault_dev_password
+      POSTGRES_DB: project_vault
+    ports:
+      # Host port 5433 (not 5432) to avoid clashing with any Postgres
+      # instance already running on the host machine.
+      - "5433:5432"
+    volumes:
+      - project-vault-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U project_vault -d project_vault"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage for local development and automated
+  # testing (see FILE_STORAGE_ARCHITECTURE.md). Production targets real
+  # AWS S3 — MinIO is dev/test-only, never a production storage provider.
+  minio:
+    image: minio/minio:latest
+    container_name: project-vault-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9090"
+    environment:
+      # Development-only credentials. Never reused in production — see
+      # src/storage/storage-config.ts's production guard.
+      MINIO_ROOT_USER: project_vault_dev
+      MINIO_ROOT_PASSWORD: project_vault_dev_password
+    ports:
+      - "9000:9000" # S3 API
+      - "9090:9090" # Web console
+    volumes:
+      - project-vault-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot bucket bootstrap: creates the single private bucket this app
+  # uses (temp/originals/previews live as prefixes inside it — see
+  # FILE_STORAGE_ARCHITECTURE.md "Storage-key rules") and confirms no
+  # public-read policy is ever applied. Exits after running once; safe to
+  # re-run (idempotent — `mc mb --ignore-existing`).
+  minio-init:
+    image: minio/mc:latest
+    container_name: project-vault-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 project_vault_dev project_vault_dev_password &&
+      mc mb --ignore-existing local/project-vault-files &&
+      mc anonymous set none local/project-vault-files &&
+      echo 'MinIO bucket ready (private).'
+      "
+
+volumes:
+  project-vault-postgres-data:
+  project-vault-minio-data:

@@ -1,0 +1,1161 @@
+// INLAY — Phase 3 schema.
+// Scope: creator auth + read-only creator screens (dashboard, workspaces,
+// clients, payments, notifications). Mutation-only fields (comments,
+// versions, file storage, webhooks, etc.) are deliberately out of scope —
+// see TECHNICAL_AUDIT.md and MIGRATION_STATUS.md for the full roadmap.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CREATOR
+  ADMIN
+}
+
+enum WorkspaceStatus {
+  DRAFT
+  PREVIEW_PROCESSING
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  PAYMENT_PENDING
+  PAID
+  FILES_UNLOCKED
+  DELIVERED
+  CANCELLED
+  /// Phase 7.5 — APPROVAL_ONLY mode only: approved, awaiting an explicit
+  /// creator "Release Approved Files" action. See DELIVERY_MODES.md.
+  AWAITING_CREATOR_RELEASE
+  /// Phase 7.5 — PREVIEW_ONLY mode only: creator has closed/archived the
+  /// review once feedback is complete. Terminal, read-only. See
+  /// DELIVERY_MODES.md.
+  CLOSED
+}
+
+/// Phase 7.5 — see DELIVERY_MODES.md. Selected once at workspace creation
+/// (Server Component wizard step 4); governs which workflow/status
+/// transitions are legal for this workspace — see
+/// src/lib/workspace-transitions.ts.
+enum DeliveryMode {
+  PAYMENT_REQUIRED
+  APPROVAL_ONLY
+  PREVIEW_ONLY
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  COMMENT
+  CHANGES_REQUESTED
+  PROJECT_APPROVED
+  PAYMENT_COMPLETED
+  FILES_DOWNLOADED
+  PROCESSING_FAILED
+  SYSTEM
+}
+
+/// Phase 5 — see FILE_STORAGE_ARCHITECTURE.md.
+enum FileKind {
+  IMAGE
+  PDF
+  ARCHIVE
+  OTHER
+}
+
+enum FileStatus {
+  UPLOAD_PENDING
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  DELETED
+}
+
+enum ProcessingJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum UploadSessionStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  ABORTED
+}
+
+/// Phase 6 — see CLIENT_REVIEW_ARCHITECTURE.md / REVIEW_TOKEN_SECURITY.md.
+enum ReviewLinkStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum ReviewAuthorType {
+  CREATOR
+  CLIENT
+}
+
+enum CommentStatus {
+  OPEN
+  RESOLVED
+}
+
+enum ChangeRequestStatus {
+  OPEN
+  RESOLVED
+  WITHDRAWN
+}
+
+enum ApprovalStatus {
+  APPROVED
+  REVOKED
+}
+
+/// Per-FileVersion processing state — generalizes what WorkspaceFile.status
+/// already tracked for a file's only version in Phase 5, now tracked per
+/// version so an old (READY) version and a new re-upload candidate
+/// (PROCESSING/FAILED) can coexist without disturbing each other.
+enum FileVersionStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+/// Phase 7 — see PAYMENT_ARCHITECTURE.md / WEBHOOK_SECURITY.md.
+enum WebhookProcessingStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum DownloadGrantStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  EXHAUSTED
+}
+
+enum DeliveryBundleStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum DownloadType {
+  INDIVIDUAL
+  BUNDLE
+}
+
+/// Phase 7.5 — see IMAGE_ANNOTATION_ARCHITECTURE.md.
+enum AnnotationType {
+  FREEHAND
+  CIRCLE
+}
+
+/// Phase 7.5 — see PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
+enum PayoutLedgerType {
+  PAYMENT_CREDIT
+  PLATFORM_FEE
+  PAYOUT
+  ADJUSTMENT
+  REVERSAL
+}
+
+enum PayoutStatus {
+  PENDING
+  AVAILABLE
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+/// Phase 7.5 — see SUPPORT_AND_DISPUTE_ARCHITECTURE.md.
+enum SupportTicketCategory {
+  PAYMENT
+  DELIVERY
+  QUALITY_DISPUTE
+  FILE_PROCESSING
+  ACCOUNT
+  OTHER
+}
+
+enum SupportTicketStatus {
+  OPEN
+  UNDER_REVIEW
+  WAITING_FOR_CREATOR
+  WAITING_FOR_CLIENT
+  RESOLVED
+  CLOSED
+}
+
+/// Distinct from ReviewAuthorType (CREATOR/CLIENT only) because support
+/// tickets are also visible/actionable by ADMIN — see
+/// SUPPORT_AND_DISPUTE_ARCHITECTURE.md.
+enum SupportAuthorType {
+  CREATOR
+  CLIENT
+  ADMIN
+}
+
+/// Creator (and future admin) accounts. `email` is normalized
+/// (trimmed + lowercased) by the application layer before every write and
+/// read, so the DB-level `@unique` constraint enforces case-insensitive
+/// uniqueness in practice without needing a citext extension.
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  /// bcrypt hash. Never selected in any query except password verification
+  /// during login — see src/data-access/auth.ts.
+  passwordHash  String
+  role          UserRole  @default(CREATOR)
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  clients                Client[]
+  workspaces             Workspace[]
+  notifications          Notification[]
+  activityLogs           ActivityLog[]
+  uploadSessions         UploadSession[]
+  reviewLinksCreated     ReviewLink[]
+  commentsAuthored       ReviewComment[] @relation("CommentAuthor")
+  commentsResolved       ReviewComment[] @relation("CommentResolver")
+  changeRequestsResolved ChangeRequest[]
+
+  balanceAccount                CreatorBalanceAccount?
+  payoutLedgerEntries           PayoutLedgerEntry[]
+  supportTickets                SupportTicket[]
+  supportTicketsAuthored        SupportTicket[]        @relation("SupportTicketCreatorAuthor")
+  supportTicketMessagesAuthored SupportTicketMessage[] @relation("SupportTicketMessageCreatorAuthor")
+  supportTicketMessagesAsAdmin  SupportTicketMessage[] @relation("SupportTicketMessageAdminAuthor")
+
+  @@map("users")
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  name      String
+  email     String
+  company   String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaces   Workspace[]
+  activityLogs ActivityLog[]
+
+  @@index([creatorId])
+  @@index([creatorId, name])
+  @@map("clients")
+}
+
+model Workspace {
+  id            String          @id @default(cuid())
+  creatorId     String
+  creator       User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  clientId      String
+  /// Restrict (not Cascade): a client with financial history attached to a
+  /// workspace should not be silently deletable once client-delete ships.
+  client        Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  title         String
+  description   String?
+  /// ISO-style uppercase currency code (e.g. "INR"). Never a symbol.
+  currency      String          @default("INR")
+  /// Decimal, never Float — money is never represented in binary floating point.
+  /// Nullable since Phase 7.5: APPROVAL_ONLY/PREVIEW_ONLY workspaces may
+  /// have no client-facing amount at all — see DELIVERY_MODES.md. Required
+  /// (validated server-side) whenever deliveryMode is PAYMENT_REQUIRED.
+  amount        Decimal?        @db.Decimal(12, 2)
+  /// Phase 7.5 — see DELIVERY_MODES.md. Selected once, at creation; not
+  /// editable afterward (would silently redefine the workflow a client has
+  /// already started reviewing under).
+  deliveryMode  DeliveryMode    @default(PAYMENT_REQUIRED)
+  status        WorkspaceStatus @default(DRAFT)
+  /// 0-100. Redundant with `status` today (derivable from it) but stored
+  /// explicitly so a future phase can support finer-grained progress
+  /// within a single status without a schema change.
+  progress      Int             @default(0)
+  dueDate       DateTime?
+  /// Optional watermark text applied to preview files. Deliverables/preview
+  /// generation itself is Phase 5 — this field is only persisted metadata
+  /// for now (Phase 4 scope, see MUTATION_ARCHITECTURE.md).
+  watermarkText String?
+  approvedAt    DateTime?
+  paidAt        DateTime?
+  deliveredAt   DateTime?
+  /// Set when a DRAFT/other non-terminal workspace is cancelled instead of
+  /// deleted (see MUTATION_ARCHITECTURE.md "Status transition rules").
+  cancelledAt   DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  payments        Payment[]
+  activityLogs    ActivityLog[]
+  notifications   Notification[]
+  files           WorkspaceFile[]
+  uploadSessions  UploadSession[]
+  reviewLinks     ReviewLink[]
+  reviewComments  ReviewComment[]
+  changeRequests  ChangeRequest[]
+  approvals       WorkspaceApproval[]
+  downloadGrants  DownloadGrant[]
+  deliveryBundles DeliveryBundle[]
+  annotations     ReviewAnnotation[]
+  supportTickets  SupportTicket[]
+
+  @@index([creatorId])
+  @@index([clientId])
+  @@index([status])
+  @@index([creatorId, status])
+  @@index([creatorId, updatedAt])
+  @@map("workspaces")
+}
+
+/// Phase 7 — see PAYMENT_ARCHITECTURE.md. One Payment row represents one
+/// order-creation attempt against the gateway. `PAID` is only ever set by
+/// the centralized finalization service (src/payments/finalize.ts) after a
+/// captured payment has been verified server-side (webhook or
+/// reconciliation) — never from a checkout callback alone.
+model Payment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// The WorkspaceApproval this payment is for — the immutable
+  /// approved-file-version snapshot a captured payment unlocks delivery
+  /// for. Restrict: an approval a payment references can never be deleted.
+  approvalId String
+  approval   WorkspaceApproval @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+
+  /// The ReviewLink the client was using when the order was created —
+  /// informational/audit only, never used for authorization on its own.
+  reviewLinkId String?
+  reviewLink   ReviewLink? @relation(fields: [reviewLinkId], references: [id], onDelete: SetNull)
+
+  amount                     Decimal       @db.Decimal(12, 2)
+  /// Frozen at order-creation time in integer subunits (paise for INR) —
+  /// never derived from `amount` at read time, so a later Decimal-column
+  /// rounding/formatting change can never retroactively alter what was
+  /// actually charged. See src/payments/payment-amount.ts.
+  amountSubunits             BigInt
+  currency                   String        @default("INR")
+  status                     PaymentStatus @default(CREATED)
+  gateway                    String        @default("razorpay")
+  gatewayOrderId             String?       @unique
+  gatewayPaymentId           String?       @unique
+  /// Set once the Checkout-callback signature has been verified
+  /// server-side. Still does NOT mean PAID — capture must be independently
+  /// confirmed via webhook or reconciliation (see PAYMENT_ARCHITECTURE.md).
+  gatewaySignatureVerifiedAt DateTime?
+  capturedAt                 DateTime?
+  failedAt                   DateTime?
+  failureCode                String?
+  feeAmount                  Decimal?      @db.Decimal(12, 2)
+  paidAt                     DateTime?
+  failureReason              String?
+  /// The attempt number this Payment row represents for its workspace —
+  /// set explicitly at creation, never mutated in place (same pattern as
+  /// FileProcessingJob.attempts — see FILE_STORAGE_ARCHITECTURE.md).
+  attemptNumber              Int           @default(1)
+  /// Caller-supplied idempotency key (derived from workspaceId + approvalId
+  /// + attemptNumber) — guards order-creation against duplicate concurrent
+  /// requests. See PAYMENT_ARCHITECTURE.md "Idempotency."
+  idempotencyKey             String        @unique
+  /// Safe, structured gateway metadata only (e.g. { method }) — never
+  /// secrets, never a raw webhook payload. See PAYMENT_ARCHITECTURE.md.
+  metadata                   Json?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+
+  downloadGrant       DownloadGrant?
+  deliveryBundle      DeliveryBundle?
+  breakdown           PaymentBreakdown?
+  payoutLedgerEntries PayoutLedgerEntry[]
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([approvalId])
+  @@map("payments")
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  /// SetNull (not Cascade): a notification about a deleted workspace should
+  /// remain in the feed as history, not disappear silently.
+  workspace   Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  type        NotificationType
+  title       String
+  message     String
+  read        Boolean          @default(false)
+  link        String?
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Extended in Phase 4 (see MUTATION_ARCHITECTURE.md, schema-change option
+/// A) so client-level mutations that aren't tied to any single workspace
+/// (create/edit/delete client) can still be recorded, instead of either
+/// inventing a fake workspaceId or dropping that audit trail entirely.
+/// `workspaceId` is therefore now optional; every row still records
+/// `creatorId` so a creator-level audit view is always possible, and
+/// `clientId` is set for client-scoped entries.
+model ActivityLog {
+  id          String     @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId    String?
+  /// SetNull (not Cascade): deleting a client should not erase the
+  /// historical audit trail of what happened to it.
+  client      Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  creatorId   String?
+  creator     User?      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  action      String
+  actorType   String
+  actorName   String
+  metadata    Json?
+  createdAt   DateTime   @default(now())
+
+  @@index([workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([clientId])
+  @@index([creatorId])
+  @@index([creatorId, createdAt])
+  @@map("activity_logs")
+}
+
+/// Phase 5 — see FILE_STORAGE_ARCHITECTURE.md for the full model and
+/// storage-key/ownership rules. One WorkspaceFile can have many
+/// FileVersion rows (future re-upload support); `currentVersionId` is the
+/// single safely-resolved "current" version — never inferred by picking
+/// "the latest row," so a half-written new version can never briefly
+/// become what the UI shows.
+model WorkspaceFile {
+  id          String     @id @default(cuid())
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Sanitized, display-only filename — never used to derive a storage key.
+  displayName String
+  fileKind    FileKind
+  mimeType    String
+  /// BigInt: file sizes must never silently overflow a 32-bit Int. See
+  /// src/lib/bytes.ts for the safe BigInt -> number view-model conversion
+  /// (sizes here stay far below Number.MAX_SAFE_INTEGER in practice, but
+  /// the column type itself must not assume that).
+  sizeBytes   BigInt
+  status      FileStatus @default(UPLOAD_PENDING)
+
+  currentVersionId String?      @unique
+  /// SetNull (not Cascade): a FileVersion is only ever removed as part of
+  /// deleting its parent WorkspaceFile (which cascades all versions
+  /// together) — this direction exists purely so a version can't leave a
+  /// dangling "current" pointer if it's ever removed independently.
+  currentVersion   FileVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+
+  /// Phase 6 — the in-flight or failed *candidate* re-upload version, if
+  /// any. `currentVersionId` is left untouched while this processes; the
+  /// worker promotes it (currentVersionId = pendingVersionId, this field
+  /// cleared) on success, or leaves it pointing at the FAILED version (so
+  /// the creator UI can show the failed candidate) on failure. Never
+  /// exposed to the client portal.
+  pendingVersionId String?      @unique
+  pendingVersion   FileVersion? @relation("PendingVersion", fields: [pendingVersionId], references: [id], onDelete: SetNull)
+
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  /// Soft-delete marker. A deleted file's row (and its checksums/audit
+  /// trail) is kept; only its storage objects are removed/scheduled for
+  /// removal — see MUTATION_ARCHITECTURE.md-style deletion rules in
+  /// FILE_STORAGE_ARCHITECTURE.md.
+  deletedAt DateTime?
+
+  versions              FileVersion[]       @relation("FileVersions")
+  reviewComments        ReviewComment[]
+  versionUploadSessions UploadSession[]
+  downloadGrantFiles    DownloadGrantFile[]
+  annotations           ReviewAnnotation[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, deletedAt])
+  @@map("workspace_files")
+}
+
+model FileVersion {
+  id            String        @id @default(cuid())
+  fileId        String
+  file          WorkspaceFile @relation("FileVersions", fields: [fileId], references: [id], onDelete: Cascade)
+  versionNumber Int
+
+  /// Opaque, server-generated, random storage keys — never derived from
+  /// the database id alone. See src/storage/storage-keys.ts.
+  originalStorageKey String  @unique
+  previewStorageKey  String? @unique
+
+  originalChecksum  String
+  previewChecksum   String?
+  originalSizeBytes BigInt
+  previewSizeBytes  BigInt?
+  mimeType          String
+  width             Int?
+  height            Int?
+  /// Safe, user-facing failure summary only — never a raw Sharp/AWS
+  /// SDK/Prisma error (see FILE_STORAGE_ARCHITECTURE.md "Security
+  /// limitations").
+  processingError   String?
+  /// Per-version processing state — see FileVersionStatus. Independent of
+  /// WorkspaceFile.status so an old READY version and a new
+  /// PROCESSING/FAILED candidate can coexist.
+  status            FileVersionStatus @default(PROCESSING)
+  /// Set only when this version is explicitly made client-visible (first
+  /// review-link creation, or a creator's "Submit Revision"). The client
+  /// portal always queries by submittedAt != null, never by
+  /// currentVersionId directly — so uploading a new version alone can
+  /// never silently change what a client sees.
+  submittedAt       DateTime?
+  createdAt         DateTime          @default(now())
+
+  currentForFile     WorkspaceFile?      @relation("CurrentVersion")
+  pendingForFile     WorkspaceFile?      @relation("PendingVersion")
+  processingJobs     FileProcessingJob[]
+  reviewComments     ReviewComment[]
+  downloadGrantFiles DownloadGrantFile[]
+  annotations        ReviewAnnotation[]
+
+  @@unique([fileId, versionNumber])
+  @@index([fileId])
+  @@index([fileId, submittedAt])
+  @@map("file_versions")
+}
+
+model FileProcessingJob {
+  id            String              @id @default(cuid())
+  fileVersionId String
+  fileVersion   FileVersion         @relation(fields: [fileVersionId], references: [id], onDelete: Cascade)
+  status        ProcessingJobStatus @default(PENDING)
+  attempts      Int                 @default(0)
+  errorCode     String?
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([fileVersionId])
+  @@index([status])
+  @@index([status, createdAt])
+  @@map("file_processing_jobs")
+}
+
+/// Tracks one presigned-upload lifecycle from request to completion (or
+/// expiry) — see FILE_STORAGE_ARCHITECTURE.md "Upload-session lifecycle."
+/// Never stores a signed URL itself (those are never persisted, only
+/// generated on demand and returned once).
+model UploadSession {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creatorId   String
+  creator     User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  /// Phase 6 — null means "uploading a brand-new file" (Phase 5 behavior,
+  /// unchanged). Set means "uploading a new version of this existing,
+  /// owned file" — completeUploadSession branches on this.
+  targetFileId String?
+  targetFile   WorkspaceFile? @relation(fields: [targetFileId], references: [id], onDelete: SetNull)
+
+  /// The random temp/ storage key this session's presigned URL was issued
+  /// for — the only key that particular URL is valid for.
+  storageKey        String              @unique
+  /// Sanitized filename the creator declared — re-validated, never trusted,
+  /// when the upload is completed.
+  declaredFileName  String
+  expectedMimeType  String
+  expectedSizeBytes BigInt
+  status            UploadSessionStatus @default(PENDING)
+  expiresAt         DateTime
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+
+  @@index([workspaceId])
+  @@index([creatorId])
+  @@index([status, expiresAt])
+  @@map("upload_sessions")
+}
+
+/// Phase 6 — see REVIEW_TOKEN_SECURITY.md. Only a SHA-256 hash of the raw
+/// token is ever stored; the raw token itself is generated with 256 bits
+/// of entropy (crypto.randomBytes(32)), shown to the creator exactly once
+/// at creation/regeneration time, and never persisted anywhere else (not
+/// in this row, not in ActivityLog.metadata, not in a log line).
+model ReviewLink {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  tokenHash   String           @unique
+  /// First 8 chars of the raw token — support/debugging identification
+  /// only. Not sufficient on its own to reconstruct a 256-bit token.
+  tokenPrefix String
+  status      ReviewLinkStatus @default(ACTIVE)
+  /// Phase 7.5 — nullable for a "master" project-duration link (see
+  /// MASTER link section of REQUIREMENTS_ALIGNMENT.md / DELIVERY_MODES.md):
+  /// null means "no fixed expiry, valid for the project's duration,"
+  /// never described as "permanent." Revocation/regeneration remain fully
+  /// available regardless, and the portal becomes read-only once the
+  /// workspace reaches a terminal status (DELIVERED/CLOSED) — see
+  /// REVIEW_TOKEN_SECURITY.md's Phase 7.5 addendum.
+  expiresAt   DateTime?
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  /// Updated on every review-portal page load; deliberately NOT paired
+  /// with an ActivityLog row per-view (would be extremely noisy) — see
+  /// CLIENT_REVIEW_ARCHITECTURE.md.
+  lastViewedAt DateTime?
+  viewCount    Int       @default(0)
+
+  /// Set on the OLD link when regeneration creates a replacement — points
+  /// at the new link's id. Self-relation, 1-1 (unique).
+  replacedById String?     @unique
+  replacedBy   ReviewLink? @relation("ReviewLinkChain", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacesLink ReviewLink? @relation("ReviewLinkChain")
+
+  changeRequests ChangeRequest[]
+  approvals      WorkspaceApproval[]
+  payments       Payment[]
+  supportTickets SupportTicket[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@map("review_links")
+}
+
+/// Phase 6 — client and creator comments/replies. `authorType` +
+/// nullable creator/reviewer fields distinguish an authenticated creator
+/// comment from an unauthenticated (link-holder) client comment; a client
+/// identity is never treated as cryptographically verified — see
+/// CLIENT_REVIEW_ARCHITECTURE.md.
+model ReviewComment {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  workspaceFileId String?
+  workspaceFile   WorkspaceFile? @relation(fields: [workspaceFileId], references: [id], onDelete: SetNull)
+
+  fileVersionId String?
+  fileVersion   FileVersion? @relation(fields: [fileVersionId], references: [id], onDelete: SetNull)
+
+  /// One level of replies only — enforced in application code (a reply's
+  /// parent must itself have parentId == null), not by the schema.
+  parentId String?
+  parent   ReviewComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  ReviewComment[] @relation("CommentReplies")
+
+  authorType      ReviewAuthorType
+  creatorAuthorId String?
+  creatorAuthor   User?            @relation("CommentAuthor", fields: [creatorAuthorId], references: [id], onDelete: SetNull)
+  /// Client-entered, unverified display identity — never treated as proof
+  /// of who the reviewer actually is.
+  reviewerName    String?
+  reviewerEmail   String?
+
+  body   String
+  status CommentStatus @default(OPEN)
+
+  /// Normalized pin coordinates (0..1), image comments only. App-validated
+  /// range, not a DB constraint.
+  pinX      Float?
+  pinY      Float?
+  /// Phase 7.5 — stable, deterministic per-(fileVersionId) ordinal, assigned
+  /// once at creation (MAX(pinNumber)+1 for that version, inside the same
+  /// transaction as the insert — see IMAGE_ANNOTATION_ARCHITECTURE.md).
+  /// Never recomputed later, never carried forward to a later version.
+  pinNumber Int?
+
+  annotations ReviewAnnotation[]
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("CommentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([parentId])
+  @@map("review_comments")
+}
+
+/// Phase 6 — a client's "Request Changes" submission. Only one OPEN
+/// request per workspace is ever allowed at a time (enforced in
+/// data-access, not the schema) — see CLIENT_REVIEW_ARCHITECTURE.md.
+model ChangeRequest {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  reviewLinkId String
+  reviewLink   ReviewLink @relation(fields: [reviewLinkId], references: [id], onDelete: Cascade)
+
+  reviewerName  String?
+  reviewerEmail String?
+  /// The client's requested-changes summary. If the client referenced open
+  /// comments in the UI, a quoted reference is prepended here server-side
+  /// rather than modeling a separate join table for a cosmetic feature.
+  summary       String
+
+  status       ChangeRequestStatus @default(OPEN)
+  requestedAt  DateTime            @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?               @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@map("change_requests")
+}
+
+/// Phase 6 — client approval WITHOUT payment/unlocking. Explicitly never
+/// sets Workspace.status to PAID/FILES_UNLOCKED and never grants original
+/// download access — see CLIENT_REVIEW_ARCHITECTURE.md.
+model WorkspaceApproval {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  reviewLinkId String
+  reviewLink   ReviewLink @relation(fields: [reviewLinkId], references: [id], onDelete: Cascade)
+
+  /// Immutable record of exactly which file/version ids were approved —
+  /// a JSON snapshot, never recomputed later, so a subsequent file change
+  /// can never retroactively alter what was actually approved.
+  approvedFileVersionSnapshot Json
+
+  /// Phase 7.5 security-gate fix — frozen at approval time from
+  /// Workspace.amount/currency. Payment-order creation reads amount from
+  /// HERE, never from the (editable-until-approval) Workspace row, so a
+  /// later Workspace.amount edit (which is blocked post-APPROVED anyway —
+  /// see src/data-access/workspaces.ts's AMOUNT_LOCKED_STATUSES) can never
+  /// retroactively change what a client is charged. Null when the
+  /// workspace had no amount at approval time (APPROVAL_ONLY/PREVIEW_ONLY
+  /// with no price set) — see PAYMENT_ARCHITECTURE.md "Order lifecycle."
+  approvedAmount   Decimal? @db.Decimal(12, 2)
+  approvedCurrency String?
+
+  reviewerName  String
+  reviewerEmail String?
+
+  status        ApprovalStatus @default(APPROVED)
+  termsAccepted Boolean        @default(false)
+  approvedAt    DateTime       @default(now())
+  revokedAt     DateTime?
+  userAgent     String?
+
+  payments        Payment[]
+  downloadGrants  DownloadGrant[]
+  deliveryBundles DeliveryBundle[]
+
+  @@index([workspaceId])
+  @@map("workspace_approvals")
+}
+
+/// Phase 7 — see WEBHOOK_SECURITY.md. One row per received Razorpay webhook
+/// delivery. `externalEventId` (Razorpay's `x-razorpay-event-id` header) is
+/// unique so a retried delivery is idempotently recognized rather than
+/// reprocessed. The raw payload is stored for audit/replay, but nothing in
+/// this app ever logs the webhook secret itself.
+model WebhookEvent {
+  id                String                  @id @default(cuid())
+  provider          String                  @default("razorpay")
+  externalEventId   String                  @unique
+  eventType         String
+  signatureVerified Boolean                 @default(false)
+  payload           Json
+  processingStatus  WebhookProcessingStatus @default(RECEIVED)
+  processingError   String?
+  receivedAt        DateTime                @default(now())
+  processedAt       DateTime?
+
+  @@index([processingStatus])
+  @@index([eventType])
+  @@map("webhook_events")
+}
+
+/// Phase 7 — see SECURE_DOWNLOAD_ARCHITECTURE.md. A high-entropy,
+/// hash-at-rest download credential, entirely separate from the review
+/// token — never derived from or reused as one. One grant per captured
+/// payment (`paymentId` is unique) for PAYMENT_REQUIRED workspaces; Phase
+/// 7.5 — nullable, since an APPROVAL_ONLY release creates a grant with no
+/// Payment at all (see DELIVERY_MODES.md). Scoped to the immutable
+/// approved file-version snapshot via DownloadGrantFile rows.
+model DownloadGrant {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  paymentId String?  @unique
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  approvalId String
+  approval   WorkspaceApproval @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+
+  /// SHA-256 hash of the raw download token — the ONLY record of it ever
+  /// written to PostgreSQL (Phase 7.5 security-gate fix: the raw token
+  /// itself is never persisted, not even transiently — see
+  /// SECURE_DOWNLOAD_ARCHITECTURE.md "Handoff without email (Phase 7.5
+  /// redesign)"). Rotated on every claim via
+  /// `POST /api/review/[token]/downloads/claim` — the master review
+  /// portal is the only path a client uses to reach this grant; the raw
+  /// value returned by that endpoint is never written back to the
+  /// database, a log line, or ActivityLog.metadata.
+  tokenHash     String              @unique
+  /// First 8 chars only — support identification, not reconstructable.
+  tokenPrefix   String
+  /// Set the first time a client claims a download session — lets the UI
+  /// distinguish "never claimed" from "claimed, token since rotated."
+  /// Never stores the token itself.
+  claimedAt     DateTime?
+  status        DownloadGrantStatus @default(ACTIVE)
+  expiresAt     DateTime
+  maxDownloads  Int
+  downloadCount Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  revokedAt     DateTime?
+
+  files        DownloadGrantFile[]
+  downloadLogs DownloadLog[]
+
+  @@index([workspaceId])
+  @@index([status, expiresAt])
+  @@map("download_grants")
+}
+
+/// Immutable per-grant file snapshot — exactly which WorkspaceFile/FileVersion
+/// ids this grant may serve, frozen at delivery-bundle completion time.
+model DownloadGrantFile {
+  id String @id @default(cuid())
+
+  grantId String
+  grant   DownloadGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  workspaceFileId String
+  workspaceFile   WorkspaceFile @relation(fields: [workspaceFileId], references: [id], onDelete: Restrict)
+
+  fileVersionId String
+  fileVersion   FileVersion @relation(fields: [fileVersionId], references: [id], onDelete: Restrict)
+
+  displayName String
+  sizeBytes   BigInt
+  createdAt   DateTime @default(now())
+
+  @@index([grantId])
+  @@map("download_grant_files")
+}
+
+/// One row per successful (authorized, counted) original/bundle download.
+/// A failed authorization attempt is never logged here — see
+/// SECURE_DOWNLOAD_ARCHITECTURE.md "Download logging."
+model DownloadLog {
+  id String @id @default(cuid())
+
+  grantId String
+  grant   DownloadGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  workspaceFileId String?
+  fileVersionId   String?
+  downloadType    DownloadType
+  userAgent       String?
+  /// Hashed, not raw — see SECURE_DOWNLOAD_ARCHITECTURE.md "Privacy."
+  ipHash          String?
+  downloadedAt    DateTime     @default(now())
+
+  @@index([grantId])
+  @@map("download_logs")
+}
+
+/// One private ZIP bundle per captured payment (`paymentId` is unique) for
+/// PAYMENT_REQUIRED workspaces; Phase 7.5 — nullable, since an
+/// APPROVAL_ONLY creator release builds a bundle with no Payment at all
+/// (see DELIVERY_MODES.md). Built by the standalone delivery worker
+/// (src/worker/process-deliveries.ts) from the frozen approved
+/// file-version snapshot. Never built inside ordinary page rendering.
+model DeliveryBundle {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  paymentId String?  @unique
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  approvalId String
+  approval   WorkspaceApproval @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+
+  status          DeliveryBundleStatus @default(PENDING)
+  storageKey      String?
+  checksum        String?
+  sizeBytes       BigInt?
+  processingError String?
+  createdAt       DateTime             @default(now())
+  completedAt     DateTime?
+
+  jobs DeliveryBundleJob[]
+
+  @@index([workspaceId])
+  @@map("delivery_bundles")
+}
+
+/// One row per delivery-bundle-build attempt — same "attempt row, not a
+/// mutated counter" pattern as FileProcessingJob.
+model DeliveryBundleJob {
+  id String @id @default(cuid())
+
+  deliveryBundleId String
+  deliveryBundle   DeliveryBundle @relation(fields: [deliveryBundleId], references: [id], onDelete: Cascade)
+
+  status          ProcessingJobStatus @default(PENDING)
+  attempts        Int                 @default(0)
+  processingError String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([status])
+  @@index([status, createdAt])
+  @@map("delivery_bundle_jobs")
+}
+
+/// Phase 7 — minimal PostgreSQL-backed rate-limit ledger (see
+/// PAYMENT_ARCHITECTURE.md "Rate limiting"). One row per attempt; a bucket
+/// scopes the limit to one endpoint family (e.g. "payment-order-create"),
+/// `identifierHash` is a SHA-256 hash of a privacy-conscious identifier
+/// (never a raw token, never a raw IP — see src/lib/rate-limit.ts) so this
+/// table can never itself leak a usable credential or a plain IP address.
+/// Rows are opportunistically pruned (deleted once older than the
+/// checking bucket's own window) on every check — no separate cleanup job
+/// is required at this MVP's expected volume, but a scheduled
+/// `DELETE FROM rate_limit_attempts WHERE "createdAt" < now() - interval '1 day'`
+/// is documented as a safe periodic backstop.
+model RateLimitAttempt {
+  id             String   @id @default(cuid())
+  bucket         String
+  identifierHash String
+  createdAt      DateTime @default(now())
+
+  @@index([bucket, identifierHash, createdAt])
+  @@map("rate_limit_attempts")
+}
+
+/// Phase 7.5 — a lightweight annotation (freehand stroke or circle/highlight)
+/// on one image preview, always attached to the ReviewComment it was
+/// submitted with. Geometry is validated, normalized numeric data only —
+/// never raw SVG/HTML/CSS — see IMAGE_ANNOTATION_ARCHITECTURE.md.
+model ReviewAnnotation {
+  id String @id @default(cuid())
+
+  commentId String
+  comment   ReviewComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  workspaceFileId String
+  workspaceFile   WorkspaceFile @relation(fields: [workspaceFileId], references: [id], onDelete: Cascade)
+
+  fileVersionId String
+  fileVersion   FileVersion @relation(fields: [fileVersionId], references: [id], onDelete: Cascade)
+
+  type      AnnotationType
+  /// Validated server-side against src/validation/annotation.ts before
+  /// this row is ever created — normalized [0,1] coordinates only, bounded
+  /// stroke/point counts. Rendered client-side through a safe canvas/SVG
+  /// implementation generated purely from these numeric values — see
+  /// IMAGE_ANNOTATION_ARCHITECTURE.md "Rendering safety."
+  geometry  Json
+  createdAt DateTime       @default(now())
+
+  @@index([workspaceId])
+  @@index([fileVersionId])
+  @@map("review_annotations")
+}
+
+/// Phase 7.5 — see PLATFORM_FEE_AND_PAYOUT_LEDGER.md. One immutable
+/// breakdown per Payment, frozen at order-creation time (same moment
+/// amountSubunits is frozen) — never recalculated if the platform's fee
+/// policy changes later; a policy change only affects payments created
+/// after the change.
+model PaymentBreakdown {
+  id String @id @default(cuid())
+
+  paymentId String  @unique
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  projectAmountSubunits     BigInt
+  clientChargedSubunits     BigInt
+  /// Basis points (200 = 2.00%) — see PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
+  platformFeeBps            Int
+  platformFeeSubunits       BigInt
+  /// Tracked separately, never silently deducted from the freelancer
+  /// payable figure until a future phase's explicit gateway-fee policy —
+  /// see PLATFORM_FEE_AND_PAYOUT_LEDGER.md "Gateway-fee policy."
+  gatewayFeeSubunits        BigInt?
+  gatewayFeeTaxSubunits     BigInt?
+  freelancerPayableSubunits BigInt
+  currency                  String
+  calculatedAt              DateTime @default(now())
+
+  @@map("payment_breakdowns")
+}
+
+/// Phase 7.5 — one row per creator, the running summary a PayoutLedgerEntry
+/// stream is reconciled into. See PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
+model CreatorBalanceAccount {
+  id        String @id @default(cuid())
+  creatorId String @unique
+  creator   User   @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  currency          String   @default("INR")
+  pendingSubunits   BigInt   @default(0)
+  availableSubunits BigInt   @default(0)
+  paidOutSubunits   BigInt   @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("creator_balance_accounts")
+}
+
+/// Phase 7.5 — append-only ledger; CreatorBalanceAccount is a derived,
+/// reconciled summary, never the source of truth on its own. See
+/// PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
+model PayoutLedgerEntry {
+  id        String @id @default(cuid())
+  creatorId String
+  creator   User   @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  type           PayoutLedgerType
+  amountSubunits BigInt
+  currency       String
+  status         PayoutStatus     @default(PENDING)
+  /// When a PENDING credit becomes AVAILABLE — governed by
+  /// PAYOUT_HOLD_HOURS (see payout-config.ts), never a hardcoded constant.
+  availableAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  /// Safe, structured only (e.g. { simulatedBy }) — never identity/bank data.
+  metadata       Json?
+
+  @@index([creatorId])
+  @@index([creatorId, status])
+  @@index([paymentId])
+  @@map("payout_ledger_entries")
+}
+
+/// Phase 7.5 — see SUPPORT_AND_DISPUTE_ARCHITECTURE.md.
+model SupportTicket {
+  id           String @id @default(cuid())
+  /// Short, human-readable reference (e.g. "TCK-000123") — safe to show a
+  /// client/creator without exposing the internal cuid.
+  ticketNumber String @unique
+
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  creatorId String?
+  creator   User?   @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  /// The review link a client used to raise this ticket — scopes a
+  /// client's later "view only tickets from this context" check. Never an
+  /// authorization bypass on its own (see SUPPORT_AND_DISPUTE_ARCHITECTURE.md).
+  reviewLinkId String?
+  reviewLink   ReviewLink? @relation(fields: [reviewLinkId], references: [id], onDelete: SetNull)
+
+  category    SupportTicketCategory
+  status      SupportTicketStatus   @default(OPEN)
+  priority    String                @default("normal")
+  subject     String
+  description String
+
+  createdByType   SupportAuthorType
+  creatorAuthorId String?
+  creatorAuthor   User?             @relation("SupportTicketCreatorAuthor", fields: [creatorAuthorId], references: [id], onDelete: SetNull)
+  /// Client-entered, unverified — same convention as ReviewComment.
+  reviewerName    String?
+  reviewerEmail   String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  resolvedAt DateTime?
+
+  messages SupportTicketMessage[]
+
+  @@index([workspaceId])
+  @@index([creatorId])
+  @@index([status])
+  @@index([reviewLinkId])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id       String        @id @default(cuid())
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorType      SupportAuthorType
+  creatorAuthorId String?
+  creatorAuthor   User?             @relation("SupportTicketMessageCreatorAuthor", fields: [creatorAuthorId], references: [id], onDelete: SetNull)
+  adminAuthorId   String?
+  adminAuthor     User?             @relation("SupportTicketMessageAdminAuthor", fields: [adminAuthorId], references: [id], onDelete: SetNull)
+  reviewerName    String?
+
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@map("support_ticket_messages")
+}

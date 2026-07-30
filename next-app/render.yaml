@@ -1,0 +1,94 @@
+# Render Blueprint for the INLAY demo deployment — see DEMO_DEPLOYMENT.md
+# and RENDER_DEMO_RUNBOOK.md. This is a single Free Web Service that
+# supervises the Next.js server plus both background workers as one
+# combined process (scripts/start-demo.mjs) — allowed only under
+# APP_ENV=demo, never a general production pattern.
+#
+# No secret values are set here. Configure DATABASE_URL, DIRECT_URL,
+# AUTH_SECRET, S3_*, RAZORPAY_*, and every other secret directly in the
+# Render dashboard's Environment tab for this service.
+services:
+  - type: web
+    name: inlay-demo
+    runtime: node
+    plan: free
+    rootDir: next-app
+    buildCommand: npm ci && npm run db:generate && npm run build
+    startCommand: npm run start:render-demo
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: demo
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_NAME
+        value: INLAY
+      - key: DEMO_COMBINED_PROCESS
+        value: "true"
+      - key: RUN_DEMO_SEED
+        value: "false"
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: PAYMENT_PROVIDER
+        value: razorpay
+      - key: RAZORPAY_MODE
+        value: test
+      - key: PAYOUT_PROVIDER
+        value: fake
+      - key: PAYOUT_MODE
+        value: test
+      - key: PLATFORM_FEE_BPS
+        value: "200"
+      - key: MAX_FILE_SIZE_BYTES
+        value: "10485760"
+      - key: MAX_WORKSPACE_FILES
+        value: "5"
+      - key: MAX_WORKSPACE_STORAGE_BYTES
+        value: "41943040"
+      - key: MAX_IMAGE_DIMENSION
+        value: "4000"
+      - key: PREVIEW_MAX_DIMENSION
+        value: "1600"
+      - key: FILE_WORKER_CONCURRENCY
+        value: "1"
+      - key: DELIVERY_WORKER_CONCURRENCY
+        value: "1"
+      - key: MAX_DELIVERY_BUNDLE_BYTES
+        value: "41943040"
+      - key: DOWNLOAD_GRANT_TTL_SECONDS
+        value: "604800"
+      - key: DOWNLOAD_GRANT_MAX_DOWNLOADS
+        value: "5"
+      # --- Set these manually in the Render dashboard (secrets/deployment-specific) ---
+      # AUTH_URL, AUTH_SECRET, AUTH_TRUST_HOST
+      # DATABASE_URL, DIRECT_URL (Neon)
+      # S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
+      # NEXT_PUBLIC_RAZORPAY_KEY_ID, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+      - key: AUTH_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: NEXT_PUBLIC_RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
