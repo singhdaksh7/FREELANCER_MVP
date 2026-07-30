@@ -48,8 +48,11 @@ test("creator releases the approved files, unlocking delivery", async ({ page })
   await expect(page.getByRole("heading", { name: /release the approved files to your client/i })).toBeVisible();
   await page.getByRole("button", { name: /yes, release files/i }).click();
 
-  await expect(page.getByRole("button", { name: /release approved files/i })).toHaveCount(0, { timeout: 10_000 });
-
+  // The workspace stays AWAITING_CREATOR_RELEASE (so "Release Approved
+  // Files" keeps rendering) until the delivery worker actually finishes and
+  // flips it to FILES_UNLOCKED — see delivery-release.ts's doc comment.
+  // Poll for that real, worker-driven completion rather than the button's
+  // (unchanged) presence.
   await expect
     .poll(
       async () => {

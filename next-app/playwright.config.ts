@@ -138,7 +138,16 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       // Same isolation reasoning — one file per concern, each creating its
       // own workspace/client/ticket via the real UI with a distinct,
-      // timestamped title so parallel specs never collide.
+      // timestamped title so parallel specs never collide. Capped workers:
+      // this project has more files than mutations-e2e/uploads-e2e/review-e2e
+      // (which each stay single-file, serial, to avoid contending for the
+      // one shared dev server process — see mutations.spec.ts's doc
+      // comment), and running all 12 files' wizard/upload/worker traffic at
+      // full default parallelism against that same shared server was
+      // observed to time out real workspace-creation navigations — even
+      // workers: 2 still showed the same timeouts, so this is fully
+      // serialized like mutations-e2e/uploads-e2e/review-e2e.
+      workers: 1,
     },
     {
       name: "desktop-1440",
@@ -147,6 +156,15 @@ export default defineConfig({
       testIgnore: /visual[\\/]admin[\\/]/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, storageState: AUTH_FILE },
       dependencies: ["setup"],
+      // Capped: this suite now includes several new specs that each drive
+      // a full wizard+upload+worker-processing cycle (delivery modes,
+      // pins, annotations, version conversations), on top of the existing
+      // ones. Running the whole file set at this machine's full default
+      // parallelism (~half its logical cores) was observed to overload the
+      // one shared dev server/Postgres/worker processes badly enough to
+      // fail even pre-existing, previously-stable specs — not a data race,
+      // just more concurrent heavy work than this local setup sustains.
+      workers: 3,
     },
     {
       name: "tablet-768",
@@ -155,6 +173,7 @@ export default defineConfig({
       testIgnore: /visual[\\/]admin[\\/]/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 }, storageState: AUTH_FILE },
       dependencies: ["setup"],
+      workers: 3,
     },
     {
       name: "mobile-390",
@@ -163,6 +182,7 @@ export default defineConfig({
       testIgnore: /visual[\\/]admin[\\/]/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, storageState: AUTH_FILE },
       dependencies: ["setup"],
+      workers: 3,
     },
     {
       name: "admin-setup",

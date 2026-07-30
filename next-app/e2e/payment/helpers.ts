@@ -62,20 +62,3 @@ export async function approveAsClient(page: Page, reviewerName = "Rohit Sharma")
   await expect(page.getByText(new RegExp(`approved by ${reviewerName}`, "i"))).toBeVisible({ timeout: 10_000 });
 }
 
-/**
- * Stubs Razorpay's externally-hosted Checkout script so "Pay and Unlock
- * Files" can be exercised deterministically without a real network call or
- * a real gateway session — the constructor's `open`/`on` are no-ops, so the
- * UI settles in "Waiting for Checkout…" once order-creation succeeds. Real
- * capture is out of scope for E2E (external gateway, non-deterministic) —
- * see PAYMENT_ARCHITECTURE.md.
- */
-export async function stubRazorpayCheckout(page: Page): Promise<void> {
-  await page.route("https://checkout.razorpay.com/v1/checkout.js", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/javascript",
-      body: "window.Razorpay = function Razorpay() { return { open: function () {}, on: function () {} }; };",
-    });
-  });
-}
