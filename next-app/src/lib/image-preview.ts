@@ -9,6 +9,11 @@ import { buildWatermarkLines, buildWatermarkSvg, type WatermarkTextInput } from 
 const configuredConcurrency = getSharpConcurrency();
 if (configuredConcurrency !== null) {
   sharp.concurrency(configuredConcurrency);
+  // Same resource-constrained-instance gate as concurrency above — Sharp's
+  // in-memory operation cache is unbounded by default, which is wasted
+  // headroom on a 512MB demo instance that only ever processes one file at
+  // a time anyway.
+  sharp.cache(false);
 }
 
 export class UnsupportedImageError extends Error {

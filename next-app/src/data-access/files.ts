@@ -9,6 +9,7 @@ import { getWorkerConfig } from "@/storage/storage-config";
 import { s3StorageProvider } from "@/storage/s3-storage-provider";
 import { createPreviewPresignedUrl } from "@/storage/signed-urls";
 import { FINANCIAL_LOCK_STATUSES } from "./workspaces";
+import { wakeWorker } from "@/lib/worker-wake";
 import type { FileKind, FileStatus } from "@/generated/prisma/client";
 
 export class FileNotRetryableError extends Error {
@@ -175,6 +176,8 @@ export async function retryFileProcessing(fileId: string): Promise<void> {
       metadata: { fileName: file.displayName },
     });
   });
+
+  wakeWorker("file");
 }
 
 /**

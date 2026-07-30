@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireOwnedWorkspace } from "./authorization";
 import { recordActivity } from "./activity";
 import { ActivityAction } from "@/lib/activity-log";
+import { wakeWorker } from "@/lib/worker-wake";
 
 export class WorkspaceNotReleasableError extends Error {
   constructor(message = "This project is not currently awaiting a creator release.") {
@@ -66,4 +67,6 @@ export async function releaseApprovedFiles(workspaceId: string): Promise<void> {
       workspaceId,
     });
   });
+
+  wakeWorker("delivery");
 }

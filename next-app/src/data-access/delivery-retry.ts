@@ -4,6 +4,7 @@ import { requireOwnedWorkspace } from "./authorization";
 import { recordActivity } from "./activity";
 import { ActivityAction } from "@/lib/activity-log";
 import { getDeliveryWorkerConfig } from "@/storage/storage-config";
+import { wakeWorker } from "@/lib/worker-wake";
 
 /**
  * Creator-triggered retry for a permanently-failed delivery-bundle build —
@@ -55,4 +56,6 @@ export async function retryDeliveryPreparation(workspaceId: string, paymentId: s
       workspaceId,
     });
   });
+
+  wakeWorker("delivery");
 }

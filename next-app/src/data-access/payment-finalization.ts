@@ -5,6 +5,7 @@ import { ActivityAction } from "@/lib/activity-log";
 import { assertWorkspaceTransition } from "@/lib/workspace-transitions";
 import { AmountMismatchError, CurrencyMismatchError, UnknownOrderError } from "@/payments/payment-errors";
 import { getPayoutConfig } from "@/payouts/payout-config";
+import { wakeWorker } from "@/lib/worker-wake";
 
 /**
  * The ONE idempotent payment-finalization service — see
@@ -49,7 +50,7 @@ const POST_PAYMENT_STATUSES = ["PAID", "FILES_UNLOCKED", "DELIVERED"] as const;
  */
 export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInput): Promise<FinalizeCapturedPaymentResult> {
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const payment = await tx.payment.findUnique({
         where: { gatewayOrderId: input.gatewayOrderId },
         include: {
@@ -178,6 +179,9 @@ export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInpu
 
       return { paymentId: updatedPayment.id, workspaceId: workspace.id, alreadyFinalized: false };
     });
+
+    if (!result.alreadyFinalized) wakeWorker("delivery");
+    return result;
   } catch (error) {
     if ((error as { code?: string }).code === "P2002") {
       // Lost a genuine concurrent-finalization race — the winner already

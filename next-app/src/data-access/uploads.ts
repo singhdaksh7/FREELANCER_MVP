@@ -14,6 +14,7 @@ import type { FileKind } from "@/generated/prisma/enums";
 import { sanitizeDisplayFileName, extensionHintFromFileName } from "@/lib/filename-sanitize";
 import { bigIntToDisplayNumber, numberToStorageBigInt } from "@/lib/bytes";
 import { sha256Hex } from "@/lib/checksum";
+import { wakeWorker } from "@/lib/worker-wake";
 
 export class UploadValidationError extends Error {
   constructor(message: string) {
@@ -330,6 +331,9 @@ async function completeNewFileUpload(
       metadata: { fileName: session.declaredFileName },
     });
     return { fileId: file.id };
+  }).then((result) => {
+    wakeWorker("file");
+    return result;
   });
 }
 
@@ -381,5 +385,8 @@ async function completeVersionUpload(
       metadata: { fileName: session.declaredFileName, versionNumber: nextVersionNumber },
     });
     return { fileId: targetFileId };
+  }).then((result) => {
+    wakeWorker("file");
+    return result;
   });
 }
