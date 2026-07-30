@@ -4,6 +4,7 @@
  * is cheap to unit test and safe to import from the worker, route
  * handlers, or tests without pulling in libvips.
  */
+import { BRAND } from "./branding";
 
 export interface WatermarkTextInput {
   clientName: string;
@@ -53,7 +54,7 @@ export function escapeXmlText(value: string): string {
 /** The exact lines rendered in every tile of the watermark, escaped for safe SVG interpolation by buildWatermarkSvg. */
 export function buildWatermarkLines(input: WatermarkTextInput): string[] {
   return [
-    "PREVIEW ONLY — Project Vault",
+    BRAND.watermarkText,
     `${input.clientName} (${input.clientEmail})`,
     `Workspace: ${input.workspaceTitle}`,
   ];

@@ -3,9 +3,10 @@ import { ArrowRight, FileText, Lock, ShieldCheck, Zap } from "lucide-react";
 import { PublicNav } from "@/components/layout/public-nav";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { LinkButton } from "@/components/ui/link-button";
+import { BRAND } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "Project Vault — Payment-Gated Delivery for Creators",
+  title: `${BRAND.productName} — Payment-Gated Delivery for Creators`,
 };
 
 const FEATURES = [

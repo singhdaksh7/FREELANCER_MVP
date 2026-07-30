@@ -23,10 +23,12 @@ export interface PayoutProvider {
 
 function assertProductionSafe(provider: PayoutProviderName): void {
   if (process.env.NODE_ENV !== "production") return;
-  // Only the fake, test-mode simulation exists in this phase — so ANY
-  // provider selection is unsafe in production. This is not a narrower
-  // "reject fake, allow live" check (there is no live implementation yet);
-  // it's a hard stop until a real provider is built and wired in here.
+  // The INLAY demo deployment runs `NODE_ENV=production` but explicitly
+  // simulates payouts (fake provider, test mode) — see DEMO_DEPLOYMENT.md
+  // "No live payouts or KYC." Outside APP_ENV=demo, only the fake,
+  // test-mode simulation exists in this phase, so ANY provider selection
+  // is still unsafe in a real production deployment.
+  if (process.env.APP_ENV === "demo" && provider === "fake") return;
   throw new LiveProviderNotImplementedError(
     `Refusing to run payout simulation in production (PAYOUT_PROVIDER="${provider}") — no live payout provider is implemented yet.`,
   );

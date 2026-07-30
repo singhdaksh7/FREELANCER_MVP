@@ -1,8 +1,15 @@
 // No "server-only" import — must also run from the standalone worker
 // (src/worker/process-files.ts). See storage-config.ts's comment.
 import sharp from "sharp";
-import { getPreviewLimits } from "@/storage/storage-config";
+import { getPreviewLimits, getSharpConcurrency } from "@/storage/storage-config";
 import { buildWatermarkLines, buildWatermarkSvg, type WatermarkTextInput } from "./watermark";
+
+// Only overrides Sharp's own CPU-count-based default when SHARP_CONCURRENCY
+// is explicitly set (e.g. on a resource-constrained demo instance).
+const configuredConcurrency = getSharpConcurrency();
+if (configuredConcurrency !== null) {
+  sharp.concurrency(configuredConcurrency);
+}
 
 export class UnsupportedImageError extends Error {
   constructor(message = "This image could not be decoded.") {

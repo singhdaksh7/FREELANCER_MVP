@@ -37,4 +37,19 @@ describe("payout-provider production guard", () => {
     delete process.env.PAYOUT_PROVIDER;
     await expect(getPayoutProvider()).rejects.toBeInstanceOf(LiveProviderNotImplementedError);
   });
+
+  it("allows the fake provider in production when APP_ENV=demo (the INLAY demo deployment)", async () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("APP_ENV", "demo");
+    process.env.PAYOUT_PROVIDER = "fake";
+    const provider = await getPayoutProvider();
+    expect(provider.name).toBe("fake");
+  });
+
+  it("does not weaken the guard for a non-demo production deployment", async () => {
+    setEnv("NODE_ENV", "production");
+    delete (process.env as Record<string, string | undefined>).APP_ENV;
+    process.env.PAYOUT_PROVIDER = "fake";
+    await expect(getPayoutProvider()).rejects.toBeInstanceOf(LiveProviderNotImplementedError);
+  });
 });

@@ -11,6 +11,7 @@ import { AnnotationCanvas } from "./annotation-canvas";
 import { ClientSupportModal } from "./client-support-modal";
 import type { SupportTicketSummary } from "@/data-access/support-tickets";
 import { formatDateTime } from "@/lib/format-date";
+import { BRAND } from "@/lib/branding";
 import type { ReviewableFile } from "@/data-access/review-files";
 import type { ReviewCommentThreadItem } from "@/data-access/review-comments";
 import type { ActiveChangeRequest } from "@/data-access/change-requests";
@@ -306,7 +307,7 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
                   {isPreviewOnly && !isReadOnly && (
                     <p role="status" className="w-full text-center text-xs text-slate-400">
                       This is a preview-only project — leave a comment or request changes below. Original files are
-                      not released through Project Vault.
+                      not released through {BRAND.productName}.
                     </p>
                   )}
                   {hasOpenChangeRequest && (

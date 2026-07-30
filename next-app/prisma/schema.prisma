@@ -1,4 +1,4 @@
-// Project Vault — Phase 3 schema.
+// INLAY — Phase 3 schema.
 // Scope: creator auth + read-only creator screens (dashboard, workspaces,
 // clients, payments, notifications). Mutation-only fields (comments,
 // versions, file storage, webhooks, etc.) are deliberately out of scope —

@@ -4,6 +4,7 @@ import { useActionState, useId, useState } from "react";
 import { Check, FileText, Shield, CreditCard, ClipboardList, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/format-currency";
+import { BRAND } from "@/lib/branding";
 import { createWorkspaceAction, type WorkspaceFormState } from "@/actions/workspaces";
 import { InlineClientModal } from "./inline-client-modal";
 import type { ClientOption } from "@/data-access/clients";
@@ -50,7 +51,7 @@ const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string; descrip
     value: "PREVIEW_ONLY",
     label: "Preview Only",
     description:
-      "Your client can view and comment on protected previews. Original files are not released through Project Vault.",
+      `Your client can view and comment on protected previews. Original files are not released through ${BRAND.productName}.`,
   },
 ];
 
@@ -264,7 +265,7 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
                 value={fields.watermarkText}
                 onChange={set("watermarkText")}
                 maxLength={200}
-                placeholder="e.g. PREVIEW — Project Vault"
+                placeholder={`e.g. PREVIEW — ${BRAND.productName}`}
                 className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
               />
               {state.fieldErrors?.watermarkText && (

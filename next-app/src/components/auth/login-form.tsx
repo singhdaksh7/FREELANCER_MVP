@@ -4,6 +4,7 @@ import { useActionState, useId } from "react";
 import Link from "next/link";
 import { ArrowRight, Key, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/lib/branding";
 import { AuthCard } from "./auth-card";
 import { loginAction, type AuthActionState } from "@/actions/auth";
 
@@ -18,7 +19,7 @@ export function LoginForm() {
 
   return (
     <AuthCard
-      heading="Sign in to Project Vault"
+      heading={`Sign in to ${BRAND.productName}`}
       subheading="Enter your credentials to access your workspaces"
       footer={
         <span>

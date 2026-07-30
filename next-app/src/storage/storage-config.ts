@@ -16,14 +16,25 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function intEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`Invalid value for ${name}: "${raw}" (expected a positive integer)`);
+/**
+ * Reads the first set env var from `names` (checked in order) as a
+ * positive integer, falling back to `fallback` if none are set. Accepting
+ * multiple names lets a newer, demo-facing var name (e.g.
+ * MAX_FILE_SIZE_BYTES) take precedence over this project's original name
+ * (UPLOAD_MAX_FILE_SIZE_BYTES) without breaking existing deployments that
+ * already set the original.
+ */
+function intEnv(names: string | string[], fallback: number): number {
+  for (const name of Array.isArray(names) ? names : [names]) {
+    const raw = process.env[name];
+    if (!raw) continue;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(`Invalid value for ${name}: "${raw}" (expected a positive integer)`);
+    }
+    return parsed;
   }
-  return parsed;
+  return fallback;
 }
 
 export interface StorageConfig {
@@ -104,9 +115,12 @@ export interface UploadLimits {
 
 export function getUploadLimits(): UploadLimits {
   return {
-    maxFileSizeBytes: intEnv("UPLOAD_MAX_FILE_SIZE_BYTES", 50 * 1024 * 1024),
-    maxFilesPerWorkspace: intEnv("UPLOAD_MAX_FILES_PER_WORKSPACE", 50),
-    maxTotalWorkspaceBytes: intEnv("UPLOAD_MAX_TOTAL_WORKSPACE_BYTES", 500 * 1024 * 1024),
+    maxFileSizeBytes: intEnv(["MAX_FILE_SIZE_BYTES", "UPLOAD_MAX_FILE_SIZE_BYTES"], 50 * 1024 * 1024),
+    maxFilesPerWorkspace: intEnv(["MAX_WORKSPACE_FILES", "UPLOAD_MAX_FILES_PER_WORKSPACE"], 50),
+    maxTotalWorkspaceBytes: intEnv(
+      ["MAX_WORKSPACE_STORAGE_BYTES", "UPLOAD_MAX_TOTAL_WORKSPACE_BYTES"],
+      500 * 1024 * 1024,
+    ),
     sessionExpirySeconds: intEnv("UPLOAD_SESSION_EXPIRY_SECONDS", 900),
   };
 }
@@ -120,8 +134,8 @@ export interface PreviewLimits {
 
 export function getPreviewLimits(): PreviewLimits {
   return {
-    maxInputDimensionPx: intEnv("PREVIEW_MAX_INPUT_DIMENSION_PX", 8000),
-    maxOutputDimensionPx: intEnv("PREVIEW_MAX_OUTPUT_DIMENSION_PX", 1600),
+    maxInputDimensionPx: intEnv(["MAX_IMAGE_DIMENSION", "PREVIEW_MAX_INPUT_DIMENSION_PX"], 8000),
+    maxOutputDimensionPx: intEnv(["PREVIEW_MAX_DIMENSION", "PREVIEW_MAX_OUTPUT_DIMENSION_PX"], 1600),
     processingTimeoutMs: intEnv("PREVIEW_PROCESSING_TIMEOUT_MS", 30_000),
     quality: intEnv("PREVIEW_QUALITY", 80),
   };
@@ -130,13 +144,38 @@ export function getPreviewLimits(): PreviewLimits {
 export interface WorkerConfig {
   pollIntervalMs: number;
   maxAttempts: number;
+  /**
+   * Number of parallel job-claim loops the file worker runs in-process.
+   * Default 1 preserves the exact original sequential behavior — jobs are
+   * still claimed one at a time with `FOR UPDATE SKIP LOCKED`, so raising
+   * this is safe, it just lets one worker process handle more than one
+   * job concurrently. Demo deployments keep this at 1 (conservative).
+   */
+  concurrency: number;
 }
 
 export function getWorkerConfig(): WorkerConfig {
   return {
     pollIntervalMs: intEnv("FILE_WORKER_POLL_INTERVAL_MS", 2000),
     maxAttempts: intEnv("FILE_WORKER_MAX_ATTEMPTS", 3),
+    concurrency: intEnv("FILE_WORKER_CONCURRENCY", 1),
   };
+}
+
+/**
+ * Sharp (libvips) worker-thread pool size. Unset by default, which leaves
+ * Sharp's own CPU-count-based default untouched — only meaningful to set
+ * explicitly in resource-constrained environments (e.g. the demo's shared
+ * Render instance), via SHARP_CONCURRENCY.
+ */
+export function getSharpConcurrency(): number | null {
+  const raw = process.env.SHARP_CONCURRENCY;
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid value for SHARP_CONCURRENCY: "${raw}" (expected a positive integer)`);
+  }
+  return parsed;
 }
 
 export interface ReviewLinkConfig {
@@ -176,7 +215,7 @@ export interface DownloadGrantConfig {
 /** Phase 7 — see SECURE_DOWNLOAD_ARCHITECTURE.md. */
 export function getDownloadGrantConfig(): DownloadGrantConfig {
   return {
-    ttlSeconds: intEnv("DOWNLOAD_GRANT_TTL", 60 * 60 * 24 * 14),
+    ttlSeconds: intEnv(["DOWNLOAD_GRANT_TTL_SECONDS", "DOWNLOAD_GRANT_TTL"], 60 * 60 * 24 * 14),
     maxDownloads: intEnv("DOWNLOAD_GRANT_MAX_DOWNLOADS", 20),
   };
 }
@@ -185,6 +224,10 @@ export interface DeliveryWorkerConfig {
   maxAttempts: number;
   bundlePrefix: string;
   pollIntervalMs: number;
+  /** Same conservative-default rationale as WorkerConfig.concurrency above. */
+  concurrency: number;
+  /** Demo-tier cap on total delivery-bundle (ZIP) size — see MAX_DELIVERY_BUNDLE_BYTES. */
+  maxBundleBytes: number;
 }
 
 /** Phase 7 — see SECURE_DOWNLOAD_ARCHITECTURE.md "ZIP worker." */
@@ -193,5 +236,7 @@ export function getDeliveryWorkerConfig(): DeliveryWorkerConfig {
     maxAttempts: intEnv("DELIVERY_WORKER_MAX_ATTEMPTS", 3),
     bundlePrefix: process.env.DELIVERY_BUNDLE_PREFIX || "deliveries",
     pollIntervalMs: intEnv("FILE_WORKER_POLL_INTERVAL_MS", 2000),
+    concurrency: intEnv("DELIVERY_WORKER_CONCURRENCY", 1),
+    maxBundleBytes: intEnv("MAX_DELIVERY_BUNDLE_BYTES", 500 * 1024 * 1024),
   };
 }

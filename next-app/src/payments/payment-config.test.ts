@@ -95,4 +95,48 @@ describe("payment-config production guards", () => {
     process.env.PAYMENT_PROVIDER = "stripe";
     expect(() => getPaymentConfig()).toThrow(PaymentConfigError);
   });
+
+  it("allows RAZORPAY_MODE=test in production when APP_ENV=demo (the INLAY demo deployment)", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("APP_ENV", "demo");
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    process.env.RAZORPAY_MODE = "test";
+    process.env.RAZORPAY_KEY_ID = "rzp_test_abc123";
+    process.env.RAZORPAY_KEY_SECRET = "a_real_looking_secret_value";
+    process.env.RAZORPAY_WEBHOOK_SECRET = "another_real_looking_secret";
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = "rzp_test_abc123";
+    const config = getPaymentConfig();
+    expect(config.provider).toBe("razorpay");
+    expect(config.mode).toBe("test");
+  });
+
+  it("still refuses the fake provider under APP_ENV=demo in production", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("APP_ENV", "demo");
+    process.env.PAYMENT_PROVIDER = "fake";
+    expect(() => getPaymentConfig()).toThrow(PaymentConfigError);
+  });
+
+  it("still requires the public key id to match the server key id under APP_ENV=demo", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("APP_ENV", "demo");
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    process.env.RAZORPAY_MODE = "test";
+    process.env.RAZORPAY_KEY_ID = "rzp_test_abc123";
+    process.env.RAZORPAY_KEY_SECRET = "a_real_looking_secret_value";
+    process.env.RAZORPAY_WEBHOOK_SECRET = "another_real_looking_secret";
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = "rzp_test_different";
+    expect(() => getPaymentConfig()).toThrow(PaymentConfigError);
+  });
+
+  it("does not weaken the live-mode guard when APP_ENV is unset (not demo)", () => {
+    setEnv("NODE_ENV", "production");
+    process.env.PAYMENT_PROVIDER = "razorpay";
+    process.env.RAZORPAY_MODE = "test";
+    process.env.RAZORPAY_KEY_ID = "rzp_test_abc123";
+    process.env.RAZORPAY_KEY_SECRET = "a_real_looking_secret_value";
+    process.env.RAZORPAY_WEBHOOK_SECRET = "another_real_looking_secret";
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID = "rzp_test_abc123";
+    expect(() => getPaymentConfig()).toThrow(PaymentConfigError);
+  });
 });

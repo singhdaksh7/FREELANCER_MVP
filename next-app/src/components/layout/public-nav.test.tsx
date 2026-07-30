@@ -13,7 +13,7 @@ describe("PublicNav", () => {
     expect(
       screen.getByRole("link", { name: /get started free/i }),
     ).toHaveAttribute("href", "/register");
-    expect(screen.getByRole("link", { name: /project vault/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /inlay/i })).toHaveAttribute(
       "href",
       "/",
     );

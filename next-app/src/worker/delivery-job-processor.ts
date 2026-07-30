@@ -118,6 +118,15 @@ export async function processDeliveryJob(prisma: PrismaLike, job: NonNullable<Cl
       return { entry, version };
     });
 
+    const { bundlePrefix, maxBundleBytes } = getDeliveryWorkerConfig();
+    const totalOriginalBytes = resolved.reduce((sum, { version }) => sum + version.originalSizeBytes, BigInt(0));
+    if (totalOriginalBytes > BigInt(maxBundleBytes)) {
+      throw new Error(
+        `This delivery bundle (${totalOriginalBytes} bytes) exceeds the ${maxBundleBytes}-byte demo size limit. ` +
+          "Remove some files or contact support to increase this limit.",
+      );
+    }
+
     const entryNames = buildUniqueZipEntryNames(resolved.map((r) => r.entry.displayName));
 
     const zip = new JSZip();
@@ -128,7 +137,6 @@ export async function processDeliveryJob(prisma: PrismaLike, job: NonNullable<Cl
     }
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 
-    const { bundlePrefix } = getDeliveryWorkerConfig();
     const bundleKey = generateDeliveryBundleKey(bundlePrefix);
     await s3StorageProvider.putObjectBuffer(bundleKey, zipBuffer, "application/zip");
     const checksum = sha256Hex(zipBuffer);

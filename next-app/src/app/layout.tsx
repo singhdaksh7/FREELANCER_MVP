@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { BRAND } from "@/lib/branding";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,11 +10,10 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Project Vault",
-    template: "%s | Project Vault",
+    default: BRAND.productName,
+    template: `%s | ${BRAND.productName}`,
   },
-  description:
-    "Payment-gated digital file-delivery platform for freelancers and creative agencies.",
+  description: BRAND.tagline,
 };
 
 export default function RootLayout({

@@ -16,6 +16,17 @@ const ENV_KEYS = [
   "E2E_LOCAL_BUILD",
   "REVIEW_LINK_EXPIRY_DAYS",
   "REVIEW_LINK_RETENTION_DAYS",
+  "MAX_FILE_SIZE_BYTES",
+  "MAX_WORKSPACE_FILES",
+  "MAX_WORKSPACE_STORAGE_BYTES",
+  "MAX_IMAGE_DIMENSION",
+  "PREVIEW_MAX_DIMENSION",
+  "DOWNLOAD_GRANT_TTL_SECONDS",
+  "DOWNLOAD_GRANT_TTL",
+  "FILE_WORKER_CONCURRENCY",
+  "DELIVERY_WORKER_CONCURRENCY",
+  "SHARP_CONCURRENCY",
+  "MAX_DELIVERY_BUNDLE_BYTES",
 ];
 
 const originalEnv: Record<string, string | undefined> = {};
@@ -126,6 +137,96 @@ describe("getUploadLimits", () => {
     process.env.UPLOAD_MAX_FILE_SIZE_BYTES = "not-a-number";
     const { getUploadLimits } = await import("./storage-config");
     expect(() => getUploadLimits()).toThrow();
+  });
+
+  it("prefers the demo-facing var name (MAX_FILE_SIZE_BYTES) over the original when both are set", async () => {
+    process.env.MAX_FILE_SIZE_BYTES = "10485760";
+    process.env.UPLOAD_MAX_FILE_SIZE_BYTES = "999999999";
+    const { getUploadLimits } = await import("./storage-config");
+    expect(getUploadLimits().maxFileSizeBytes).toBe(10485760);
+  });
+
+  it("falls back to UPLOAD_MAX_FILE_SIZE_BYTES when MAX_FILE_SIZE_BYTES is unset", async () => {
+    delete process.env.MAX_FILE_SIZE_BYTES;
+    process.env.UPLOAD_MAX_FILE_SIZE_BYTES = "2048";
+    const { getUploadLimits } = await import("./storage-config");
+    expect(getUploadLimits().maxFileSizeBytes).toBe(2048);
+  });
+
+  it("supports MAX_WORKSPACE_FILES and MAX_WORKSPACE_STORAGE_BYTES aliases", async () => {
+    process.env.MAX_WORKSPACE_FILES = "5";
+    process.env.MAX_WORKSPACE_STORAGE_BYTES = "41943040";
+    const { getUploadLimits } = await import("./storage-config");
+    const limits = getUploadLimits();
+    expect(limits.maxFilesPerWorkspace).toBe(5);
+    expect(limits.maxTotalWorkspaceBytes).toBe(41943040);
+  });
+});
+
+describe("getPreviewLimits", () => {
+  it("supports MAX_IMAGE_DIMENSION and PREVIEW_MAX_DIMENSION aliases", async () => {
+    process.env.MAX_IMAGE_DIMENSION = "4000";
+    process.env.PREVIEW_MAX_DIMENSION = "1600";
+    const { getPreviewLimits } = await import("./storage-config");
+    const limits = getPreviewLimits();
+    expect(limits.maxInputDimensionPx).toBe(4000);
+    expect(limits.maxOutputDimensionPx).toBe(1600);
+  });
+});
+
+describe("getWorkerConfig", () => {
+  it("defaults concurrency to 1 (original sequential behavior)", async () => {
+    delete process.env.FILE_WORKER_CONCURRENCY;
+    const { getWorkerConfig } = await import("./storage-config");
+    expect(getWorkerConfig().concurrency).toBe(1);
+  });
+
+  it("respects FILE_WORKER_CONCURRENCY", async () => {
+    process.env.FILE_WORKER_CONCURRENCY = "3";
+    const { getWorkerConfig } = await import("./storage-config");
+    expect(getWorkerConfig().concurrency).toBe(3);
+  });
+});
+
+describe("getDeliveryWorkerConfig", () => {
+  it("defaults concurrency to 1 and maxBundleBytes to 500MB", async () => {
+    delete process.env.DELIVERY_WORKER_CONCURRENCY;
+    delete process.env.MAX_DELIVERY_BUNDLE_BYTES;
+    const { getDeliveryWorkerConfig } = await import("./storage-config");
+    const config = getDeliveryWorkerConfig();
+    expect(config.concurrency).toBe(1);
+    expect(config.maxBundleBytes).toBe(500 * 1024 * 1024);
+  });
+
+  it("respects MAX_DELIVERY_BUNDLE_BYTES and DELIVERY_WORKER_CONCURRENCY overrides", async () => {
+    process.env.MAX_DELIVERY_BUNDLE_BYTES = "41943040";
+    process.env.DELIVERY_WORKER_CONCURRENCY = "2";
+    const { getDeliveryWorkerConfig } = await import("./storage-config");
+    const config = getDeliveryWorkerConfig();
+    expect(config.maxBundleBytes).toBe(41943040);
+    expect(config.concurrency).toBe(2);
+  });
+});
+
+describe("getSharpConcurrency", () => {
+  it("returns null when SHARP_CONCURRENCY is unset, preserving Sharp's own default", async () => {
+    delete process.env.SHARP_CONCURRENCY;
+    const { getSharpConcurrency } = await import("./storage-config");
+    expect(getSharpConcurrency()).toBeNull();
+  });
+
+  it("returns the configured value when set", async () => {
+    process.env.SHARP_CONCURRENCY = "1";
+    const { getSharpConcurrency } = await import("./storage-config");
+    expect(getSharpConcurrency()).toBe(1);
+  });
+});
+
+describe("getDownloadGrantConfig", () => {
+  it("supports the DOWNLOAD_GRANT_TTL_SECONDS alias", async () => {
+    process.env.DOWNLOAD_GRANT_TTL_SECONDS = "604800";
+    const { getDownloadGrantConfig } = await import("./storage-config");
+    expect(getDownloadGrantConfig().ttlSeconds).toBe(604800);
   });
 });
 

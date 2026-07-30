@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ShieldAlert, TestTube2 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { getPayoutConfig } from "@/payouts/payout-config";
+import { BRAND } from "@/lib/branding";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -41,7 +42,7 @@ export default function SettingsPage() {
           <div>
             <p className="text-sm font-semibold text-ink">Verification required for live payouts</p>
             <p className="mt-1 text-xs text-ink-muted">
-              Live payouts are unavailable in this phase. Project Vault does not collect bank account numbers, IFSC
+              Live payouts are unavailable in this phase. {BRAND.productName} does not collect bank account numbers, IFSC
               codes, cancelled cheques, PAN, Aadhaar, or any other identity documents today. A future phase will
               integrate an approved marketplace or payout provider to support real, verified payouts.
             </p>
@@ -50,7 +51,7 @@ export default function SettingsPage() {
 
         <div className="rounded-md border border-line px-4 py-3 text-xs text-ink-muted">
           <span className="font-semibold text-danger">Live payouts unavailable.</span> This account cannot receive
-          real money through Project Vault yet.
+          real money through {BRAND.productName} yet.
         </div>
       </div>
     </div>

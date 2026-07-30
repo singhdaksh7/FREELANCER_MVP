@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { pathToFileURL } from "node:url";
 import { PrismaClient, WorkspaceStatus, PaymentStatus, NotificationType } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
@@ -19,7 +20,46 @@ const prisma = new PrismaClient({ adapter });
 
 const DEMO_PASSWORD = "Demo@12345";
 
-async function resetCreatorData(creatorId: string) {
+/** Exported (not just called from main()) so integration tests can exercise the same reset logic directly against the test database — see src/data-access/seed-idempotency.integration.test.ts. */
+export async function resetCreatorData(creatorId: string) {
+  const workspaces = await prisma.workspace.findMany({ where: { creatorId }, select: { id: true } });
+  const workspaceIds = workspaces.map((w) => w.id);
+
+  if (workspaceIds.length > 0) {
+    // Workspace cascades to WorkspaceFile/FileVersion/WorkspaceApproval
+    // directly, but DownloadGrantFile, DownloadGrant, DeliveryBundle, and
+    // Payment each hold an onDelete: Restrict foreign key into
+    // WorkspaceFile/FileVersion/WorkspaceApproval too (see schema.prisma).
+    // Postgres does not guarantee those Restrict checks run *after* the
+    // sibling Cascade paths from a single `DELETE FROM workspaces`
+    // statement finish clearing the rows they'd otherwise block — in
+    // practice, once E2E/manual testing has created a real download
+    // grant, delivery bundle, or payment against a seeded workspace, the
+    // plain `workspace.deleteMany()` below fails with a foreign-key
+    // violation. Deleting these leaf-first, in dependency order, makes
+    // this reset safe regardless of what real (non-decorative) data a
+    // workspace has accumulated.
+    await prisma.downloadGrantFile.deleteMany({ where: { grant: { workspaceId: { in: workspaceIds } } } });
+    await prisma.downloadGrant.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.deliveryBundle.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.payment.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await prisma.workspaceApproval.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+  }
+
+  // SupportTicket.workspace and PayoutLedgerEntry.payment are both
+  // onDelete: SetNull (a ticket outlives its workspace, a ledger entry
+  // outlives the payment it was credited from — see
+  // SUPPORT_AND_DISPUTE_ARCHITECTURE.md / PLATFORM_FEE_AND_PAYOUT_LEDGER.md),
+  // and both key off `creatorId` with onDelete: Cascade from User — which
+  // never fires here, since this reset upserts the User rather than
+  // deleting it. Left alone, both would silently survive a workspace/
+  // payment delete and accumulate a little more on every reset/reseed
+  // cycle. Delete both explicitly by creatorId so the seed stays a true
+  // no-growth reset.
+  await prisma.supportTicketMessage.deleteMany({ where: { ticket: { creatorId } } });
+  await prisma.supportTicket.deleteMany({ where: { creatorId } });
+  await prisma.payoutLedgerEntry.deleteMany({ where: { creatorId } });
+
   // Order matters: Workspace -> Client uses onDelete: Restrict, so
   // workspaces (and everything cascading from them) must go first.
   await prisma.notification.deleteMany({ where: { userId: creatorId } });
@@ -27,7 +67,7 @@ async function resetCreatorData(creatorId: string) {
   await prisma.client.deleteMany({ where: { creatorId } });
 }
 
-async function seedArjun() {
+export async function seedArjun() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
   const arjun = await prisma.user.upsert({
@@ -538,17 +578,26 @@ async function seedAdmin() {
   console.log(`✓ Seeded admin account (${admin.email}).`);
 }
 
-async function main() {
+export async function main() {
   await seedArjun();
   await seedMeera();
   await seedAdmin();
 }
 
-main()
-  .catch((error) => {
-    console.error("Seed failed:", error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Only auto-run when this file is executed directly (`tsx prisma/seed.ts`,
+// via `prisma db seed`) — not when its functions are imported by
+// src/data-access/seed-idempotency.integration.test.ts, which needs to
+// call resetCreatorData/seedArjun directly against the test database
+// without triggering a second full seed run (and a `prisma.$disconnect()`
+// that would break the importing test file's own prisma usage).
+const isMainModule = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMainModule) {
+  main()
+    .catch((error) => {
+      console.error("Seed failed:", error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

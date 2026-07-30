@@ -50,15 +50,25 @@ function assertProductionSafe(config: PaymentConfig): void {
   if (config.provider === "fake") {
     throw new PaymentConfigError("Refusing to start: PAYMENT_PROVIDER=\"fake\" is forbidden in production.");
   }
-  if (config.mode !== "live") {
-    throw new PaymentConfigError(
-      `Refusing to start: RAZORPAY_MODE="${config.mode}" (test keys) is forbidden while NODE_ENV=production.`,
-    );
-  }
-  if (!keyLooksLikeMode(config.keyId, "live")) {
-    throw new PaymentConfigError(
-      "Refusing to start: RAZORPAY_KEY_ID does not look like a live key (\"rzp_live_...\") while NODE_ENV=production and RAZORPAY_MODE=\"live\".",
-    );
+
+  // The INLAY demo deployment runs `NODE_ENV=production` (a Next.js build
+  // requirement) but is explicitly Razorpay TEST MODE only — see
+  // DEMO_DEPLOYMENT.md. This is a narrow allowance for that one case: it
+  // still requires the real razorpay provider (never "fake") and the full
+  // checkout/webhook/finalization pipeline runs unchanged; it only skips
+  // the live-mode/live-key checks below.
+  const isDemoTestMode = process.env.APP_ENV === "demo" && config.mode === "test";
+  if (!isDemoTestMode) {
+    if (config.mode !== "live") {
+      throw new PaymentConfigError(
+        `Refusing to start: RAZORPAY_MODE="${config.mode}" (test keys) is forbidden while NODE_ENV=production.`,
+      );
+    }
+    if (!keyLooksLikeMode(config.keyId, "live")) {
+      throw new PaymentConfigError(
+        "Refusing to start: RAZORPAY_KEY_ID does not look like a live key (\"rzp_live_...\") while NODE_ENV=production and RAZORPAY_MODE=\"live\".",
+      );
+    }
   }
   if (config.publicKeyId !== config.keyId) {
     throw new PaymentConfigError(

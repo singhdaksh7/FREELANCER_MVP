@@ -26,18 +26,9 @@ import { claimNextJob, processJob } from "./job-processor";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-async function runLoop(once: boolean): Promise<void> {
-  const { pollIntervalMs } = getWorkerConfig();
-  let shuttingDown = false;
-  process.on("SIGINT", () => {
-    shuttingDown = true;
-  });
-  process.on("SIGTERM", () => {
-    shuttingDown = true;
-  });
-
+async function claimLoop(once: boolean, pollIntervalMs: number, isShuttingDown: () => boolean): Promise<void> {
   for (;;) {
-    if (shuttingDown) return;
+    if (isShuttingDown()) return;
     const job = await claimNextJob(prisma);
     if (job) {
       await processJob(prisma, job);
@@ -47,6 +38,29 @@ async function runLoop(once: boolean): Promise<void> {
     if (once) return;
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
+}
+
+/**
+ * Runs `concurrency` claim loops in parallel within this one process. Each
+ * loop still claims exactly one job at a time via `FOR UPDATE SKIP LOCKED`
+ * (job-processor.ts), so this is safe at any concurrency — it only lets a
+ * single worker process handle more than one job at once. Default
+ * concurrency of 1 (see FILE_WORKER_CONCURRENCY) is byte-for-byte the
+ * original sequential behavior.
+ */
+async function runLoop(once: boolean): Promise<void> {
+  const { pollIntervalMs, concurrency } = getWorkerConfig();
+  let shuttingDown = false;
+  process.on("SIGINT", () => {
+    shuttingDown = true;
+  });
+  process.on("SIGTERM", () => {
+    shuttingDown = true;
+  });
+
+  await Promise.all(
+    Array.from({ length: concurrency }, () => claimLoop(once, pollIntervalMs, () => shuttingDown)),
+  );
 }
 
 const runOnce = process.argv.includes("--once");

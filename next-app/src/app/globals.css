@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Project Vault design tokens.
+ * INLAY design tokens.
  * Values are ported 1:1 from the original Vite app's src/index.css.
  * This is the single source of truth for color, radius, shadow and
  * layout-dimension tokens across the Next.js app.

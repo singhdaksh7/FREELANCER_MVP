@@ -20,14 +20,13 @@ describe("escapeXmlText", () => {
 });
 
 describe("buildWatermarkLines", () => {
-  it("includes the required PREVIEW ONLY / client / workspace content", () => {
+  it("includes the required brand / client / workspace content", () => {
     const lines = buildWatermarkLines({
       clientName: "Rohit Sharma",
       clientEmail: "rohit@example.com",
       workspaceTitle: "Brand Identity Design",
     });
-    expect(lines.join(" ")).toContain("PREVIEW ONLY");
-    expect(lines.join(" ")).toContain("Project Vault");
+    expect(lines.join(" ")).toContain("INLAY PREVIEW");
     expect(lines.join(" ")).toContain("Rohit Sharma");
     expect(lines.join(" ")).toContain("rohit@example.com");
     expect(lines.join(" ")).toContain("Brand Identity Design");

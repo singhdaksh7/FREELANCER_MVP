@@ -20,7 +20,7 @@ setup("authenticate as the demo admin", async ({ page }) => {
   // admins have no creator dashboard of their own, so navigate to /admin explicitly.
   await page.waitForURL(/\/dashboard$/);
   await page.goto("/admin");
-  await expect(page.getByText("Project Vault Admin")).toBeVisible();
+  await expect(page.getByText("INLAY Administration")).toBeVisible();
 
   await page.context().storageState({ path: ADMIN_AUTH_FILE });
 });

@@ -17,11 +17,14 @@
     "db:reset": "node scripts/guard-local-db.mjs && prisma migrate reset",
     "db:studio": "prisma studio",
     "db:seed:test": "node scripts/guard-local-db.mjs --allow-test-suffix && node scripts/seed-test-db.mjs",
+    "db:seed:demo": "node scripts/guard-demo-db.mjs && node scripts/seed-demo-db.mjs",
     "test:integration": "npm run db:seed:test && vitest run --config vitest.integration.config.ts",
     "worker:files": "tsx src/worker/process-files.ts",
     "worker:files:once": "tsx src/worker/process-files.ts --once",
     "worker:deliveries": "tsx src/worker/process-deliveries.ts",
-    "worker:deliveries:once": "tsx src/worker/process-deliveries.ts --once"
+    "worker:deliveries:once": "tsx src/worker/process-deliveries.ts --once",
+    "start:demo": "node scripts/start-demo.mjs",
+    "start:render-demo": "node scripts/render-demo-entrypoint.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1096.0",

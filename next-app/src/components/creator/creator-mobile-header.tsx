@@ -2,8 +2,10 @@
 
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { Lock, Menu, X } from "lucide-react";
+import Image from "next/image";
+import { Menu, X } from "lucide-react";
 import type { AuthenticatedCreator } from "@/data-access/auth";
+import { BRAND } from "@/lib/branding";
 import { CreatorNavigation } from "./creator-navigation";
 import { NotificationTrigger } from "./notification-trigger";
 
@@ -50,9 +52,9 @@ export function CreatorMobileHeader({ creator, unreadNotificationCount }: Creato
 
         <Link href="/dashboard" className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-vault-blue">
-            <Lock size={15} color="#FFFFFF" aria-hidden="true" />
+            <Image src="/branding/icon-mark.png" alt="" width={15} height={15} aria-hidden="true" />
           </span>
-          <span className="text-sm font-bold tracking-tight text-white">PROJECT VAULT</span>
+          <span className="text-sm font-bold tracking-tight text-white">{BRAND.productName}</span>
         </Link>
 
         <NotificationTrigger unreadCount={unreadNotificationCount} />
@@ -74,7 +76,7 @@ export function CreatorMobileHeader({ creator, unreadNotificationCount }: Creato
             className="animate-fade-in absolute inset-y-0 left-0 flex w-[280px] max-w-[80vw] flex-col bg-vault-navy shadow-lg"
           >
             <div className="flex items-center justify-between border-b border-vault-navy-light px-4 py-4">
-              <span className="text-sm font-bold tracking-tight text-white">PROJECT VAULT</span>
+              <span className="text-sm font-bold tracking-tight text-white">{BRAND.productName}</span>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}

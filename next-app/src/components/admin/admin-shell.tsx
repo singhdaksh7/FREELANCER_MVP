@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import { BRAND } from "@/lib/branding";
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -25,7 +26,7 @@ export function AdminShell({ adminName, children }: { adminName: string; childre
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <ShieldCheck size={18} className="text-vault-blue" aria-hidden="true" />
-            <span className="text-sm font-bold">Project Vault Admin</span>
+            <span className="text-sm font-bold">{BRAND.adminName}</span>
           </div>
           <nav className="flex items-center gap-4 text-sm font-semibold text-slate-300">
             {ADMIN_NAV.map((item) => (
