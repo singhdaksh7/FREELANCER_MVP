@@ -222,10 +222,16 @@ export interface CompleteUploadResult {
  * Steps 7-11 of the secure upload workflow: verifies the browser actually
  * uploaded the declared object (existence + exact size via server-side
  * `headObject`, then real content-type via magic-byte sniffing of the
- * downloaded bytes — never the browser-declared MIME type), moves it into
- * `originals/` under a **new** random key (the temp key is never reused
- * as the permanent one), and creates the WorkspaceFile/FileVersion/
- * FileProcessingJob row set the worker will pick up.
+ * downloaded bytes — never the browser-declared MIME type), writes those
+ * same verified bytes into `originals/` under a **new** random key (the
+ * temp key is never reused as the permanent one) via `putObjectBuffer` —
+ * never a server-side CopyObject, since the already-downloaded buffer is
+ * on hand and some S3-compatible providers reject CopyObject outright —
+ * and creates the WorkspaceFile/FileVersion/FileProcessingJob row set the
+ * worker will pick up. The temp object is deleted (best-effort) only
+ * after the originals/ write has succeeded; if that write fails, the
+ * temp object is left in place and the upload session stays PENDING so
+ * completion can be retried.
  */
 export async function completeUploadSession(sessionId: string): Promise<CompleteUploadResult> {
   const creator = await requireAuthenticatedUser();
@@ -269,9 +275,17 @@ export async function completeUploadSession(sessionId: string): Promise<Complete
 
   const fileKind = mimeTypeToFileKind(sniffedMimeType);
   const originalKey = generateStorageKey(STORAGE_PREFIXES.originals, sniffed.ext);
-  await s3StorageProvider.copyObject(session.storageKey, originalKey);
+  // Written directly from the already-downloaded, verified `buffer` —
+  // never a server-side CopyObject — since some S3-compatible providers
+  // (and cross-account/cross-bucket setups) reject CopyObject with
+  // "MissingParameter: CopySource" depending on how the source key is
+  // addressed. Writing the bytes we already verified sidesteps that
+  // entirely. The temp object is only ever deleted (best-effort) after
+  // this write has confirmed success, so a failure here leaves both the
+  // temp object and a PENDING upload session in place for retry.
+  await s3StorageProvider.putObjectBuffer(originalKey, buffer, sniffedMimeType);
   await s3StorageProvider.deleteObject(session.storageKey).catch((error) => {
-    console.error("Failed to remove temp upload object after copy to originals/:", error);
+    console.error("Failed to remove temp upload object after writing to originals/:", error);
   });
 
   const originalChecksum = sha256Hex(buffer);

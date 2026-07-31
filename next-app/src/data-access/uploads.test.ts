@@ -25,15 +25,21 @@ const prismaMock = {
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/data-access/auth", () => ({ requireAuthenticatedUser: vi.fn().mockResolvedValue(FAKE_CREATOR) }));
 
-const { createPresignedUploadUrlMock, headObjectMock, getObjectBufferMock, copyObjectMock, deleteObjectMock } = vi.hoisted(
-  () => ({
-    createPresignedUploadUrlMock: vi.fn(),
-    headObjectMock: vi.fn(),
-    getObjectBufferMock: vi.fn(),
-    copyObjectMock: vi.fn(),
-    deleteObjectMock: vi.fn(),
-  }),
-);
+const {
+  createPresignedUploadUrlMock,
+  headObjectMock,
+  getObjectBufferMock,
+  copyObjectMock,
+  deleteObjectMock,
+  putObjectBufferMock,
+} = vi.hoisted(() => ({
+  createPresignedUploadUrlMock: vi.fn(),
+  headObjectMock: vi.fn(),
+  getObjectBufferMock: vi.fn(),
+  copyObjectMock: vi.fn(),
+  deleteObjectMock: vi.fn(),
+  putObjectBufferMock: vi.fn(),
+}));
 vi.mock("@/storage/s3-storage-provider", () => ({
   s3StorageProvider: {
     createPresignedUploadUrl: createPresignedUploadUrlMock,
@@ -41,7 +47,7 @@ vi.mock("@/storage/s3-storage-provider", () => ({
     getObjectBuffer: getObjectBufferMock,
     copyObject: copyObjectMock,
     deleteObject: deleteObjectMock,
-    putObjectBuffer: vi.fn(),
+    putObjectBuffer: putObjectBufferMock,
     createPresignedDownloadUrl: vi.fn(),
   },
 }));
@@ -68,6 +74,7 @@ beforeEach(() => {
   createPresignedUploadUrlMock.mockResolvedValue({ url: "https://minio.local/signed", key: "temp/abc.jpg", expiresAt: new Date() });
   deleteObjectMock.mockResolvedValue(undefined);
   copyObjectMock.mockResolvedValue(undefined);
+  putObjectBufferMock.mockResolvedValue(undefined);
   prismaMock.workspaceFile.count.mockResolvedValue(0);
   prismaMock.workspaceFile.aggregate.mockResolvedValue({ _sum: { sizeBytes: BigInt(0) } });
   prismaMock.uploadSession.create.mockResolvedValue({ id: "session_1" });
@@ -202,8 +209,70 @@ describe("completeUploadSession — server-side verification", () => {
     const result = await completeUploadSession("session_1");
 
     expect(result.fileId).toBe("file_1");
-    expect(copyObjectMock).toHaveBeenCalledWith("temp/abc.jpg", expect.stringMatching(/^originals\//));
     expect(prismaMock.fileProcessingJob.create.mock.calls[0][0].data.attempts).toBe(1);
     expect(prismaMock.activityLog.create.mock.calls[0][0].data.action).toBe("FILE_UPLOADED");
+  });
+
+  describe("writing verified bytes to originals/ — no S3 CopyObject", () => {
+    function mockVerifiedUpload(buffer = Buffer.from("a".repeat(1000))) {
+      mockPendingSession();
+      headObjectMock.mockResolvedValue({ key: "temp/abc.jpg", sizeBytes: 1000, contentType: "image/jpeg", etag: "x" });
+      getObjectBufferMock.mockResolvedValue(buffer);
+      fileTypeFromBufferMock.mockResolvedValue({ mime: "image/jpeg", ext: "jpg" });
+      prismaMock.workspaceFile.create.mockResolvedValue({ id: "file_1" });
+      prismaMock.fileVersion.create.mockResolvedValue({ id: "version_1" });
+      return buffer;
+    }
+
+    it("writes the verified bytes to the generated originals/ key using the sniffed MIME type", async () => {
+      const buffer = mockVerifiedUpload();
+      const { completeUploadSession } = await import("./uploads");
+      await completeUploadSession("session_1");
+
+      expect(putObjectBufferMock).toHaveBeenCalledTimes(1);
+      const [key, writtenBuffer, contentType] = putObjectBufferMock.mock.calls[0];
+      expect(key).toMatch(/^originals\//);
+      expect(writtenBuffer).toBe(buffer);
+      expect(contentType).toBe("image/jpeg");
+    });
+
+    it("never issues an S3 CopyObject request during upload completion", async () => {
+      mockVerifiedUpload();
+      const { completeUploadSession } = await import("./uploads");
+      await completeUploadSession("session_1");
+
+      expect(copyObjectMock).not.toHaveBeenCalled();
+    });
+
+    it("deletes the temp object only after the destination write has succeeded", async () => {
+      mockVerifiedUpload();
+      const callOrder: string[] = [];
+      putObjectBufferMock.mockImplementation(async () => {
+        callOrder.push("putObjectBuffer");
+      });
+      deleteObjectMock.mockImplementation(async () => {
+        callOrder.push("deleteObject");
+      });
+
+      const { completeUploadSession } = await import("./uploads");
+      await completeUploadSession("session_1");
+
+      expect(callOrder).toEqual(["putObjectBuffer", "deleteObject"]);
+    });
+
+    it("does not delete the temp object, and leaves the upload session PENDING, when the destination write fails", async () => {
+      mockVerifiedUpload();
+      const writeError = new Error("MissingParameter: Missing Required Parameter CopySource");
+      putObjectBufferMock.mockRejectedValue(writeError);
+
+      const { completeUploadSession } = await import("./uploads");
+      await expect(completeUploadSession("session_1")).rejects.toThrow(writeError);
+
+      expect(deleteObjectMock).not.toHaveBeenCalled();
+      // No status-changing update was made on this failure path — the
+      // session (already PENDING from mockPendingSession) is left as-is,
+      // and the temp object remains available for a retry.
+      expect(prismaMock.uploadSession.update).not.toHaveBeenCalled();
+    });
   });
 });
