@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ShieldAlert, TestTube2 } from "lucide-react";
+import { ShieldAlert, TestTube2, LifeBuoy, Mail, Phone } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { getPayoutConfig } from "@/payouts/payout-config";
 import { BRAND } from "@/lib/branding";
@@ -17,6 +17,10 @@ export const metadata: Metadata = {
 export default function SettingsPage() {
   const { provider, holdHours } = getPayoutConfig();
   const testModeActive = provider === "fake";
+
+  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
+  const supportPhone = process.env.NEXT_PUBLIC_SUPPORT_PHONE;
+  const supportPhoneDigits = supportPhone?.replace(/[^\d]/g, "");
 
   return (
     <div className="flex flex-col gap-5">
@@ -53,6 +57,40 @@ export default function SettingsPage() {
           <span className="font-semibold text-danger">Live payouts unavailable.</span> This account cannot receive
           real money through {BRAND.productName} yet.
         </div>
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface-card p-6">
+        <h2 className="flex items-center gap-1.5 text-sm font-bold text-ink">
+          <LifeBuoy size={16} className="text-vault-blue" aria-hidden="true" /> Support
+        </h2>
+        <p className="text-sm text-ink-muted">
+          Need help with a workspace, payment, or your account? Reach out and we&apos;ll get back to you.
+        </p>
+
+        {supportEmail ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <a
+              href={`mailto:${supportEmail}`}
+              className="inline-flex w-fit items-center gap-1.5 rounded-md bg-vault-blue px-4 py-2 text-sm font-semibold text-white hover:bg-vault-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+            >
+              <Mail size={14} aria-hidden="true" /> Contact Support
+            </a>
+            {supportPhoneDigits && (
+              <a
+                href={`https://wa.me/${supportPhoneDigits}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-fit items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+              >
+                <Phone size={14} aria-hidden="true" /> WhatsApp
+              </a>
+            )}
+          </div>
+        ) : (
+          <p className="rounded-md bg-slate-50 px-3.5 py-2.5 text-xs text-ink-muted">
+            Support contact is not configured.
+          </p>
+        )}
       </div>
     </div>
   );

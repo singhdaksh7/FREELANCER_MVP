@@ -14,7 +14,6 @@ const FAKE_CREATOR_ID = "usr_fake_creator";
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     workspace: { findMany: vi.fn().mockResolvedValue([]) },
-    client: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
     payment: { findMany: vi.fn().mockResolvedValue([]) },
     notification: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
     reviewLink: { findMany: vi.fn().mockResolvedValue([]) },
@@ -33,24 +32,14 @@ vi.mock("@/data-access/auth", () => ({
 }));
 
 describe("data-access scoping", () => {
-  it("getWorkspaces scopes both the workspace query and the client-options query by the session's creator id", async () => {
+  it("getWorkspaces scopes the workspace query by the session's creator id, never a caller-supplied one", async () => {
     const { getWorkspaces } = await import("./workspaces");
-    await getWorkspaces({});
+    // Even if a caller tried to smuggle a creatorId through raw params, it must be ignored — getWorkspaces
+    // only ever reads `q`/`status`/`sort` from rawParams (see src/lib/search-params.ts parsing).
+    await getWorkspaces({ creatorId: "someone-elses-id" } as never);
 
     const workspaceWhere = prismaMock.workspace.findMany.mock.calls[0][0].where;
     expect(workspaceWhere.creatorId).toBe(FAKE_CREATOR_ID);
-
-    const clientWhere = prismaMock.client.findMany.mock.calls[0][0].where;
-    expect(clientWhere.creatorId).toBe(FAKE_CREATOR_ID);
-  });
-
-  it("getClients scopes the query by the session's creator id, never a caller-supplied one", async () => {
-    const { getClients } = await import("./clients");
-    // Even if a caller tried to smuggle a creatorId through raw params, it must be ignored.
-    await getClients({ creatorId: "someone-elses-id" } as never);
-
-    const where = prismaMock.client.findMany.mock.calls.at(-1)![0].where;
-    expect(where.creatorId).toBe(FAKE_CREATOR_ID);
   });
 
   it("getPayments scopes the query through workspace.creatorId, from the session only", async () => {

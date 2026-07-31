@@ -1,24 +1,20 @@
 /**
- * 2% platform-fee breakdown calculation — see
- * PLATFORM_FEE_AND_PAYOUT_LEDGER.md. Integer-subunit math only (BigInt),
- * never floating point. Frozen once at payment-order creation time (see
- * payment-orders.ts) and never recalculated for a historical payment if
- * this policy changes later — only new orders pick up a changed
- * PLATFORM_FEE_BPS.
+ * Platform-fee breakdown calculation — see PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
+ * Phase 8 removed INLAY's platform fee entirely: freelancers keep 100% of
+ * every payment. `getPlatformFeeBps()` always returns 0 — `PLATFORM_FEE_BPS`
+ * is no longer read from the environment (it may still be set, harmlessly,
+ * as a legacy/ignored variable during rollout). Integer-subunit math only
+ * (BigInt), never floating point. Frozen once at payment-order creation
+ * time (see payment-orders.ts) so a historical payment's breakdown is
+ * never recalculated after the fact.
  */
 
-/** 200 basis points = 2.00%. Not hardcoded inline at call sites — see getPlatformFeeBps(). */
-export const DEFAULT_PLATFORM_FEE_BPS = 200;
+/** Always 0 — see module doc comment above. */
+export const DEFAULT_PLATFORM_FEE_BPS = 0;
 const BPS_DENOMINATOR = BigInt(10_000);
 
 export function getPlatformFeeBps(): number {
-  const raw = process.env.PLATFORM_FEE_BPS;
-  if (!raw) return DEFAULT_PLATFORM_FEE_BPS;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > BPS_DENOMINATOR) {
-    throw new Error(`PLATFORM_FEE_BPS must be an integer between 0 and ${BPS_DENOMINATOR}.`);
-  }
-  return parsed;
+  return DEFAULT_PLATFORM_FEE_BPS;
 }
 
 export interface PaymentBreakdownInput {

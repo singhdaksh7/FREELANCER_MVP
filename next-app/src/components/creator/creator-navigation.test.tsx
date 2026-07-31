@@ -13,7 +13,6 @@ describe("CreatorNavigation", () => {
     for (const [label, href] of [
       ["Dashboard", "/dashboard"],
       ["Workspaces", "/workspaces"],
-      ["Clients", "/clients"],
       ["Payments", "/payments"],
       ["Notifications", "/notifications"],
       ["Settings", "/settings"],

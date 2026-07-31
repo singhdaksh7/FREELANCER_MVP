@@ -54,9 +54,7 @@ export default async function AdminPaymentsPage({
               <th className="px-4 py-3">Workspace</th>
               <th className="px-4 py-3">Creator</th>
               <th className="px-4 py-3">Client</th>
-              <th className="px-4 py-3">Gross</th>
-              <th className="px-4 py-3">Platform Fee</th>
-              <th className="px-4 py-3">Payable</th>
+              <th className="px-4 py-3">Amount</th>
               <th className="px-4 py-3">Gateway Status</th>
               <th className="px-4 py-3">Delivery</th>
               <th className="px-4 py-3">Created</th>
@@ -66,7 +64,7 @@ export default async function AdminPaymentsPage({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={9} className="px-4 py-6 text-center text-ink-muted">
                   No payments match your filters.
                 </td>
               </tr>
@@ -78,12 +76,6 @@ export default async function AdminPaymentsPage({
                   <td className="px-4 py-3 text-ink-muted">{row.creatorName}</td>
                   <td className="px-4 py-3 text-ink-muted">{row.clientName}</td>
                   <td className="px-4 py-3 text-ink">{formatINR(Number(row.grossAmountSubunits) / 100)}</td>
-                  <td className="px-4 py-3 text-ink-muted">
-                    {row.platformFeeSubunits === null ? "—" : formatINR(Number(row.platformFeeSubunits) / 100)}
-                  </td>
-                  <td className="px-4 py-3 text-ink-muted">
-                    {row.freelancerPayableSubunits === null ? "—" : formatINR(Number(row.freelancerPayableSubunits) / 100)}
-                  </td>
                   <td className="px-4 py-3 text-ink-muted">{paymentStatusLabel(row.gatewayStatus)}</td>
                   <td className="px-4 py-3 text-ink-muted">{row.deliveryStatus}</td>
                   <td className="px-4 py-3 text-ink-muted">{formatDateTime(row.createdAt)}</td>

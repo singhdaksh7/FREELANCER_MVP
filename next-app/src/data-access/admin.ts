@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminRole } from "./auth";
 import { ActivityAction } from "@/lib/activity-log";
 import { getPayoutProvider } from "@/payouts/payout-provider";
-import type { WorkspaceStatus, SupportTicketStatus, DeliveryMode, PaymentStatus } from "@/generated/prisma/enums";
+import type { WorkspaceStatus, DeliveryMode, PaymentStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
 const ACTIVE_WORKSPACE_STATUSES: WorkspaceStatus[] = [
@@ -16,16 +16,12 @@ const ACTIVE_WORKSPACE_STATUSES: WorkspaceStatus[] = [
   "AWAITING_CREATOR_RELEASE",
 ];
 
-const OPEN_TICKET_STATUSES: SupportTicketStatus[] = ["OPEN", "UNDER_REVIEW", "WAITING_FOR_CREATOR", "WAITING_FOR_CLIENT"];
-
 export interface AdminDashboardStats {
   totalCreators: number;
   activeWorkspaces: number;
   paymentsCapturedCount: number;
   paymentsCapturedSubunits: bigint;
-  platformFeeSubunits: bigint;
   pendingFreelancerPayableSubunits: bigint;
-  openSupportTickets: number;
   fileProcessingFailures: number;
   currency: string;
 }
@@ -34,24 +30,14 @@ export interface AdminDashboardStats {
 export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
   await requireAdminRole();
 
-  const [
-    totalCreators,
-    activeWorkspaces,
-    paymentsAgg,
-    platformFeeAgg,
-    pendingAgg,
-    openSupportTickets,
-    fileProcessingFailures,
-  ] = await Promise.all([
+  const [totalCreators, activeWorkspaces, paymentsAgg, pendingAgg, fileProcessingFailures] = await Promise.all([
     prisma.user.count({ where: { role: "CREATOR" } }),
     prisma.workspace.count({ where: { status: { in: ACTIVE_WORKSPACE_STATUSES } } }),
     prisma.payment.aggregate({ where: { status: "PAID" }, _count: true, _sum: { amountSubunits: true } }),
-    prisma.payoutLedgerEntry.aggregate({ where: { type: "PLATFORM_FEE" }, _sum: { amountSubunits: true } }),
     prisma.payoutLedgerEntry.aggregate({
       where: { type: "PAYMENT_CREDIT", status: { in: ["PENDING", "AVAILABLE"] } },
       _sum: { amountSubunits: true },
     }),
-    prisma.supportTicket.count({ where: { status: { in: OPEN_TICKET_STATUSES } } }),
     prisma.workspaceFile.count({ where: { status: "FAILED" } }),
   ]);
 
@@ -60,9 +46,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     activeWorkspaces,
     paymentsCapturedCount: paymentsAgg._count,
     paymentsCapturedSubunits: paymentsAgg._sum.amountSubunits ?? BigInt(0),
-    platformFeeSubunits: platformFeeAgg._sum.amountSubunits ?? BigInt(0),
     pendingFreelancerPayableSubunits: pendingAgg._sum.amountSubunits ?? BigInt(0),
-    openSupportTickets,
     fileProcessingFailures,
     currency: "INR",
   };
@@ -266,7 +250,7 @@ export async function getAdminWorkspaces(
           OR: [
             { title: { contains: q, mode: "insensitive" } },
             { creator: { name: { contains: q, mode: "insensitive" } } },
-            { client: { name: { contains: q, mode: "insensitive" } } },
+            { clientName: { contains: q, mode: "insensitive" } },
           ],
         }
       : {}),
@@ -287,7 +271,7 @@ export async function getAdminWorkspaces(
         currency: true,
         updatedAt: true,
         creator: { select: { name: true } },
-        client: { select: { name: true } },
+        clientName: true,
         _count: { select: { files: { where: { deletedAt: null } } } },
         reviewLinks: {
           orderBy: { createdAt: "desc" },
@@ -305,7 +289,7 @@ export async function getAdminWorkspaces(
       id: workspace.id,
       title: workspace.title,
       creatorName: workspace.creator.name,
-      clientName: workspace.client.name,
+      clientName: workspace.clientName,
       deliveryMode: workspace.deliveryMode,
       status: workspace.status,
       amount: workspace.amount ? Number(workspace.amount) : null,
@@ -330,8 +314,6 @@ export interface AdminPaymentRow {
   creatorName: string;
   clientName: string;
   grossAmountSubunits: bigint;
-  platformFeeSubunits: bigint | null;
-  freelancerPayableSubunits: bigint | null;
   currency: string;
   gatewayStatus: string;
   deliveryStatus: string;
@@ -365,7 +347,7 @@ export async function getAdminPayments(
           OR: [
             { workspace: { title: { contains: q, mode: "insensitive" } } },
             { workspace: { creator: { name: { contains: q, mode: "insensitive" } } } },
-            { workspace: { client: { name: { contains: q, mode: "insensitive" } } } },
+            { workspace: { clientName: { contains: q, mode: "insensitive" } } },
           ],
         }
       : {}),
@@ -390,10 +372,9 @@ export async function getAdminPayments(
             title: true,
             status: true,
             creator: { select: { name: true } },
-            client: { select: { name: true } },
+            clientName: true,
           },
         },
-        breakdown: { select: { platformFeeSubunits: true, freelancerPayableSubunits: true } },
       },
     }),
     prisma.payment.count({ where }),
@@ -406,10 +387,8 @@ export async function getAdminPayments(
       workspaceId: payment.workspace.id,
       workspaceTitle: payment.workspace.title,
       creatorName: payment.workspace.creator.name,
-      clientName: payment.workspace.client.name,
+      clientName: payment.workspace.clientName,
       grossAmountSubunits: payment.amountSubunits,
-      platformFeeSubunits: payment.breakdown?.platformFeeSubunits ?? null,
-      freelancerPayableSubunits: payment.breakdown?.freelancerPayableSubunits ?? null,
       currency: payment.currency,
       gatewayStatus: payment.status,
       deliveryStatus: derivePaymentDeliveryStatus(payment.workspace.status),

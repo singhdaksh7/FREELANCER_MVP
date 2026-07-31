@@ -30,7 +30,7 @@ function fakeLink(overrides: Partial<Record<string, unknown>> = {}) {
       currency: "INR",
       status: "IN_REVIEW",
       watermarkText: null,
-      client: { name: "Rohit Sharma" },
+      clientName: "Rohit Sharma",
       creator: { name: "Arjun Raj" },
     },
     ...overrides,

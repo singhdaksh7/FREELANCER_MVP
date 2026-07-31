@@ -92,23 +92,6 @@ export function PaymentStatusCard({ workspaceId, payment }: PaymentStatusCardPro
         </form>
       )}
 
-      {payment.breakdown && (
-        <div className="grid grid-cols-3 gap-2 border-t border-line pt-3 text-xs">
-          <div>
-            <div className="text-ink-muted">Gross Amount</div>
-            <div className="font-semibold text-ink">{formatINR(payment.amount)}</div>
-          </div>
-          <div>
-            <div className="text-ink-muted">Platform Fee ({(payment.breakdown.platformFeeBps / 100).toFixed(2)}%)</div>
-            <div className="font-semibold text-ink">{formatINR(payment.breakdown.platformFeeAmount)}</div>
-          </div>
-          <div>
-            <div className="text-ink-muted">Your Payout</div>
-            <div className="font-semibold text-success">{formatINR(payment.breakdown.freelancerPayableAmount)}</div>
-          </div>
-        </div>
-      )}
-
       {(retryState.error || retryState.success) && (
         <p className={`text-xs ${retryState.error ? "text-danger" : "text-success"}`}>{retryState.error ?? retryState.success}</p>
       )}

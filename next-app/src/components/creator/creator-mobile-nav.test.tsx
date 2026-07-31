@@ -6,15 +6,14 @@ const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn() }));
 vi.mock("next/navigation", () => ({ usePathname }));
 
 describe("CreatorMobileNav", () => {
-  it("renders the expected primary destinations, excluding Settings (matching the original bottom nav's slice(0, 5))", () => {
+  it("renders all 5 primary destinations, including Settings (Phase 8 removed Clients/Support, so the full nav now fits the bottom bar)", () => {
     usePathname.mockReturnValue("/dashboard");
     render(<CreatorMobileNav />);
 
     const nav = screen.getByRole("navigation", { name: /primary/i });
-    for (const label of ["Dashboard", "Workspaces", "Clients", "Payments", "Notifications"]) {
+    for (const label of ["Dashboard", "Workspaces", "Payments", "Notifications", "Settings"]) {
       expect(within(nav).getByRole("link", { name: label })).toBeInTheDocument();
     }
-    expect(within(nav).queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });
 
   it("marks the active destination for assistive tech", () => {

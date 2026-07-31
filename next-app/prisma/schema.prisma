@@ -45,6 +45,11 @@ enum WorkspaceStatus {
 enum DeliveryMode {
   PAYMENT_REQUIRED
   APPROVAL_ONLY
+  /// Phase 8 — retired. No longer selectable or creatable at the app
+  /// layer (see src/validation/workspace.ts); kept only because Postgres
+  /// cannot safely drop an enum value. Every pre-existing PREVIEW_ONLY
+  /// workspace was converted to APPROVAL_ONLY by a one-time data
+  /// migration — see MIGRATION_STATUS.md.
   PREVIEW_ONLY
 }
 
@@ -277,10 +282,22 @@ model Workspace {
   id            String          @id @default(cuid())
   creatorId     String
   creator       User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-  clientId      String
-  /// Restrict (not Cascade): a client with financial history attached to a
-  /// workspace should not be silently deletable once client-delete ships.
-  client        Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// Nullable — Phase 8 removed the saved-Client selector from workspace
+  /// creation; new workspaces never set this. Retained only so historical
+  /// workspaces created before the Phase 8 migration keep their Client
+  /// join. See MIGRATION_STATUS.md.
+  clientId      String?
+  /// SetNull (not Restrict): a workspace no longer requires a live Client
+  /// row — deleting a legacy Client must never block or cascade-delete
+  /// the workspaces that historically referenced it.
+  client        Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  /// Phase 8 — plain, workspace-scoped snapshot of the client's display
+  /// name, entered as a free-text field at creation time. Replaces the
+  /// saved-Client selector entirely: no Client row is ever created or
+  /// looked up for this value, and it is never re-derived from `client`.
+  /// Backfilled from the (optional) related Client.name for every
+  /// pre-Phase-8 workspace — see MIGRATION_STATUS.md.
+  clientName    String
   title         String
   description   String?
   /// ISO-style uppercase currency code (e.g. "INR"). Never a symbol.

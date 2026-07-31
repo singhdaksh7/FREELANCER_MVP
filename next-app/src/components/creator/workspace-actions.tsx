@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, LifeBuoy } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cancelWorkspaceAction, deleteWorkspaceAction, releaseFilesAction, closeWorkspaceAction } from "@/actions/workspaces";
 
@@ -37,13 +37,6 @@ export function WorkspaceActions({
         className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
         <Pencil size={14} aria-hidden="true" /> Edit Workspace
-      </Link>
-
-      <Link
-        href={`/support/new?workspaceId=${workspaceId}`}
-        className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-      >
-        <LifeBuoy size={14} aria-hidden="true" /> Raise Support Ticket
       </Link>
 
       {canReleaseFiles && (

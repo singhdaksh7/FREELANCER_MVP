@@ -2,21 +2,24 @@ import { test, expect } from "@playwright/test";
 import { login, clickAndWaitForURL } from "./helpers";
 
 /**
- * Functional coverage of real client + workspace CRUD against the real
- * seeded database — no mocking. All tests live in one file and run
- * serially: later tests depend on records earlier ones create, and
- * keeping everything in one file guarantees Playwright schedules them on
- * a single worker (separate files can otherwise land on different
- * workers and contend for the one shared dev server process, which was
- * flaky in this environment — the same accommodation e2e/auth/auth-flow.spec.ts
+ * Functional coverage of real workspace CRUD against the real seeded
+ * database — no mocking. All tests live in one file and run serially:
+ * later tests depend on records earlier ones create, and keeping
+ * everything in one file guarantees Playwright schedules them on a
+ * single worker (separate files can otherwise land on different workers
+ * and contend for the one shared dev server process, which was flaky in
+ * this environment — the same accommodation e2e/auth/auth-flow.spec.ts
  * documents for the same reason).
+ *
+ * Phase 8 retired the saved-Client CRM entirely (see
+ * MIGRATION_STATUS.md) — the workspace wizard/edit form now use a plain
+ * "Client Name" textbox, never a client selector or "Add New Client"
+ * modal, and creating/editing a workspace never creates a Client row.
  */
 test.describe.configure({ mode: "serial" });
 
 const RUN_ID = Date.now();
 const CLIENT_NAME = `Playwright Test Client ${RUN_ID}`;
-const CLIENT_NAME_RENAMED = `${CLIENT_NAME} (renamed)`;
-const CLIENT_EMAIL = `playwright-test-${RUN_ID}@example.com`;
 const WORKSPACE_TITLE = `Playwright Test Workspace ${RUN_ID}`;
 
 let workspaceUrl = "";
@@ -25,83 +28,12 @@ test.beforeEach(async ({ page }) => {
   await login(page);
 });
 
-test.describe("client CRUD", () => {
-  test("creates a client", async ({ page }) => {
-    await page.goto("/clients");
-    await clickAndWaitForURL(page, page.getByRole("link", { name: /add new client/i }), /\/clients\/new$/);
-
-    await page.getByLabel(/^name/i).fill(CLIENT_NAME);
-    await page.getByLabel(/^email/i).fill(CLIENT_EMAIL);
-    await clickAndWaitForURL(page, page.getByRole("button", { name: /add client/i }), /\/clients$/);
-
-    await expect(page.getByText(`${CLIENT_NAME} was added.`)).toBeVisible();
-    await expect(page.getByText(CLIENT_NAME, { exact: true }).first()).toBeVisible();
-  });
-
-  test("shows a validation error instead of creating an invalid client", async ({ page }) => {
-    await page.goto("/clients/new");
-
-    await page.getByLabel(/^name/i).fill("Invalid Email Client");
-    await page.getByLabel(/^email/i).fill("not-an-email");
-    await page.getByRole("button", { name: /add client/i }).click();
-
-    await expect(page).toHaveURL(/\/clients\/new$/); // never navigated away
-    await expect(page.getByText(/enter a valid email address/i)).toBeVisible();
-  });
-
-  test("edits the client created above", async ({ page }) => {
-    await page.goto("/clients");
-    const tableRow = page.locator("tr", { hasText: CLIENT_NAME }).first();
-    await clickAndWaitForURL(page, tableRow.getByRole("link", { name: /^edit$/i }), /\/clients\/[a-z0-9]+\/edit$/);
-
-    await expect(page.getByLabel(/^name/i)).toHaveValue(CLIENT_NAME);
-    await page.getByLabel(/^name/i).fill(CLIENT_NAME_RENAMED);
-    await clickAndWaitForURL(page, page.getByRole("button", { name: /save changes/i }), /\/clients$/);
-
-    await expect(page.getByText(`${CLIENT_NAME_RENAMED} was updated.`)).toBeVisible();
-  });
-
-  test("blocks deleting a client that still has workspaces", async ({ page }) => {
-    await page.goto("/clients");
-    const rohitRow = page.getByText("Rohit Sharma", { exact: true }).first();
-    await expect(rohitRow).toBeVisible();
-
-    // Delete buttons are per-row; scope to Rohit's row via the desktop table.
-    const tableRow = page.locator("tr", { hasText: "Rohit Sharma" }).first();
-    await tableRow.getByRole("button", { name: /^delete$/i }).click();
-
-    await expect(page.getByRole("heading", { name: /delete rohit sharma\?/i })).toBeVisible();
-    await page.getByRole("button", { name: /delete client/i }).click();
-
-    await expect(page.getByText(/has workspaces and cannot be deleted/i)).toBeVisible();
-    // Dialog stays open and the client is not actually removed.
-    await expect(page.getByRole("heading", { name: /delete rohit sharma\?/i })).toBeVisible();
-  });
-
-  test("deletes the (unused) client created above", async ({ page }) => {
-    await page.goto("/clients");
-    const tableRow = page.locator("tr", { hasText: CLIENT_NAME_RENAMED }).first();
-    await tableRow.getByRole("button", { name: /^delete$/i }).click();
-
-    await expect(page.getByRole("heading", { name: `Delete ${CLIENT_NAME_RENAMED}?` })).toBeVisible();
-    await page.getByRole("button", { name: /delete client/i }).click();
-
-    // Wait for the dialog to close (the confirm heading disappearing) before
-    // checking the row, since the heading itself also contains the client's
-    // name and would otherwise make the row-count assertion below racy.
-    await expect(page.getByRole("heading", { name: `Delete ${CLIENT_NAME_RENAMED}?` })).toHaveCount(0);
-    // The row disappearing (via the Server Action's revalidatePath) is the
-    // behavior that actually matters here; the local success toast can race
-    // against that same re-render, so it isn't asserted separately.
-    await expect(page.getByText(CLIENT_NAME_RENAMED, { exact: true })).toHaveCount(0);
-  });
-});
-
 test.describe("workspace CRUD", () => {
-  test("creates a draft workspace through the five-step wizard", async ({ page }) => {
+  test("creates a draft workspace through the five-step wizard, with the client name entered as plain text", async ({ page }) => {
     await page.goto("/workspaces/new");
 
     await page.getByLabel(/^title/i).fill(WORKSPACE_TITLE);
+    await page.getByLabel(/client name/i).fill(CLIENT_NAME);
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2 (deliverables)
     await expect(page.getByText(/coming in phase 5/i)).toBeVisible();
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3 (protection)
@@ -110,6 +42,7 @@ test.describe("workspace CRUD", () => {
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5 (review)
 
     await expect(page.locator("legend", { hasText: /review & create/i })).toBeVisible();
+    await expect(page.getByText(CLIENT_NAME, { exact: true })).toBeVisible();
     // Excludes "new" (the current page) — otherwise this matches
     // immediately, before the real navigation even starts, since "new" is
     // itself a lowercase-alphanumeric path segment. See clickAndWaitForURL's
@@ -124,51 +57,15 @@ test.describe("workspace CRUD", () => {
     await expect(page.getByText("Workspace created as a draft.")).toBeVisible();
     await expect(page.getByRole("heading", { name: WORKSPACE_TITLE })).toBeVisible();
     await expect(page.getByText("Draft", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(CLIENT_NAME, { exact: true }).first()).toBeVisible();
   });
 
-  test("creates a client inline during workspace creation, without leaving the wizard", async ({ page }) => {
-    const inlineClientName = `Playwright Inline Client ${RUN_ID}`;
-    const inlineClientEmail = `playwright-inline-${RUN_ID}@example.com`;
-    const inlineWorkspaceTitle = `Playwright Inline-Client Workspace ${RUN_ID}`;
-
+  test("never renders a client selector or an Add New Client control", async ({ page }) => {
     await page.goto("/workspaces/new");
-    await page.getByLabel(/^title/i).fill(inlineWorkspaceTitle);
 
-    await page.getByRole("button", { name: /add new client/i }).click();
-    const dialog = page.getByRole("dialog", { name: /add new client/i });
-    await expect(dialog).toBeVisible();
-
-    // Submitting empty shows real validation instead of silently closing.
-    await dialog.getByRole("button", { name: /^add client$/i }).click();
-    await expect(dialog.getByText(/name is required/i)).toBeVisible();
-
-    await dialog.getByLabel(/client name/i).fill(inlineClientName);
-    await dialog.getByLabel(/^email/i).fill(inlineClientEmail);
-    await dialog.getByRole("button", { name: /^add client$/i }).click();
-
-    // Dialog closes and the new client is selected automatically — the
-    // wizard never left step 1, so the title typed above is preserved.
-    await expect(dialog).toBeHidden();
-    await expect(page.getByLabel(/^title/i)).toHaveValue(inlineWorkspaceTitle);
-    // The select (a combobox), not the now-closed modal's "Client name" textbox.
-    await expect(page.getByRole("combobox", { name: /^client/i })).toHaveValue(/.+/);
-    await expect(page.getByRole("combobox", { name: /^client/i }).locator("option:checked")).toHaveText(inlineClientName);
-
-    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2
-    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3
-    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4
-    await page.getByLabel(/^amount/i).fill("9999");
-    await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5
-
-    await expect(page.getByText(inlineClientName, { exact: true })).toBeVisible();
-    await clickAndWaitForURL(
-      page,
-      page.getByRole("button", { name: /create draft workspace/i }),
-      /\/workspaces\/(?!new$)[a-z0-9]+$/,
-    );
-
-    await expect(page.getByRole("heading", { name: inlineWorkspaceTitle })).toBeVisible();
-    await expect(page.getByText(inlineClientName, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /client/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /add new client/i })).toHaveCount(0);
+    await expect(page.getByLabel(/client name/i)).toBeVisible();
   });
 
   test("creates an APPROVAL_ONLY workspace with no amount required, and the workspace detail page reflects it", async ({ page }) => {
@@ -176,6 +73,7 @@ test.describe("workspace CRUD", () => {
 
     await page.goto("/workspaces/new");
     await page.getByLabel(/^title/i).fill(approvalOnlyTitle);
+    await page.getByLabel(/client name/i).fill(CLIENT_NAME);
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4
@@ -203,10 +101,13 @@ test.describe("workspace CRUD", () => {
     await expect(page.getByRole("heading", { name: WORKSPACE_TITLE })).toBeVisible();
   });
 
-  test("edits the workspace", async ({ page }) => {
+  test("edits the workspace, including its client name", async ({ page }) => {
+    const renamedClient = `${CLIENT_NAME} (renamed)`;
     await page.goto(workspaceUrl);
     await clickAndWaitForURL(page, page.getByRole("link", { name: /edit workspace/i }), /\/edit$/);
 
+    await expect(page.getByLabel(/client name/i)).toHaveValue(CLIENT_NAME);
+    await page.getByLabel(/client name/i).fill(renamedClient);
     await page.getByLabel(/^amount/i).fill("21000");
     // Not asserting the exact redirect URL (its `?flash=` query is
     // URL-encoded and then immediately stripped by FlashToast, so pinning
@@ -216,6 +117,7 @@ test.describe("workspace CRUD", () => {
 
     await expect(page.getByText("Workspace updated.")).toBeVisible();
     await expect(page.getByText(/₹21,000/).first()).toBeVisible();
+    await expect(page.getByText(renamedClient, { exact: true }).first()).toBeVisible();
   });
 
   test("an unauthorized workspace id resolves through not-found, never a 403", async ({ page }) => {
@@ -232,6 +134,7 @@ test.describe("workspace CRUD", () => {
     expect(hasOverflow).toBe(false);
 
     await page.getByLabel(/^title/i).fill("Mobile Wizard Check");
+    await page.getByLabel(/client name/i).fill("Mobile Wizard Client");
     await page.getByRole("button", { name: /^continue$/i }).click();
     await expect(page.getByText(/coming in phase 5/i)).toBeVisible();
     await page.getByRole("button", { name: /^back$/i }).click();
@@ -250,5 +153,79 @@ test.describe("workspace CRUD", () => {
     // for that refreshed Server Component render.
     await expect(page.getByRole("button", { name: /^cancel workspace$/i })).toHaveCount(0, { timeout: 10_000 });
     await expect(page.getByText("Cancelled", { exact: true }).first()).toBeVisible();
+  });
+});
+
+test.describe("deleted routes return 404", () => {
+  for (const route of ["/clients", "/clients/new", "/support", "/support/new", "/admin/support"]) {
+    test(`${route} is gone`, async ({ page }) => {
+      const response = await page.goto(route);
+      expect(response?.status()).toBe(404);
+      await expect(page.getByText(/page not found/i)).toBeVisible();
+    });
+  }
+});
+
+test.describe("Preview Client View authorization", () => {
+  const MEERA_EMAIL = "meera@example.com";
+  const MEERA_PASSWORD = "Demo@12345";
+
+  test("owner can open their workspace's Preview Client View from the workspace page", async ({ page, context }) => {
+    // ws_brand_identity is seeded under Arjun — see prisma/seed.ts.
+    await page.goto("/workspaces/ws_brand_identity");
+    // The link opens in a new tab (target="_blank") — see review-link-panel.tsx.
+    const [previewPage] = await Promise.all([
+      context.waitForEvent("page"),
+      page.getByRole("link", { name: /preview client view/i }).click(),
+    ]);
+    await previewPage.waitForLoadState();
+
+    await expect(previewPage).toHaveURL(/\/workspaces\/ws_brand_identity\/preview$/);
+    await expect(previewPage.getByText(/preview mode.*this is how your client will see/i)).toBeVisible();
+  });
+
+  test("an unauthenticated visitor is redirected to /login instead of seeing the preview", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/workspaces/ws_brand_identity/preview");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("a different creator gets the same not-found page for someone else's workspace and for a nonexistent one", async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto("/login");
+    await page.getByLabel(/email address/i).fill(MEERA_EMAIL);
+    await page.getByLabel(/^password$/i).fill(MEERA_PASSWORD);
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.waitForURL(/\/dashboard$/);
+
+    // ws_brand_identity belongs to Arjun, not Meera. Same rendered outcome
+    // (the "page not found" boundary) as a genuinely nonexistent workspace
+    // id — never a distinguishable 403. Matches the existing convention
+    // for `/workspaces/[id]` itself (see "an unauthorized workspace id
+    // resolves through not-found" above): a `notFound()` call from within
+    // an already-matched dynamic route renders the not-found UI without
+    // necessarily changing the navigation's reported status, so the
+    // rendered content — not the response status — is the real assertion.
+    await page.goto("/workspaces/ws_brand_identity/preview");
+    await expect(page.getByRole("heading", { name: /page not found/i })).toBeVisible();
+    await expect(page.getByText(/doesn.t exist/i)).toBeVisible();
+
+    await page.goto("/workspaces/does-not-exist-at-all/preview");
+    await expect(page.getByRole("heading", { name: /page not found/i })).toBeVisible();
+    await expect(page.getByText(/doesn.t exist/i)).toBeVisible();
+  });
+
+  test("preview mode exposes no mutation controls", async ({ page }) => {
+    await page.context().clearCookies();
+    await login(page);
+    await page.goto("/workspaces/ws_brand_identity/preview");
+    await expect(page.getByText(/preview mode/i)).toBeVisible();
+
+    await expect(page.getByRole("button", { name: /^approve project$/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /request changes/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^add pin$/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^annotate$/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^pay now$/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /download original/i })).toHaveCount(0);
   });
 });

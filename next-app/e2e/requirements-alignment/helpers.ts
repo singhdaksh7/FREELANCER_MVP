@@ -3,7 +3,7 @@ import { clickAndWaitForURL } from "../mutations/helpers";
 
 export { login, clickAndWaitForURL, DEMO_EMAIL, DEMO_PASSWORD } from "../mutations/helpers";
 
-export type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
+export type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY";
 
 /** Drives the real five-step wizard (see e2e/mutations/mutations.spec.ts) end to end, returning the created workspace's URL. */
 export async function createWorkspaceViaWizard(
@@ -12,14 +12,13 @@ export async function createWorkspaceViaWizard(
 ): Promise<string> {
   await page.goto("/workspaces/new");
   await page.getByLabel(/^title/i).fill(options.title);
+  await page.getByLabel(/client name/i).fill("Requirements Suite Client");
   await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2 (deliverables)
   await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3 (protection)
   await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4 (delivery/payment)
 
   if (options.deliveryMode === "APPROVAL_ONLY") {
     await page.getByRole("radio", { name: /approval only/i }).check();
-  } else if (options.deliveryMode === "PREVIEW_ONLY") {
-    await page.getByRole("radio", { name: /preview only/i }).check();
   }
   if (options.amount) {
     await page.getByLabel(/^amount/i).fill(options.amount);

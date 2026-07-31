@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Share2, Copy, Check } from "lucide-react";
+import Link from "next/link";
+import { Share2, Copy, Check, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -164,9 +165,19 @@ export function ReviewLinkPanel({ workspaceId, workspaceTitle, reviewLink }: Rev
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-card p-4">
-      <h3 className="flex items-center gap-1.5 text-sm font-bold text-ink">
-        <Share2 size={14} aria-hidden="true" /> Secure Client Review Link
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-bold text-ink">
+          <Share2 size={14} aria-hidden="true" /> Secure Client Review Link
+        </h3>
+        <Link
+          href={`/workspaces/${workspaceId}/preview`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        >
+          <Eye size={13} aria-hidden="true" /> Preview Client View
+        </Link>
+      </div>
 
       {error && (
         <p role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">

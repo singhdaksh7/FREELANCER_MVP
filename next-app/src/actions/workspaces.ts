@@ -19,7 +19,7 @@ export interface WorkspaceFormState {
   error?: string;
   fieldErrors?: Partial<
     Record<
-      "title" | "clientId" | "description" | "deliveryMode" | "currency" | "amount" | "dueDate" | "watermarkText",
+      "title" | "clientName" | "description" | "deliveryMode" | "currency" | "amount" | "dueDate" | "watermarkText",
       string[]
     >
   >;
@@ -34,7 +34,7 @@ export interface WorkspaceLifecycleState {
 function parseWorkspaceFormData(formData: FormData) {
   return {
     title: String(formData.get("title") ?? ""),
-    clientId: String(formData.get("clientId") ?? ""),
+    clientName: String(formData.get("clientName") ?? ""),
     description: String(formData.get("description") ?? ""),
     deliveryMode: String(formData.get("deliveryMode") ?? "PAYMENT_REQUIRED"),
     currency: String(formData.get("currency") ?? "INR"),

@@ -22,8 +22,7 @@ export function PaymentTable({ payments, caption, onDeferredAction }: PaymentTab
             <th scope="col" className="px-6 py-3 font-medium">Transaction</th>
             <th scope="col" className="px-6 py-3 font-medium">Workspace</th>
             <th scope="col" className="px-6 py-3 font-medium">Client</th>
-            <th scope="col" className="px-6 py-3 font-medium">Gross Amount</th>
-            <th scope="col" className="px-6 py-3 font-medium">Net Payout</th>
+            <th scope="col" className="px-6 py-3 font-medium">Amount</th>
             <th scope="col" className="px-6 py-3 font-medium">Date</th>
             <th scope="col" className="px-6 py-3 font-medium">Status</th>
             <th scope="col" className="px-6 py-3 text-right font-medium">Receipt</th>
@@ -38,7 +37,6 @@ export function PaymentTable({ payments, caption, onDeferredAction }: PaymentTab
                 <td className="px-6 py-4 font-semibold text-ink">{payment.workspaceTitle}</td>
                 <td className="px-6 py-4 text-ink">{payment.clientName}</td>
                 <td className="px-6 py-4 font-semibold text-ink">{formatINR(payment.amount)}</td>
-                <td className="px-6 py-4 font-semibold text-success">{formatINR(payment.netAmount)}</td>
                 <td className="px-6 py-4 text-xs text-ink-muted">{formatPaymentDate(payment.paidAt)}</td>
                 <td className="px-6 py-4">
                   <StatusBadge status={paymentStatusLabel(payment.status)} />

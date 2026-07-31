@@ -7,7 +7,7 @@ import { login } from "./helpers";
  * requireAdminRole() redirects to /permission-denied, a safe denial page
  * rather than a 403/500 or a leak of admin content.
  */
-const ADMIN_ROUTES = ["/admin", "/admin/users", "/admin/workspaces", "/admin/payments", "/admin/payouts", "/admin/support"];
+const ADMIN_ROUTES = ["/admin", "/admin/users", "/admin/workspaces", "/admin/payments", "/admin/payouts"];
 
 for (const route of ADMIN_ROUTES) {
   test(`creator session is redirected to /permission-denied for ${route}`, async ({ page }) => {

@@ -54,6 +54,7 @@ export interface ReviewContext {
     watermarkText: string | null;
     /** Approved business-facing identity only — never email/internal ids. */
     creatorName: string;
+    /** Workspace-scoped clientName snapshot (Phase 8) — never a Client join. */
     client: { name: string };
   };
 }
@@ -78,7 +79,6 @@ export async function authorizeReviewToken(rawToken: string): Promise<ReviewCont
     include: {
       workspace: {
         include: {
-          client: { select: { name: true } },
           creator: { select: { name: true } },
         },
       },
@@ -111,7 +111,7 @@ export async function authorizeReviewToken(rawToken: string): Promise<ReviewCont
       status: link.workspace.status,
       watermarkText: link.workspace.watermarkText,
       creatorName: link.workspace.creator.name,
-      client: { name: link.workspace.client.name },
+      client: { name: link.workspace.clientName },
     },
   };
 }

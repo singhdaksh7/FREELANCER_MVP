@@ -57,7 +57,6 @@ export async function getDashboardData(): Promise<DashboardData> {
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: RECENT_WORKSPACE_COUNT,
       include: {
-        client: { select: { id: true, name: true, company: true } },
         reviewLinks: { where: { status: "ACTIVE", expiresAt: { gt: new Date() } }, select: { id: true }, take: 1 },
       },
     }),
@@ -71,7 +70,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       where: { workspace: { creatorId } },
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       take: RECENT_PAYMENT_COUNT,
-      include: { workspace: { select: { title: true, client: { select: { name: true } } } } },
+      include: { workspace: { select: { title: true, clientName: true } } },
     }),
   ]);
 
@@ -87,7 +86,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       progress: w.progress,
       hasActiveReviewLink: w.reviewLinks.length > 0,
       updatedAt: w.updatedAt.toISOString(),
-      client: w.client,
+      clientName: w.clientName,
     })),
     recentActivity: recentActivity.map((entry) => ({
       id: entry.id,
@@ -104,7 +103,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     recentPayments: recentPayments.map((payment) => ({
       id: payment.id,
       workspaceTitle: payment.workspace.title,
-      clientName: payment.workspace.client.name,
+      clientName: payment.workspace.clientName,
       amount: toDisplayNumber(payment.amount),
       status: payment.status,
       createdAt: payment.createdAt.toISOString(),

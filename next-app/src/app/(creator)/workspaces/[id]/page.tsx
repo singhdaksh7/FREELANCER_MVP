@@ -45,10 +45,7 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
               <h1 className="text-2xl font-extrabold text-ink">{workspace.title}</h1>
               <StatusBadge status={workspaceStatusLabel(workspace.status)} />
             </div>
-            <p className="text-sm text-ink-muted">
-              {workspace.client.name}
-              {workspace.client.company ? ` · ${workspace.client.company}` : ""}
-            </p>
+            <p className="text-sm text-ink-muted">{workspace.clientName}</p>
           </div>
           <div className="text-right">
             <div className="text-2xl font-extrabold text-ink">{formatINR(workspace.amount)}</div>

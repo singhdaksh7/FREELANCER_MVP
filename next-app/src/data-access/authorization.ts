@@ -33,27 +33,19 @@ export async function requireOwnedClient(
 }
 
 /**
- * Loads a Workspace (with its Client) scoped to the authenticated creator.
- * Throws OwnershipError if it doesn't exist or belongs to a different
- * creator.
+ * Loads a Workspace scoped to the authenticated creator. Throws
+ * OwnershipError if it doesn't exist or belongs to a different creator.
+ * `clientName` is a plain scalar column on Workspace (Phase 8) — no
+ * Client join is needed to display it.
  */
 export async function requireOwnedWorkspace(workspaceId: string) {
   const creator = await requireAuthenticatedUser();
   const workspace = await prisma.workspace.findFirst({
     where: { id: workspaceId, creatorId: creator.id },
-    include: { client: { select: { id: true, name: true, company: true } } },
   });
   if (!workspace) throw new OwnershipError();
   return { creator, workspace };
 }
-
-/**
- * Confirms a clientId a creator submitted (e.g. when creating/editing a
- * workspace) actually belongs to them, before it's ever written as a
- * foreign key. Distinct name from requireOwnedClient purely for call-site
- * readability — the check is identical.
- */
-export const requireClientAvailableToCreator = requireOwnedClient;
 
 /**
  * Loads a WorkspaceFile (with its parent Workspace) scoped to the

@@ -8,8 +8,6 @@ import { ApproveProjectModal } from "./approve-project-modal";
 import { PaymentPanel } from "./payment-panel";
 import { PinOverlay } from "./pin-overlay";
 import { AnnotationCanvas } from "./annotation-canvas";
-import { ClientSupportModal } from "./client-support-modal";
-import type { SupportTicketSummary } from "@/data-access/support-tickets";
 import { formatDateTime } from "@/lib/format-date";
 import { BRAND } from "@/lib/branding";
 import type { ReviewableFile } from "@/data-access/review-files";
@@ -31,9 +29,24 @@ export interface ReviewPortalProps {
   };
   files: ReviewableFile[];
   comments: ReviewCommentThreadItem[];
-  supportTickets: SupportTicketSummary[];
   activeChangeRequest: ActiveChangeRequest | null;
   approval: ApprovalSummary | null;
+  /**
+   * Creator-authenticated "Preview Client View" mode (see
+   * /workspaces/[id]/preview) — renders the identical UI a client sees,
+   * but disables every action that would mutate review state (approve,
+   * request changes, comment, pin, annotate, pay, download originals).
+   * Never set for the real, token-authorized `/review/[token]` route.
+   */
+  readOnlyPreview?: boolean;
+  /**
+   * Required when `readOnlyPreview` is true — preview images are then
+   * fetched through the creator-authenticated
+   * `/api/workspaces/[id]/files/[fileId]/preview-url` route (ownership
+   * checked server-side) instead of the token-authorized one, since a
+   * creator preview has no review token at all.
+   */
+  workspaceId?: string;
 }
 
 interface PreviewState {
@@ -44,7 +57,16 @@ interface PreviewState {
   error: string | null;
 }
 
-export function ReviewPortal({ token, workspace, files, comments, supportTickets, activeChangeRequest, approval }: ReviewPortalProps) {
+export function ReviewPortal({
+  token,
+  workspace,
+  files,
+  comments,
+  activeChangeRequest,
+  approval,
+  readOnlyPreview = false,
+  workspaceId,
+}: ReviewPortalProps) {
   const [activeFileId, setActiveFileId] = useState(files[0]?.id ?? null);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(files[0]?.currentVersionId ?? null);
   const [reviewerName, setReviewerName] = useState(workspace.client.name ?? "");
@@ -65,7 +87,7 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
   // stays visible, but no further comments/approval/payment/requests/pins
   // are possible. See "Master review link behaviour" in
   // REQUIREMENTS_ALIGNMENT.md.
-  const isReadOnly = workspace.status === "DELIVERED" || workspace.status === "CLOSED";
+  const isReadOnly = workspace.status === "DELIVERED" || workspace.status === "CLOSED" || readOnlyPreview;
   const canPin = activeFile?.fileKind === "IMAGE" && !isReadOnly;
   const visiblePins = comments.filter(
     (c) => c.workspaceFileId === activeFileId && c.fileVersionId === activeVersionId && c.pinNumber !== null,
@@ -78,7 +100,10 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
     async function loadPreview() {
       setPreview({ loading: true, url: null, locked: false, message: null, error: null });
       try {
-        const res = await fetch(`/api/review/${token}/files/${activeFileId}/preview-url?versionId=${activeVersionId}`);
+        const previewUrlBase = readOnlyPreview
+          ? `/api/workspaces/${workspaceId}/files`
+          : `/api/review/${token}/files`;
+        const res = await fetch(`${previewUrlBase}/${activeFileId}/preview-url?versionId=${activeVersionId}`);
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
@@ -99,7 +124,7 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
     return () => {
       cancelled = true;
     };
-  }, [token, activeFileId, activeVersionId]);
+  }, [token, activeFileId, activeVersionId, readOnlyPreview, workspaceId]);
 
   function selectFile(file: ReviewableFile) {
     setActiveFileId(file.id);
@@ -119,6 +144,11 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
 
   return (
     <div className="flex min-h-screen flex-col bg-vault-navy text-white">
+      {readOnlyPreview && (
+        <div role="status" className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-center text-xs font-semibold text-amber-200 sm:px-6">
+          Preview mode — this is how your client will see the review page.
+        </div>
+      )}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-vault-navy-light px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <ShieldCheck size={18} className="shrink-0 text-vault-blue" aria-hidden="true" />
@@ -130,7 +160,6 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ClientSupportModal token={token} tickets={supportTickets} reviewerName={reviewerName} />
           <button
             type="button"
             onClick={() => setMobileCommentsOpen(true)}
@@ -276,7 +305,11 @@ export function ReviewPortal({ token, workspace, files, comments, supportTickets
                   <p className="text-sm font-semibold text-success">
                     Approved{approval ? ` by ${approval.reviewerName} on ${formatDateTime(approval.approvedAt)}` : ""}
                   </p>
-                  {workspace.deliveryMode === "PAYMENT_REQUIRED" ? (
+                  {readOnlyPreview ? (
+                    <p className="text-xs text-slate-400">
+                      Payment is disabled in preview mode.
+                    </p>
+                  ) : workspace.deliveryMode === "PAYMENT_REQUIRED" ? (
                     <PaymentPanel
                       token={token}
                       amount={workspace.amount ?? 0}

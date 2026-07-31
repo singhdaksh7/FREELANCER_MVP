@@ -67,16 +67,26 @@ const dueDateSchema = z
   .transform((value) => (value ? value : undefined))
   .refine((value) => !value || !Number.isNaN(Date.parse(value)), "Enter a valid due date.");
 
-const clientIdSchema = z.string().trim().min(1, "Select a client.");
+const clientNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Client name is required.")
+  .max(200, "Client name must be 200 characters or fewer.");
 
-export const DELIVERY_MODES = ["PAYMENT_REQUIRED", "APPROVAL_ONLY", "PREVIEW_ONLY"] as const;
+/**
+ * Phase 8 — PREVIEW_ONLY is retired (see DELIVERY_MODES.md); only these
+ * two modes are selectable or creatable going forward. The enum value
+ * still exists in Postgres for historical rows (see the Phase 8
+ * migrations in prisma/migrations), but this schema rejects it outright.
+ */
+export const DELIVERY_MODES = ["PAYMENT_REQUIRED", "APPROVAL_ONLY"] as const;
 export type DeliveryModeInput = (typeof DELIVERY_MODES)[number];
 
 const deliveryModeSchema = z.enum(DELIVERY_MODES, { error: "Select a delivery type." });
 
 const workspaceBaseSchema = z.object({
   title: titleSchema,
-  clientId: clientIdSchema,
+  clientName: clientNameSchema,
   description: descriptionSchema,
   deliveryMode: deliveryModeSchema,
   currency: currencySchema,
@@ -87,9 +97,9 @@ const workspaceBaseSchema = z.object({
 
 /**
  * PAYMENT_REQUIRED requires an amount (section 5 of REQUIREMENTS_ALIGNMENT.md
- * — "Amount required, amount greater than zero"); APPROVAL_ONLY and
- * PREVIEW_ONLY never require one. The shape/positivity of a *submitted*
- * amount is already checked by amountSchema above regardless of mode.
+ * — "Amount required, amount greater than zero"); APPROVAL_ONLY never
+ * requires one. The shape/positivity of a *submitted* amount is already
+ * checked by amountSchema above regardless of mode.
  */
 function requireAmountForPaymentRequired(
   data: { deliveryMode: DeliveryModeInput; amount: string | undefined },

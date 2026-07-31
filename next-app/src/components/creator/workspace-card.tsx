@@ -24,7 +24,7 @@ export function WorkspaceCard({ workspace }: WorkspaceCardProps) {
 
       <dl className="grid grid-cols-2 gap-y-1.5 border-t border-line pt-3 text-[13px]">
         <dt className="text-ink-muted">Client</dt>
-        <dd className="text-right font-medium text-ink">{workspace.client.name}</dd>
+        <dd className="text-right font-medium text-ink">{workspace.clientName}</dd>
         <dt className="text-ink-muted">Amount</dt>
         <dd className="text-right font-semibold text-ink">{formatINR(workspace.amount)}</dd>
         <dt className="text-ink-muted">Progress</dt>

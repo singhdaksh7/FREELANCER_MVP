@@ -6,8 +6,8 @@ const AUTH_FILE = "e2e/visual/.auth/creator.json";
  * Runs once before the visual (screenshot) projects. Logs in as the
  * seeded demo creator through the real UI (not a fabricated cookie) and
  * saves the resulting session as reusable storage state, so the
- * dashboard/workspaces/clients/payments/notifications screenshot tests
- * don't each have to repeat the login flow.
+ * dashboard/workspaces/payments/notifications screenshot tests don't
+ * each have to repeat the login flow.
  */
 setup("authenticate as the demo creator", async ({ page }) => {
   await page.goto("/login");

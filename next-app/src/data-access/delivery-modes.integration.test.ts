@@ -55,6 +55,7 @@ async function createInReviewWorkspaceFixture(opts: { title: string; deliveryMod
     data: {
       creatorId: ARJUN_ID,
       clientId: client.id,
+      clientName: client.name,
       title: opts.title,
       currency: "INR",
       amount: null,

@@ -1,7 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { bigIntToDisplayNumber } from "@/lib/bytes";
-import type { ReviewContext } from "./review-auth";
 
 export class ReviewFileNotFoundError extends Error {
   constructor(message = "This file could not be found.") {
@@ -34,7 +33,7 @@ export interface ReviewableFile {
  * submitted versions never appears here at all. Never exposes original
  * storage keys — only enough metadata to drive the file/version switcher.
  */
-export async function getReviewableFiles(context: ReviewContext): Promise<ReviewableFile[]> {
+export async function getReviewableFiles(context: { workspaceId: string }): Promise<ReviewableFile[]> {
   const files = await prisma.workspaceFile.findMany({
     where: { workspaceId: context.workspaceId, deletedAt: null },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],

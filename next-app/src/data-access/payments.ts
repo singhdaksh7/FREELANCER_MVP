@@ -12,8 +12,6 @@ export interface PaymentListItem {
   workspaceTitle: string;
   clientName: string;
   amount: number;
-  netAmount: number;
-  feeAmount: number;
   currency: string;
   status: string;
   paidAt: string | null;
@@ -23,7 +21,6 @@ export interface PaymentListItem {
 export interface PaymentSummary {
   totalReceived: number;
   outstandingAmount: number;
-  totalFees: number;
 }
 
 const STATUS_FILTER_VALUES = ["All", ...Object.values(PaymentStatus)] as const;
@@ -44,21 +41,16 @@ export interface PaymentsResult {
 }
 
 type PaymentWithWorkspace = Prisma.PaymentGetPayload<{
-  include: { workspace: { select: { title: true; client: { select: { name: true } } } } };
+  include: { workspace: { select: { title: true; clientName: true } } };
 }>;
 
 function mapPayment(payment: PaymentWithWorkspace): PaymentListItem {
-  const fee = payment.feeAmount ? toDecimal(payment.feeAmount) : toDecimal(0);
-  const net = toDecimal(payment.amount).minus(fee);
-
   return {
     id: payment.id,
     workspaceId: payment.workspaceId,
     workspaceTitle: payment.workspace.title,
-    clientName: payment.workspace.client.name,
+    clientName: payment.workspace.clientName,
     amount: toDisplayNumber(payment.amount),
-    netAmount: toDisplayNumber(net),
-    feeAmount: toDisplayNumber(fee),
     currency: payment.currency,
     status: payment.status,
     paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
@@ -85,13 +77,13 @@ export async function getPayments(rawParams: RawSearchParams): Promise<PaymentsR
     prisma.payment.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      include: { workspace: { select: { title: true, client: { select: { name: true } } } } },
+      include: { workspace: { select: { title: true, clientName: true } } },
     }),
     // Summary cards always reflect the creator's full payment history,
     // independent of the currently applied filters (matches Phase 2 behavior).
     prisma.payment.findMany({
       where: { workspace: { creatorId: creator.id } },
-      select: { amount: true, feeAmount: true, status: true },
+      select: { amount: true, status: true },
     }),
   ]);
 
@@ -99,11 +91,10 @@ export async function getPayments(rawParams: RawSearchParams): Promise<PaymentsR
   const pending = allPayments.filter((p) => p.status !== "PAID");
 
   const summary: PaymentSummary = {
-    totalReceived: toDisplayNumber(
-      sumDecimals(settled.map((p) => toDecimal(p.amount).minus(p.feeAmount ? toDecimal(p.feeAmount) : 0))),
-    ),
+    // No platform fee is ever deducted (see PLATFORM_FEE_AND_PAYOUT_LEDGER.md) —
+    // total received is simply the sum of captured gross amounts.
+    totalReceived: toDisplayNumber(sumDecimals(settled.map((p) => toDecimal(p.amount)))),
     outstandingAmount: toDisplayNumber(sumDecimals(pending.map((p) => p.amount))),
-    totalFees: toDisplayNumber(sumDecimals(settled.map((p) => p.feeAmount ?? 0))),
   };
 
   return {

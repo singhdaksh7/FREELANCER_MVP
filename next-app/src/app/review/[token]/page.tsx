@@ -9,11 +9,7 @@ import {
   ReviewLinkRevokedError,
   WorkspaceUnavailableError,
 } from "@/data-access/review-auth";
-import { getReviewableFiles } from "@/data-access/review-files";
-import { getReviewCommentThreads } from "@/data-access/review-comments";
-import { getActiveChangeRequest } from "@/data-access/change-requests";
-import { getApprovalSummary } from "@/data-access/approvals";
-import { getClientSupportTickets } from "@/data-access/support-tickets";
+import { getReviewPortalWorkspaceData } from "@/data-access/review-portal-data";
 import { ReviewSystemState } from "@/components/review/review-system-state";
 import { ReviewPortal } from "@/components/review/review-portal";
 
@@ -64,13 +60,7 @@ async function loadReviewPortal(token: string): Promise<LoadResult> {
     const context = await authorizeReviewToken(token);
     await recordReviewLinkView(context.reviewLinkId);
 
-    const [files, comments, activeChangeRequest, approval, supportTickets] = await Promise.all([
-      getReviewableFiles(context),
-      getReviewCommentThreads(context.workspaceId),
-      getActiveChangeRequest(context.workspaceId),
-      getApprovalSummary(context.workspaceId),
-      getClientSupportTickets(context),
-    ]);
+    const { files, comments, activeChangeRequest, approval } = await getReviewPortalWorkspaceData(context.workspaceId);
 
     if (files.length === 0) {
       return { kind: "no-files" };
@@ -91,7 +81,6 @@ async function loadReviewPortal(token: string): Promise<LoadResult> {
         },
         files,
         comments,
-        supportTickets,
         activeChangeRequest,
         approval,
       },

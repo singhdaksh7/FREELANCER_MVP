@@ -87,32 +87,15 @@ describe("creator data isolation", () => {
     requireAuthenticatedUserMock.mockReset();
   });
 
-  it("Arjun cannot query Meera's clients", async () => {
-    mockSignedInAs(ARJUN_ID);
-    const { getClients } = await import("./clients");
-    const { clients } = await getClients({});
-
-    expect(clients.length).toBeGreaterThan(0);
-    expect(clients.some((c) => c.name === "Devika Nair")).toBe(false);
-    expect(clients.some((c) => c.name === "Farhan Sheikh")).toBe(false);
-  });
-
-  it("Meera cannot query Arjun's clients", async () => {
-    mockSignedInAs(MEERA_ID);
-    const { getClients } = await import("./clients");
-    const { clients } = await getClients({});
-
-    expect(clients.length).toBeGreaterThan(0);
-    expect(clients.some((c) => c.name === "Rohit Sharma")).toBe(false);
-  });
-
-  it("Arjun cannot query Meera's workspaces", async () => {
+  it("Arjun cannot query Meera's workspaces (or see her clientName snapshots)", async () => {
     mockSignedInAs(ARJUN_ID);
     const { getWorkspaces } = await import("./workspaces");
     const { workspaces } = await getWorkspaces({});
 
     expect(workspaces.some((w) => w.title === "Portfolio Website Refresh")).toBe(false);
     expect(workspaces.some((w) => w.title === "Restaurant Menu Design")).toBe(false);
+    expect(workspaces.some((w) => w.clientName === "Devika Nair")).toBe(false);
+    expect(workspaces.some((w) => w.clientName === "Farhan Sheikh")).toBe(false);
   });
 
   it("Dashboard metrics for Arjun include only Arjun's records", async () => {

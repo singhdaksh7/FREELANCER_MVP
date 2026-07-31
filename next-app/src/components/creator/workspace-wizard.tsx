@@ -6,12 +6,6 @@ import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/format-currency";
 import { BRAND } from "@/lib/branding";
 import { createWorkspaceAction, type WorkspaceFormState } from "@/actions/workspaces";
-import { InlineClientModal } from "./inline-client-modal";
-import type { ClientOption } from "@/data-access/clients";
-
-export interface WorkspaceWizardProps {
-  clientOptions: ClientOption[];
-}
 
 const STEPS = [
   { id: 1, label: "Project Details", icon: FileText },
@@ -23,7 +17,7 @@ const STEPS = [
 
 const FIELD_STEP: Record<string, number> = {
   title: 1,
-  clientId: 1,
+  clientName: 1,
   description: 1,
   watermarkText: 3,
   deliveryMode: 4,
@@ -32,7 +26,7 @@ const FIELD_STEP: Record<string, number> = {
   dueDate: 1,
 };
 
-type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
+type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY";
 
 const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string; description: string }> = [
   {
@@ -47,12 +41,6 @@ const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string; descrip
     description:
       "Your client reviews and approves the work. You decide when to release the original files. No online payment is collected.",
   },
-  {
-    value: "PREVIEW_ONLY",
-    label: "Preview Only",
-    description:
-      `Your client can view and comment on protected previews. Original files are not released through ${BRAND.productName}.`,
-  },
 ];
 
 const initialState: WorkspaceFormState = {};
@@ -65,20 +53,16 @@ const initialState: WorkspaceFormState = {};
  * File objects or base64 payloads are stored, and creating the workspace
  * here always produces a DRAFT with no files attached.
  */
-export function WorkspaceWizard({ clientOptions: initialClientOptions }: WorkspaceWizardProps) {
+export function WorkspaceWizard() {
   const [state, formAction, pending] = useActionState(createWorkspaceAction, initialState);
   const [step, setStep] = useState(1);
-  // Clients created inline (via "Add New Client" below) are appended here
-  // so they show up in the selector immediately, without a page reload or
-  // losing any other wizard field the creator has already filled in.
-  const [clientOptions, setClientOptions] = useState(initialClientOptions);
 
   // `fields` is the single source of truth for what's currently typed —
   // it's what gets submitted, so it never needs to be re-synced from the
   // server response (that response is just an echo of what was sent).
   const [fields, setFields] = useState(() => ({
     title: "",
-    clientId: clientOptions[0]?.id ?? "",
+    clientName: "",
     description: "",
     dueDate: "",
     watermarkText: "",
@@ -100,7 +84,7 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
   }
 
   const titleId = useId();
-  const clientId = useId();
+  const clientNameId = useId();
   const descriptionId = useId();
   const dueDateId = useId();
   const watermarkId = useId();
@@ -110,8 +94,7 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
   const set = (key: keyof typeof fields) => (event: { target: { value: string } }) =>
     setFields((prev) => ({ ...prev, [key]: event.target.value }));
 
-  const step1Valid = fields.title.trim().length > 0 && fields.clientId.length > 0;
-  const selectedClient = clientOptions.find((c) => c.id === fields.clientId);
+  const step1Valid = fields.title.trim().length > 0 && fields.clientName.trim().length > 0;
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -137,13 +120,13 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
 
       <form action={formAction} noValidate className="flex flex-col gap-5 rounded-lg border border-line bg-surface-card p-6">
         <input type="hidden" name="title" value={fields.title} />
-        <input type="hidden" name="clientId" value={fields.clientId} />
+        <input type="hidden" name="clientName" value={fields.clientName} />
         <input type="hidden" name="description" value={fields.description} />
         <input type="hidden" name="dueDate" value={fields.dueDate} />
         <input type="hidden" name="watermarkText" value={fields.watermarkText} />
         <input type="hidden" name="deliveryMode" value={fields.deliveryMode} />
         <input type="hidden" name="currency" value={fields.currency} />
-        <input type="hidden" name="amount" value={fields.deliveryMode === "PREVIEW_ONLY" ? "" : fields.amount} />
+        <input type="hidden" name="amount" value={fields.amount} />
 
         {state.error && (
           <p id={errorId} role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
@@ -172,38 +155,19 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
             </div>
 
             <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label htmlFor={clientId} className="block text-sm font-semibold text-ink">
-                  Client <span aria-hidden="true">*</span>
-                </label>
-                <InlineClientModal
-                  onCreated={(client) => {
-                    setClientOptions((prev) => [...prev, client]);
-                    setFields((prev) => ({ ...prev, clientId: client.id }));
-                  }}
-                />
-              </div>
-              {clientOptions.length === 0 ? (
-                <p className="text-sm text-ink-muted">
-                  You have no clients yet. Use &ldquo;Add New Client&rdquo; above to create one.
-                </p>
-              ) : (
-                <select
-                  id={clientId}
-                  value={fields.clientId}
-                  onChange={set("clientId")}
-                  required
-                  className="w-full rounded-md border border-line bg-white px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-                >
-                  {clientOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {state.fieldErrors?.clientId && (
-                <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.clientId[0]}</p>
+              <label htmlFor={clientNameId} className="mb-1.5 block text-sm font-semibold text-ink">
+                Client Name <span aria-hidden="true">*</span>
+              </label>
+              <input
+                id={clientNameId}
+                value={fields.clientName}
+                onChange={set("clientName")}
+                maxLength={200}
+                required
+                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+              />
+              {state.fieldErrors?.clientName && (
+                <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.clientName[0]}</p>
               )}
             </div>
 
@@ -361,12 +325,6 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
                 </p>
               </div>
             )}
-
-            {fields.deliveryMode === "PREVIEW_ONLY" && (
-              <p className="rounded-md bg-slate-50 px-3.5 py-2.5 text-xs text-ink-muted">
-                No amount or payment controls apply to preview-only projects.
-              </p>
-            )}
           </fieldset>
         )}
 
@@ -377,7 +335,7 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
               <dt className="text-ink-muted">Title</dt>
               <dd className="text-right font-medium text-ink sm:text-right">{fields.title || "—"}</dd>
               <dt className="text-ink-muted">Client</dt>
-              <dd className="text-right font-medium text-ink">{selectedClient?.name ?? "—"}</dd>
+              <dd className="text-right font-medium text-ink">{fields.clientName || "—"}</dd>
               <dt className="text-ink-muted">Due Date</dt>
               <dd className="text-right font-medium text-ink">{fields.dueDate || "Not set"}</dd>
               <dt className="text-ink-muted">Watermark Text</dt>
@@ -386,14 +344,10 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
               <dd className="text-right font-medium text-ink">
                 {DELIVERY_MODE_OPTIONS.find((o) => o.value === fields.deliveryMode)?.label}
               </dd>
-              {fields.deliveryMode !== "PREVIEW_ONLY" && (
-                <>
-                  <dt className="text-ink-muted">Amount</dt>
-                  <dd className="text-right font-semibold text-ink">
-                    {fields.amount ? formatINR(Number(fields.amount)) : fields.deliveryMode === "APPROVAL_ONLY" ? "Not set" : "—"}
-                  </dd>
-                </>
-              )}
+              <dt className="text-ink-muted">Amount</dt>
+              <dd className="text-right font-semibold text-ink">
+                {fields.amount ? formatINR(Number(fields.amount)) : fields.deliveryMode === "APPROVAL_ONLY" ? "Not set" : "—"}
+              </dd>
             </dl>
             <p className="text-xs text-ink-muted">
               This creates the workspace as a <strong>Draft</strong>. Deliverables can be added once file upload
@@ -431,7 +385,7 @@ export function WorkspaceWizard({ clientOptions: initialClientOptions }: Workspa
               Continue
             </Button>
           ) : (
-            <Button key="submit-button" type="submit" disabled={pending || clientOptions.length === 0}>
+            <Button key="submit-button" type="submit" disabled={pending}>
               {pending ? "Creating…" : "Create Draft Workspace"}
             </Button>
           )}

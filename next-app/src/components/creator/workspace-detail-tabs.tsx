@@ -79,12 +79,7 @@ export function WorkspaceDetailTabs({
           <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="flex flex-col gap-4">
             <dl className="grid grid-cols-1 gap-y-3 text-sm sm:grid-cols-2">
               <dt className="text-ink-muted">Client</dt>
-              <dd className="font-medium text-ink">
-                {workspace.client.name}
-                {workspace.client.company ? ` · ${workspace.client.company}` : ""}
-              </dd>
-              <dt className="text-ink-muted">Client Email</dt>
-              <dd className="font-medium text-vault-blue">{workspace.client.email}</dd>
+              <dd className="font-medium text-ink">{workspace.clientName}</dd>
               <dt className="text-ink-muted">Amount</dt>
               <dd className="font-semibold text-ink">{formatINR(workspace.amount)}</dd>
               <dt className="text-ink-muted">Status</dt>

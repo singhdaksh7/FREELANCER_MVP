@@ -108,7 +108,7 @@ export async function createPaymentOrder(context: ReviewContext): Promise<Checko
       deliveryMode: true,
       title: true,
       creator: { select: { name: true } },
-      client: { select: { name: true } },
+      clientName: true,
     },
   });
 
@@ -246,7 +246,7 @@ export async function createPaymentOrder(context: ReviewContext): Promise<Checko
     await recordActivity(tx, {
       action: ActivityAction.PAYMENT_ORDER_CREATED,
       actorType: "CLIENT",
-      actorName: workspace.client.name,
+      actorName: workspace.clientName,
       workspaceId: context.workspaceId,
       metadata: { amount: Number(approvedAmount), currency: approvedCurrency, gatewayOrderId },
     });
@@ -271,7 +271,7 @@ export async function createPaymentOrder(context: ReviewContext): Promise<Checko
 
 function buildCheckoutConfig(
   payment: Prisma.PaymentGetPayload<Record<string, never>>,
-  workspace: { title: string; creator: { name: string }; client: { name: string } },
+  workspace: { title: string; creator: { name: string }; clientName: string },
 ): CheckoutConfig {
   if (!payment.gatewayOrderId) throw new PaymentOrderCreationFailedError();
   return {
@@ -283,7 +283,7 @@ function buildCheckoutConfig(
     currency: payment.currency,
     workspaceTitle: workspace.title,
     creatorName: workspace.creator.name,
-    clientName: workspace.client.name,
+    clientName: workspace.clientName,
   };
 }
 

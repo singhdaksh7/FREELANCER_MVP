@@ -4,23 +4,23 @@ import { useActionState, useId } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { updateWorkspaceAction, type WorkspaceFormState } from "@/actions/workspaces";
-import type { ClientOption } from "@/data-access/clients";
 import type { WorkspaceEditDetail } from "@/data-access/workspaces";
 
 export interface WorkspaceEditFormProps {
   workspace: WorkspaceEditDetail;
-  clientOptions: ClientOption[];
 }
 
 const initialState: WorkspaceFormState = {};
 
 /**
- * Single-page workspace edit form. Client is locked once the workspace has
- * reached a paid/delivered status; amount/currency lock earlier, from
- * APPROVED onward, since that's when WorkspaceApproval freezes the amount
- * a payment order will be created from.
+ * Single-page workspace edit form. `clientName` is a plain workspace-scoped
+ * text field — editing it never creates or looks up a Client row. It (like
+ * amount/currency) is locked once the workspace has reached a
+ * paid/delivered status; amount/currency lock earlier, from APPROVED
+ * onward, since that's when WorkspaceApproval freezes the amount a
+ * payment order will be created from.
  */
-export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFormProps) {
+export function WorkspaceEditForm({ workspace }: WorkspaceEditFormProps) {
   const [state, formAction, pending] = useActionState(updateWorkspaceAction, initialState);
   const router = useRouter();
   const locked = workspace.financiallyLocked;
@@ -28,7 +28,7 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
 
   const values = state.values ?? {
     title: workspace.title,
-    clientId: workspace.clientId,
+    clientName: workspace.clientName,
     description: workspace.description ?? "",
     dueDate: workspace.dueDate ?? "",
     watermarkText: workspace.watermarkText ?? "",
@@ -37,7 +37,7 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
   };
 
   const titleId = useId();
-  const clientId = useId();
+  const clientNameId = useId();
   const descriptionId = useId();
   const dueDateId = useId();
   const watermarkId = useId();
@@ -48,7 +48,7 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
       <input type="hidden" name="workspaceId" value={workspace.id} />
       {amountLocked && <input type="hidden" name="currency" value={workspace.currency} />}
       {amountLocked && <input type="hidden" name="amount" value={workspace.amount === null ? "" : String(workspace.amount)} />}
-      {locked && <input type="hidden" name="clientId" value={workspace.clientId} />}
+      {locked && <input type="hidden" name="clientName" value={workspace.clientName} />}
 
       {state.error && (
         <p role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
@@ -88,32 +88,20 @@ export function WorkspaceEditForm({ workspace, clientOptions }: WorkspaceEditFor
       </div>
 
       <div>
-        <label htmlFor={clientId} className="mb-1.5 block text-sm font-semibold text-ink">
-          Client <span aria-hidden="true">*</span>
+        <label htmlFor={clientNameId} className="mb-1.5 block text-sm font-semibold text-ink">
+          Client Name <span aria-hidden="true">*</span>
         </label>
-        {locked ? (
-          <input
-            disabled
-            value={clientOptions.find((c) => c.id === workspace.clientId)?.name ?? ""}
-            className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted"
-          />
-        ) : (
-          <select
-            id={clientId}
-            name="clientId"
-            defaultValue={values.clientId}
-            required
-            className="w-full rounded-md border border-line bg-white px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-          >
-            {clientOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        )}
-        {state.fieldErrors?.clientId && (
-          <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.clientId[0]}</p>
+        <input
+          id={clientNameId}
+          name="clientName"
+          defaultValue={values.clientName}
+          disabled={locked}
+          maxLength={200}
+          required
+          className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue disabled:bg-slate-50 disabled:text-ink-muted"
+        />
+        {state.fieldErrors?.clientName && (
+          <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.clientName[0]}</p>
         )}
       </div>
 

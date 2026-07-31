@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from "./auth";
-import { requireOwnedWorkspace, requireClientAvailableToCreator } from "./authorization";
+import { requireOwnedWorkspace } from "./authorization";
 import { recordActivity } from "./activity";
 import { ActivityAction, formatActivityLabel } from "@/lib/activity-log";
 import { toDecimal, toDisplayNumber, toDisplayNumberOrNull } from "@/lib/decimal";
@@ -24,12 +24,7 @@ export interface WorkspaceListItem {
   /** Whether an ACTIVE, unexpired ReviewLink currently exists — the raw token itself is never retrievable after creation, so this is a boolean indicator only, not a link. */
   hasActiveReviewLink: boolean;
   updatedAt: string;
-  client: { id: string; name: string; company: string | null };
-}
-
-export interface WorkspaceClientOption {
-  id: string;
-  name: string;
+  clientName: string;
 }
 
 const STATUS_FILTER_VALUES = ["All", ...Object.values(WorkspaceStatus)] as const;
@@ -39,20 +34,16 @@ export type WorkspaceSort = (typeof SORT_VALUES)[number];
 export interface WorkspaceFilters {
   q: string;
   status: (typeof STATUS_FILTER_VALUES)[number];
-  clientId: string;
   sort: WorkspaceSort;
 }
 
 export interface WorkspacesResult {
   workspaces: WorkspaceListItem[];
-  clientOptions: WorkspaceClientOption[];
   filters: WorkspaceFilters;
 }
 
 function mapWorkspace(
-  workspace: Prisma.WorkspaceGetPayload<{
-    include: { client: { select: { id: true; name: true; company: true } } };
-  }>,
+  workspace: Prisma.WorkspaceGetPayload<object>,
   activeReviewLinkWorkspaceIds: ReadonlySet<string>,
 ): WorkspaceListItem {
   return {
@@ -65,7 +56,7 @@ function mapWorkspace(
     progress: workspace.progress,
     hasActiveReviewLink: activeReviewLinkWorkspaceIds.has(workspace.id),
     updatedAt: workspace.updatedAt.toISOString(),
-    client: workspace.client,
+    clientName: workspace.clientName,
   };
 }
 
@@ -81,18 +72,16 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
 
   const q = parseQueryParam(rawParams, "q");
   const status = parseEnumParam(rawParams, "status", STATUS_FILTER_VALUES, "All");
-  const clientIdParam = parseQueryParam(rawParams, "client");
   const sort = parseEnumParam(rawParams, "sort", SORT_VALUES, "recent");
 
   const where: Prisma.WorkspaceWhereInput = {
     creatorId: creator.id,
     ...(status !== "All" ? { status } : {}),
-    ...(clientIdParam ? { clientId: clientIdParam } : {}),
     ...(q
       ? {
           OR: [
             { title: { contains: q, mode: "insensitive" } },
-            { client: { name: { contains: q, mode: "insensitive" } } },
+            { clientName: { contains: q, mode: "insensitive" } },
           ],
         }
       : {}),
@@ -105,18 +94,7 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
         ? [{ amount: "desc" }, { id: "asc" }]
         : [{ updatedAt: "desc" }, { id: "asc" }];
 
-  const [workspaces, clientOptions] = await Promise.all([
-    prisma.workspace.findMany({
-      where,
-      orderBy,
-      include: { client: { select: { id: true, name: true, company: true } } },
-    }),
-    prisma.client.findMany({
-      where: { creatorId: creator.id },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+  const workspaces = await prisma.workspace.findMany({ where, orderBy });
 
   const activeReviewLinks = await prisma.reviewLink.findMany({
     where: { workspaceId: { in: workspaces.map((w) => w.id) }, status: "ACTIVE", expiresAt: { gt: new Date() } },
@@ -126,8 +104,7 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
 
   return {
     workspaces: workspaces.map((w) => mapWorkspace(w, activeReviewLinkWorkspaceIds)),
-    clientOptions,
-    filters: { q, status, clientId: clientIdParam || "All", sort },
+    filters: { q, status, sort },
   };
 }
 
@@ -196,6 +173,7 @@ export interface WorkspaceDetail {
   currency: string;
   amount: number | null;
   status: string;
+  /** PREVIEW_ONLY is retired (unselectable/uncreatable — see src/validation/workspace.ts) but the type still allows it so pre-migration rows type-check; every row is converted to APPROVAL_ONLY by the Phase 8 data migration. */
   deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
   progress: number;
   dueDate: string | null;
@@ -213,7 +191,7 @@ export interface WorkspaceDetail {
   canReleaseFiles: boolean;
   /** PREVIEW_ONLY only — workspace is still open (IN_REVIEW/CHANGES_REQUESTED) and can be closed. */
   canCloseForReview: boolean;
-  client: { id: string; name: string; email: string; company: string | null; phone: string | null };
+  clientName: string;
   payments: WorkspacePaymentEntry[];
   activity: WorkspaceActivityEntry[];
   /** Most-recent ReviewLink (any status) for the review-link controls — never the raw token, only what's safe to display. */
@@ -240,7 +218,6 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
   const workspace = await prisma.workspace.findFirst({
     where: { id: workspaceId, creatorId: creator.id },
     include: {
-      client: { select: { id: true, name: true, email: true, company: true, phone: true } },
       payments: {
         orderBy: [{ createdAt: "desc" }, { id: "asc" }],
         include: { deliveryBundle: true, downloadGrant: true, breakdown: true },
@@ -284,7 +261,7 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
       workspace.status === "DRAFT" &&
       workspace.payments.length === 0 &&
       workspace.activityLogs.filter((entry) => entry.action !== ActivityAction.WORKSPACE_CREATED).length === 0,
-    client: workspace.client,
+    clientName: workspace.clientName,
     payments: workspace.payments.map((payment) => ({
       id: payment.id,
       amount: toDisplayNumber(payment.amount),
@@ -348,7 +325,7 @@ export interface WorkspaceEditDetail {
   id: string;
   title: string;
   description: string | null;
-  clientId: string;
+  clientName: string;
   currency: string;
   amount: number | null;
   dueDate: string | null;
@@ -368,7 +345,7 @@ export async function getOwnedWorkspaceForEdit(workspaceId: string): Promise<Wor
     id: workspace.id,
     title: workspace.title,
     description: workspace.description,
-    clientId: workspace.clientId,
+    clientName: workspace.clientName,
     currency: workspace.currency,
     amount: toDisplayNumberOrNull(workspace.amount),
     dueDate: workspace.dueDate ? workspace.dueDate.toISOString().slice(0, 10) : null,
@@ -384,20 +361,20 @@ export interface MutateWorkspaceResult {
 }
 
 /**
- * Creates a DRAFT workspace. Confirms the submitted clientId actually
- * belongs to the authenticated creator (never trusts it blindly), derives
- * creatorId from the session, and writes the WORKSPACE_CREATED activity
- * entry in the same transaction as the insert.
+ * Creates a DRAFT workspace. `clientName` is a plain, workspace-scoped
+ * text snapshot — no Client row is ever looked up, created, or attached
+ * (clientId is left null). Derives creatorId from the session, and
+ * writes the WORKSPACE_CREATED activity entry in the same transaction as
+ * the insert.
  */
 export async function createWorkspace(input: WorkspaceCreateInput): Promise<MutateWorkspaceResult> {
   const creator = await requireAuthenticatedUser();
-  await requireClientAvailableToCreator(input.clientId);
 
   return prisma.$transaction(async (tx) => {
     const workspace = await tx.workspace.create({
       data: {
         creatorId: creator.id,
-        clientId: input.clientId,
+        clientName: input.clientName,
         title: input.title,
         description: input.description ?? null,
         currency: input.currency,
@@ -433,14 +410,15 @@ export async function createWorkspace(input: WorkspaceCreateInput): Promise<Muta
 }
 
 /**
- * Updates a workspace after verifying ownership (and, if the client is
- * being changed, ownership of the new client too). For workspaces in a
- * financially-locked status (PAID/FILES_UNLOCKED/DELIVERED), amount,
- * currency, and client are silently kept at their existing values — only
- * descriptive fields (title, description, watermark text, due date) apply
- * — so a locked workspace can never end up with an inconsistent payment
- * record. Writes one activity entry per kind of change that actually
- * occurred (never one for a no-op resubmission).
+ * Updates a workspace after verifying ownership. For workspaces in a
+ * financially-locked status (PAID/FILES_UNLOCKED/DELIVERED), amount and
+ * currency are silently kept at their existing values — only descriptive
+ * fields (title, description, watermark text, due date, client name)
+ * apply — so a locked workspace can never end up with an inconsistent
+ * payment record. `clientName` is a plain workspace-scoped text field;
+ * editing it never creates, looks up, or attaches a Client row. Writes
+ * one activity entry per kind of change that actually occurred (never
+ * one for a no-op resubmission).
  */
 export async function updateOwnedWorkspace(
   workspaceId: string,
@@ -450,13 +428,11 @@ export async function updateOwnedWorkspace(
   const locked = (FINANCIAL_LOCK_STATUSES as readonly string[]).includes(existing.status);
   const amountLocked = (AMOUNT_LOCK_STATUSES as readonly string[]).includes(existing.status);
 
-  let targetClientId = existing.clientId;
-  let clientChangeMetadata: { fromClientName: string; toClientName: string } | null = null;
-  if (!locked && input.clientId !== existing.clientId) {
-    const { client: newClient } = await requireClientAvailableToCreator(input.clientId);
-    targetClientId = newClient.id;
-    clientChangeMetadata = { fromClientName: existing.client.name, toClientName: newClient.name };
-  }
+  const targetClientName = locked ? existing.clientName : input.clientName;
+  const clientChangeMetadata: { fromClientName: string; toClientName: string } | null =
+    !locked && input.clientName !== existing.clientName
+      ? { fromClientName: existing.clientName, toClientName: input.clientName }
+      : null;
 
   // Delivery mode is fixed at creation — never editable afterward (no
   // mode-switch UI exists; switching mid-workflow would strand whatever
@@ -486,7 +462,7 @@ export async function updateOwnedWorkspace(
         title: input.title,
         description: input.description ?? null,
         watermarkText: input.watermarkText ?? null,
-        clientId: targetClientId,
+        clientName: targetClientName,
         amount: targetAmount,
         currency: targetCurrency,
         dueDate: targetDueDate,

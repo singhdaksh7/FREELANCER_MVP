@@ -42,10 +42,7 @@ export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
                 <div className="font-semibold text-ink">{workspace.title}</div>
               </td>
               <td className="px-6 py-4">
-                <div className="font-medium text-ink">{workspace.client.name}</div>
-                {workspace.client.company && (
-                  <div className="text-xs text-ink-muted">{workspace.client.company}</div>
-                )}
+                <div className="font-medium text-ink">{workspace.clientName}</div>
               </td>
               <td className="px-6 py-4 font-semibold text-ink">{formatINR(workspace.amount)}</td>
               <td className="px-6 py-4">

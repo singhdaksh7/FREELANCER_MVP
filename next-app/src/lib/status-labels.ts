@@ -39,7 +39,6 @@ export function paymentStatusLabel(status: string): string {
 const DELIVERY_MODE_LABELS: Record<string, string> = {
   PAYMENT_REQUIRED: "Payment Required",
   APPROVAL_ONLY: "Approval Only",
-  PREVIEW_ONLY: "Preview Only",
 };
 
 export function deliveryModeLabel(mode: string): string {

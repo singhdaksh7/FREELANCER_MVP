@@ -11,9 +11,6 @@ import {
   AnnotationType,
   PayoutLedgerType,
   PayoutStatus,
-  SupportTicketCategory,
-  SupportTicketStatus,
-  SupportAuthorType,
 } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
@@ -26,11 +23,13 @@ import bcrypt from "bcryptjs";
  * dataset rather than growing it or erroring — it never deletes anything,
  * unlike the local/test-only prisma/seed.ts.
  *
- * This intentionally seeds one representative workspace per DeliveryMode
- * (PAYMENT_REQUIRED / APPROVAL_ONLY / PREVIEW_ONLY) plus version history,
- * comments, pins/annotations, a payment breakdown, payout-ledger data, and
- * a support ticket — see FOUNDER_DEMO_CHECKLIST.md for the walkthrough
- * this data supports.
+ * This intentionally seeds representative workspaces for both surviving
+ * DeliveryMode values (PAYMENT_REQUIRED / APPROVAL_ONLY — PREVIEW_ONLY was
+ * retired in Phase 8, see DELIVERY_MODES.md) plus version history,
+ * comments, pins/annotations, a zero-fee payment breakdown, and
+ * payout-ledger data — see FOUNDER_DEMO_CHECKLIST.md for the walkthrough
+ * this data supports. Platform fee is always 0 (Phase 8) — see
+ * PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
  */
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -109,14 +108,15 @@ async function seedClients(creatorId: string) {
   return { orion, atlas, nimbus };
 }
 
-async function seedPaymentRequiredWorkspace(creatorId: string, clientId: string) {
+async function seedPaymentRequiredWorkspace(creatorId: string, client: { id: string; name: string }) {
   const workspace = await prisma.workspace.upsert({
     where: { id: "demo_ws_payment_required" },
     update: {},
     create: {
       id: "demo_ws_payment_required",
       creatorId,
-      clientId,
+      clientId: client.id,
+      clientName: client.name,
       title: "Product Launch Video Package",
       description: "Hero product video, three social cutdowns, and a poster frame set for the Q3 launch.",
       currency: "INR",
@@ -276,7 +276,7 @@ async function seedPaymentRequiredWorkspace(creatorId: string, clientId: string)
       gatewayPaymentId: "pay_demo_payment_required",
       gatewaySignatureVerifiedAt: new Date("2026-07-10T11:14:00Z"),
       capturedAt: new Date("2026-07-10T11:15:00Z"),
-      feeAmount: "625.00",
+      feeAmount: "0.00",
       paidAt: new Date("2026-07-10T11:15:00Z"),
       attemptNumber: 1,
       idempotencyKey: "demo-seed-idem-payment-required",
@@ -292,9 +292,9 @@ async function seedPaymentRequiredWorkspace(creatorId: string, clientId: string)
       paymentId: payment.id,
       projectAmountSubunits: BigInt(2_500_000),
       clientChargedSubunits: BigInt(2_500_000),
-      platformFeeBps: 200,
-      platformFeeSubunits: BigInt(50_000),
-      freelancerPayableSubunits: BigInt(2_450_000),
+      platformFeeBps: 0,
+      platformFeeSubunits: BigInt(0),
+      freelancerPayableSubunits: BigInt(2_500_000),
       currency: "INR",
       calculatedAt: new Date("2026-07-10T11:15:00Z"),
     },
@@ -308,7 +308,7 @@ async function seedPaymentRequiredWorkspace(creatorId: string, clientId: string)
       creatorId,
       paymentId: payment.id,
       type: PayoutLedgerType.PAYMENT_CREDIT,
-      amountSubunits: BigInt(2_450_000),
+      amountSubunits: BigInt(2_500_000),
       currency: "INR",
       status: PayoutStatus.AVAILABLE,
       availableAt: new Date("2026-07-11T11:15:00Z"),
@@ -319,62 +319,28 @@ async function seedPaymentRequiredWorkspace(creatorId: string, clientId: string)
 
   await prisma.creatorBalanceAccount.upsert({
     where: { creatorId },
-    update: { availableSubunits: BigInt(2_450_000) },
+    update: { availableSubunits: BigInt(2_500_000) },
     create: {
       creatorId,
       currency: "INR",
       pendingSubunits: BigInt(0),
-      availableSubunits: BigInt(2_450_000),
+      availableSubunits: BigInt(2_500_000),
       paidOutSubunits: BigInt(0),
-    },
-  });
-
-  const ticket = await prisma.supportTicket.upsert({
-    where: { id: "demo_tkt_payment_required" },
-    update: {},
-    create: {
-      id: "demo_tkt_payment_required",
-      ticketNumber: "TCK-DEMO001",
-      workspaceId: workspace.id,
-      creatorId,
-      reviewLinkId: reviewLink.id,
-      category: SupportTicketCategory.PAYMENT,
-      status: SupportTicketStatus.RESOLVED,
-      priority: "normal",
-      subject: "Invoice copy for internal records",
-      description: "Could you share a copy of the paid invoice for our finance team?",
-      createdByType: SupportAuthorType.CLIENT,
-      reviewerName: "Orion Retail Co",
-      reviewerEmail: "hello@orionretail.example",
-      createdAt: new Date("2026-07-11T09:00:00Z"),
-      resolvedAt: new Date("2026-07-11T10:30:00Z"),
-    },
-  });
-
-  await prisma.supportTicketMessage.upsert({
-    where: { id: "demo_tktmsg_payment_required_reply" },
-    update: {},
-    create: {
-      id: "demo_tktmsg_payment_required_reply",
-      ticketId: ticket.id,
-      authorType: SupportAuthorType.CREATOR,
-      creatorAuthorId: creatorId,
-      body: "Sent — please check your inbox for the invoice PDF.",
-      createdAt: new Date("2026-07-11T10:30:00Z"),
     },
   });
 
   return workspace;
 }
 
-async function seedApprovalOnlyWorkspace(creatorId: string, clientId: string) {
+async function seedApprovalOnlyWorkspace(creatorId: string, client: { id: string; name: string }) {
   const workspace = await prisma.workspace.upsert({
     where: { id: "demo_ws_approval_only" },
     update: {},
     create: {
       id: "demo_ws_approval_only",
       creatorId,
-      clientId,
+      clientId: client.id,
+      clientName: client.name,
       title: "Brand Style Guide Refresh",
       description: "Updated brand guidelines document — approval-only, released manually once signed off.",
       currency: "INR",
@@ -417,18 +383,24 @@ async function seedApprovalOnlyWorkspace(creatorId: string, clientId: string) {
   return workspace;
 }
 
-async function seedPreviewOnlyWorkspace(creatorId: string, clientId: string) {
+/**
+ * Second APPROVAL_ONLY example (id kept as "preview_only" for historical
+ * continuity with earlier demo snapshots) — PREVIEW_ONLY itself was
+ * retired in Phase 8, see DELIVERY_MODES.md.
+ */
+async function seedPreviewOnlyWorkspace(creatorId: string, client: { id: string; name: string }) {
   const workspace = await prisma.workspace.upsert({
     where: { id: "demo_ws_preview_only" },
     update: {},
     create: {
       id: "demo_ws_preview_only",
       creatorId,
-      clientId,
+      clientId: client.id,
+      clientName: client.name,
       title: "Seasonal Lookbook Concepts",
       description: "Early concept previews for the winter lookbook — feedback only, no unlock/payment step.",
       currency: "INR",
-      deliveryMode: DeliveryMode.PREVIEW_ONLY,
+      deliveryMode: DeliveryMode.APPROVAL_ONLY,
       status: WorkspaceStatus.IN_REVIEW,
       progress: 30,
       watermarkText: "INLAY PREVIEW",
@@ -472,13 +444,13 @@ async function main() {
   const freelancer = await seedFreelancer();
   const { orion, atlas, nimbus } = await seedClients(freelancer.id);
 
-  await seedPaymentRequiredWorkspace(freelancer.id, orion.id);
-  await seedApprovalOnlyWorkspace(freelancer.id, atlas.id);
-  await seedPreviewOnlyWorkspace(freelancer.id, nimbus.id);
+  await seedPaymentRequiredWorkspace(freelancer.id, orion);
+  await seedApprovalOnlyWorkspace(freelancer.id, atlas);
+  await seedPreviewOnlyWorkspace(freelancer.id, nimbus);
 
   console.log(
     `✓ Demo seed complete — freelancer (${freelancer.email}), admin (admin@inlay-demo.app), ` +
-      `3 clients, 3 workspaces (PAYMENT_REQUIRED / APPROVAL_ONLY / PREVIEW_ONLY).`,
+      `3 clients, 3 workspaces (PAYMENT_REQUIRED / APPROVAL_ONLY / APPROVAL_ONLY).`,
   );
 }
 

@@ -43,7 +43,7 @@ async function createApprovedWorkspaceFixture(opts: {
   createdClientIds.push(client.id);
 
   const workspace = await prisma.workspace.create({
-    data: { creatorId: ARJUN_ID, clientId: client.id, title: opts.title, currency: "INR", amount: opts.amount, status: "APPROVED", approvedAt: new Date() },
+    data: { creatorId: ARJUN_ID, clientId: client.id, clientName: client.name, title: opts.title, currency: "INR", amount: opts.amount, status: "APPROVED", approvedAt: new Date() },
   });
   createdWorkspaceIds.push(workspace.id);
 
@@ -251,6 +251,9 @@ describe("webhook capture -> finalization -> delivery -> download (full happy pa
 
     const paidPayment = await prisma.payment.findUniqueOrThrow({ where: { id: checkout.paymentId } });
     expect(paidPayment.status).toBe("PAID");
+    // Phase 8 — no code path ever writes a nonzero Payment.feeAmount; the
+    // real capture flow never sets it at all (see PLATFORM_FEE_AND_PAYOUT_LEDGER.md).
+    expect(paidPayment.feeAmount === null || Number(paidPayment.feeAmount) === 0).toBe(true);
     const paidWorkspace = await prisma.workspace.findUniqueOrThrow({ where: { id: fixture.workspace.id } });
     expect(paidWorkspace.status).toBe("PAID");
 
@@ -326,23 +329,23 @@ describe("webhook capture -> finalization -> delivery -> download (full happy pa
     const finalGrant = await prisma.downloadGrant.findUniqueOrThrow({ where: { id: grant.id } });
     expect(finalGrant.downloadCount).toBe(2);
 
-    // Platform-fee breakdown was frozen at order-creation time (₹750 * 2% = ₹15 fee, ₹735 payable).
+    // Platform fee is always 0 (Phase 8 — see PLATFORM_FEE_AND_PAYOUT_LEDGER.md): gross amount (₹750) equals freelancer payable, no hidden deduction.
     const breakdown = await prisma.paymentBreakdown.findUniqueOrThrow({ where: { paymentId: checkout.paymentId } });
-    expect(breakdown.platformFeeBps).toBe(200);
-    expect(breakdown.platformFeeSubunits).toBe(BigInt(1500));
-    expect(breakdown.freelancerPayableSubunits).toBe(BigInt(73500));
+    expect(breakdown.platformFeeBps).toBe(0);
+    expect(breakdown.platformFeeSubunits).toBe(BigInt(0));
+    expect(breakdown.freelancerPayableSubunits).toBe(BigInt(75000));
 
-    // Capture created exactly one PAYMENT_CREDIT + one PLATFORM_FEE ledger entry, and the creator's balance reflects it.
+    // Capture created exactly one PAYMENT_CREDIT + one (zero-amount) PLATFORM_FEE ledger entry, and the creator's balance reflects it.
     const creditEntry = await prisma.payoutLedgerEntry.findFirstOrThrow({
       where: { paymentId: checkout.paymentId, type: "PAYMENT_CREDIT" },
     });
-    expect(creditEntry.amountSubunits).toBe(BigInt(73500));
+    expect(creditEntry.amountSubunits).toBe(BigInt(75000));
     expect(creditEntry.status).toBe("PENDING");
     const feeEntryCount = await prisma.payoutLedgerEntry.count({ where: { paymentId: checkout.paymentId, type: "PLATFORM_FEE" } });
     expect(feeEntryCount).toBe(1);
 
     const balance = await prisma.creatorBalanceAccount.findUniqueOrThrow({ where: { creatorId: ARJUN_ID } });
-    expect(balance.pendingSubunits).toBeGreaterThanOrEqual(BigInt(73500));
+    expect(balance.pendingSubunits).toBeGreaterThanOrEqual(BigInt(75000));
 
     // Test-mode payout simulation: PENDING -> AVAILABLE -> PROCESSING -> PAID, using the real fake provider (not the payment gateway).
     const { getPayoutProvider } = await import("@/payouts/payout-provider");
@@ -362,7 +365,7 @@ describe("webhook capture -> finalization -> delivery -> download (full happy pa
     expect(updatedEntry.status).toBe("PAID");
 
     const finalBalance = await prisma.creatorBalanceAccount.findUniqueOrThrow({ where: { creatorId: ARJUN_ID } });
-    expect(finalBalance.paidOutSubunits).toBeGreaterThanOrEqual(BigInt(73500));
+    expect(finalBalance.paidOutSubunits).toBeGreaterThanOrEqual(BigInt(75000));
 
     // Payment/download state is completely unaffected by the payout simulation.
     const paymentAfterPayout = await prisma.payment.findUniqueOrThrow({ where: { id: checkout.paymentId } });

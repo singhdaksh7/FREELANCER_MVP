@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { workspaceCreateSchema } from "./workspace";
+import { DELIVERY_MODES, workspaceCreateSchema } from "./workspace";
 
 const VALID = {
   title: "Brand Identity Design",
-  clientId: "cli_rohit",
+  clientName: "Rohit Sharma",
   description: "Logo + guidelines",
   deliveryMode: "PAYMENT_REQUIRED",
   currency: "INR",
@@ -23,8 +23,18 @@ describe("workspaceCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("requires a client to be selected", () => {
-    const result = workspaceCreateSchema.safeParse({ ...VALID, clientId: "" });
+  it("requires a client name", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, clientName: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("requires a client name that isn't only whitespace", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, clientName: "   " });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a client name longer than the maximum length", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, clientName: "a".repeat(201) });
     expect(result.success).toBe(false);
   });
 
@@ -66,7 +76,7 @@ describe("workspaceCreateSchema", () => {
   it("treats due date, description, and watermark text as optional", () => {
     const result = workspaceCreateSchema.safeParse({
       title: "Untitled Project",
-      clientId: "cli_rohit",
+      clientName: "Rohit Sharma",
       deliveryMode: "PAYMENT_REQUIRED",
       currency: "INR",
       amount: "1000",
@@ -88,6 +98,15 @@ describe("workspaceCreateSchema", () => {
     const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "ESCROW" });
     expect(result.success).toBe(false);
   });
+
+  it("only exposes PAYMENT_REQUIRED and APPROVAL_ONLY as selectable delivery modes", () => {
+    expect(DELIVERY_MODES).toEqual(["PAYMENT_REQUIRED", "APPROVAL_ONLY"]);
+  });
+
+  it("rejects the retired PREVIEW_ONLY delivery mode", () => {
+    const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "PREVIEW_ONLY" });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("workspaceCreateSchema — delivery-mode-conditional amount validation", () => {
@@ -107,13 +126,6 @@ describe("workspaceCreateSchema — delivery-mode-conditional amount validation"
 
   it("allows APPROVAL_ONLY with an amount (for the creator's own reference)", () => {
     const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "APPROVAL_ONLY", amount: "5000" });
-    expect(result.success).toBe(true);
-  });
-
-  it("allows PREVIEW_ONLY with no amount", () => {
-    const withoutAmount: Partial<typeof VALID> = { ...VALID };
-    delete withoutAmount.amount;
-    const result = workspaceCreateSchema.safeParse({ ...withoutAmount, deliveryMode: "PREVIEW_ONLY" });
     expect(result.success).toBe(true);
   });
 

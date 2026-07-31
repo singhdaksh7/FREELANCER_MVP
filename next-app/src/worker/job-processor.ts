@@ -45,7 +45,7 @@ export async function claimNextJob(prisma: PrismaLike) {
     include: {
       fileVersion: {
         include: {
-          file: { include: { workspace: { include: { client: true } } } },
+          file: { include: { workspace: true } },
         },
       },
     },
@@ -142,12 +142,10 @@ async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>)
   const version = job.fileVersion;
   const file = version.file;
   const { workspace } = file;
-  const { client } = workspace;
 
   const originalBuffer = await s3StorageProvider.getObjectBuffer(version.originalStorageKey);
   const preview = await generateWatermarkedPreview(originalBuffer, {
-    clientName: client.name,
-    clientEmail: client.email,
+    clientName: workspace.clientName,
     workspaceTitle: workspace.title,
   });
 

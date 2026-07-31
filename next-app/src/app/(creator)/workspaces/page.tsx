@@ -18,8 +18,9 @@ export default async function WorkspacesPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const { workspaces, clientOptions } = await getWorkspaces(await searchParams);
-  const hasAnyWorkspaces = workspaces.length > 0 || clientOptions.length > 0;
+  const { workspaces, filters } = await getWorkspaces(await searchParams);
+  const filtersActive = filters.q.length > 0 || filters.status !== "All";
+  const hasResults = workspaces.length > 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -33,15 +34,15 @@ export default async function WorkspacesPage({
         }
       />
 
-      <WorkspacesFilterBar clientOptions={clientOptions} />
+      <WorkspacesFilterBar />
 
-      {workspaces.length === 0 ? (
+      {!hasResults ? (
         <EmptyState
-          icon={hasAnyWorkspaces ? SearchX : FolderKanban}
-          title={hasAnyWorkspaces ? "No workspaces match your search" : "No workspaces yet"}
+          icon={filtersActive ? SearchX : FolderKanban}
+          title={filtersActive ? "No workspaces match your search" : "No workspaces yet"}
           description={
-            hasAnyWorkspaces
-              ? "Try a different search term, or clear the status/client filters."
+            filtersActive
+              ? "Try a different search term, or clear the status filter."
               : "Workspaces you create will appear here, ready to share as secure payment-gated review links."
           }
         />

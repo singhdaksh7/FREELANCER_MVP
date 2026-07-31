@@ -132,6 +132,7 @@ export async function seedArjun() {
       id: "ws_brand_identity",
       creatorId: arjun.id,
       clientId: rohit.id,
+      clientName: rohit.name,
       title: "Brand Identity Design",
       description:
         "Complete brand guidelines, logotype variations, color palette system, and social media assets.",
@@ -148,6 +149,7 @@ export async function seedArjun() {
       id: "ws_ecommerce_ui",
       creatorId: arjun.id,
       clientId: priya.id,
+      clientName: priya.name,
       title: "E-commerce Website UI",
       description:
         "High-fidelity Figma wireframes and mobile responsive design system for online apparel store.",
@@ -165,6 +167,7 @@ export async function seedArjun() {
       id: "ws_product_pkg",
       creatorId: arjun.id,
       clientId: karan.id,
+      clientName: karan.name,
       title: "Product Packaging Design",
       description: "3D render mockups and print-ready die-cut vector files for organic coffee box.",
       currency: "INR",
@@ -182,6 +185,7 @@ export async function seedArjun() {
       id: "ws_social_campaign",
       creatorId: arjun.id,
       clientId: ananya.id,
+      clientName: ananya.name,
       title: "Social Media Campaign",
       description:
         "Platform-ready social templates, reel cover set, and campaign content calendar for Luxe Living's festive launch.",
@@ -280,7 +284,7 @@ export async function seedArjun() {
         gatewayPaymentId: "pay_gw_demo_101",
         gatewaySignatureVerifiedAt: new Date("2026-07-18T15:44:00Z"),
         capturedAt: new Date("2026-07-18T15:45:00Z"),
-        feeAmount: "750.00",
+        feeAmount: "0.00",
         paidAt: new Date("2026-07-18T15:45:00Z"),
         attemptNumber: 1,
         idempotencyKey: "seed-idem-pay-101",
@@ -304,20 +308,20 @@ export async function seedArjun() {
     ],
   });
 
-  // Phase 7.5 — a deterministic PaymentBreakdown for the one already-PAID
-  // seeded payment (pay_101), so the platform-fee-breakdown UI
-  // (payment-status-card.tsx) and its E2E/visual coverage have a real,
-  // non-zero breakdown to render without depending on the full
-  // order-creation -> webhook capture pipeline. See
-  // PLATFORM_FEE_AND_PAYOUT_LEDGER.md for the 2% (200 bps) fee.
+  // Phase 8 — a deterministic, zero-fee PaymentBreakdown for the one
+  // already-PAID seeded payment (pay_101), so the payment-status-card.tsx
+  // UI and its E2E/visual coverage have a real breakdown to render
+  // without depending on the full order-creation -> webhook capture
+  // pipeline. Platform fee is always 0 — see
+  // PLATFORM_FEE_AND_PAYOUT_LEDGER.md.
   await prisma.paymentBreakdown.create({
     data: {
       paymentId: "pay_101",
       projectAmountSubunits: BigInt(3_000_000),
       clientChargedSubunits: BigInt(3_000_000),
-      platformFeeBps: 200,
-      platformFeeSubunits: BigInt(60_000),
-      freelancerPayableSubunits: BigInt(2_940_000),
+      platformFeeBps: 0,
+      platformFeeSubunits: BigInt(0),
+      freelancerPayableSubunits: BigInt(3_000_000),
       currency: "INR",
       calculatedAt: new Date("2026-07-17T11:00:00Z"),
     },
@@ -446,6 +450,7 @@ async function seedMeera() {
       id: "ws_portfolio_refresh",
       creatorId: meera.id,
       clientId: devika.id,
+      clientName: devika.name,
       title: "Portfolio Website Refresh",
       description: "Redesigned photography portfolio with new case-study layout and dark mode.",
       currency: "INR",
@@ -461,6 +466,7 @@ async function seedMeera() {
       id: "ws_menu_design",
       creatorId: meera.id,
       clientId: farhan.id,
+      clientName: farhan.name,
       title: "Restaurant Menu Design",
       description: "Print-ready seasonal menu design set with matching table-tent inserts.",
       currency: "INR",
@@ -522,7 +528,7 @@ async function seedMeera() {
       gatewayPaymentId: "pay_gw_demo_201",
       gatewaySignatureVerifiedAt: new Date("2026-07-15T13:29:00Z"),
       capturedAt: new Date("2026-07-15T13:30:00Z"),
-      feeAmount: "375.00",
+      feeAmount: "0.00",
       paidAt: new Date("2026-07-15T13:30:00Z"),
       attemptNumber: 1,
       idempotencyKey: "seed-idem-pay-201",

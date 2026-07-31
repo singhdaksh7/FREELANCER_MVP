@@ -24,7 +24,7 @@ export default async function PaymentsPage({
     <div className="flex flex-col gap-5">
       <SectionHeader
         title="Payments & Revenue Ledger"
-        description="Track payout transactions, platform fees, and pending file-lock funds"
+        description="Track payout transactions and pending file-lock funds"
       />
       <CreatorBalanceCard balance={balance} />
       <PaymentExplorer payments={payments} summary={summary} hasAnyPayments={hasAnyPayments} />

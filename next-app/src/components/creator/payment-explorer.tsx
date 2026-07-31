@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, IndianRupee, Receipt, SearchX } from "lucide-react";
+import { Clock, IndianRupee, SearchX } from "lucide-react";
 import type { PaymentListItem, PaymentSummary } from "@/data-access/payments";
 import { FilterSelect } from "@/components/ui/filter-select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -26,13 +26,12 @@ export function PaymentExplorer({ payments, summary, hasAnyPayments }: PaymentEx
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <MetricCard
           label="Total Received"
           value={formatINR(summary.totalReceived)}
           icon={IndianRupee}
           iconColor="var(--color-success)"
-          helperText="Net of platform fees"
         />
         <MetricCard
           label="Outstanding Amount"
@@ -41,7 +40,6 @@ export function PaymentExplorer({ payments, summary, hasAnyPayments }: PaymentEx
           iconColor="var(--color-warning)"
           helperText="Not yet settled"
         />
-        <MetricCard label="Platform Fees" value={formatINR(summary.totalFees)} icon={Receipt} />
       </div>
 
       <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line bg-surface-card p-4">

@@ -11,7 +11,7 @@ import { auth } from "@/auth";
  * scope every query to the authenticated creator. Never treat this file
  * as sufficient protection on its own.
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/workspaces", "/clients", "/payments", "/notifications", "/support", "/admin"];
+const PROTECTED_PREFIXES = ["/dashboard", "/workspaces", "/payments", "/notifications", "/admin"];
 const AUTH_ONLY_PAGES = new Set(["/login", "/register"]);
 
 export default auth((request) => {

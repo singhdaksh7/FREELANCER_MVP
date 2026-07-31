@@ -33,9 +33,7 @@ export default async function AdminDashboardPage() {
         <StatCard label="Total Creators" value={String(stats.totalCreators)} />
         <StatCard label="Active Workspaces" value={String(stats.activeWorkspaces)} />
         <StatCard label="Payments Captured" value={`${stats.paymentsCapturedCount} (${formatINR(subunitsToRupees(stats.paymentsCapturedSubunits))})`} />
-        <StatCard label="Platform Fees" value={formatINR(subunitsToRupees(stats.platformFeeSubunits))} />
         <StatCard label="Pending Freelancer Payable" value={formatINR(subunitsToRupees(stats.pendingFreelancerPayableSubunits))} />
-        <StatCard label="Open Support Tickets" value={String(stats.openSupportTickets)} />
         <StatCard label="File Processing Failures" value={String(stats.fileProcessingFailures)} />
       </div>
     </div>

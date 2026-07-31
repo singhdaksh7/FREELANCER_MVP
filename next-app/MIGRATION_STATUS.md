@@ -526,3 +526,19 @@ Following `TECHNICAL_AUDIT.md`'s phased plan, now that the full approve → pay 
 4. Close the pre-existing amount-editability gap noted above (add `APPROVED`/`PAYMENT_PENDING` to a stricter amount-lock, or freeze the approved amount onto `WorkspaceApproval` itself) before this app is used with real money.
 
 Do not begin any of the above until Phase 7 is explicitly reviewed and approved.
+
+## Phase 8 — product simplification (post-Phase-7)
+
+Note: this is a distinct, later initiative from the "Recommended Phase 8 scope" above (which this work does not implement) — naming collision acknowledged; a future doc pass should renumber.
+
+Stakeholder-driven simplification of the creator/client flow, landed as five hand-written forward-only migrations (`prisma/migrations/20260731090000_workspace_client_name_add` through `20260731094000_preview_only_to_approval_only`) plus corresponding application changes:
+
+- **Workspace.clientName** (required `String`) replaces the saved-Client selector as the source of truth for a workspace's client display name. Backfilled from each workspace's related `Client.name`; `Workspace.clientId` is now nullable (`ON DELETE SET NULL`, was `RESTRICT`) and left `null` for every workspace created after this phase. The `Client` model/table is retained for historical joins only — no code path creates a `Client` row anymore.
+- **PREVIEW_ONLY delivery mode retired.** The Postgres enum value still exists (dropping an enum value isn't a safe forward-only operation) but `src/validation/workspace.ts`'s `DELIVERY_MODES` only allows `PAYMENT_REQUIRED`/`APPROVAL_ONLY`; a one-time migration converted every existing `PREVIEW_ONLY` workspace to `APPROVAL_ONLY`.
+- **Saved-Clients CRM removed** (`/clients*` routes, client cards/tables/forms, the wizard's inline "Add New Client" modal, `src/data-access/clients.ts`, `src/actions/clients.ts` all deleted). The workspace wizard/edit form use a plain "Client Name" textbox instead.
+- **Support tickets removed from the app** (`/support*`, `/admin/support*`, all support-ticket UI/actions/DAL deleted). `SupportTicket`/`SupportTicketMessage` tables remain for historical compatibility. A new static "Support" section was added to the Settings page, reading `NEXT_PUBLIC_SUPPORT_EMAIL`/`NEXT_PUBLIC_SUPPORT_PHONE`.
+- **Platform fee removed.** `getPlatformFeeBps()` (`src/payments/platform-fee.ts`) always returns 0; every new `PaymentBreakdown` has `platformFeeBps = 0` and `freelancerPayableSubunits = clientChargedSubunits`. Razorpay order-amount and webhook-verification logic are untouched. Payment UI simplified to a single "Amount" instead of separate Gross/Fee/Payout figures.
+- **"Preview Client View" added** — a creator-authenticated, ownership-checked, read-only render of the exact client review UI at `/workspaces/[id]/preview`, reusing `ReviewPortal` with a new `readOnlyPreview` prop that disables every mutating action (approve, request changes, comment, pin, annotate, pay, download originals). Preview images are served through a new creator-authenticated `/api/workspaces/[id]/files/[fileId]/preview-url` route, parallel to the token-authorized one.
+- Also deleted as unused, unrelated dead code discovered during this pass: `src/data/mock/*`, `src/types/{index,creator,workspace,notification,payment}.ts`, `src/lib/{workspace-progress,payment-metrics,dashboard-metrics}.ts` — a pre-Prisma prototype island with zero live importers.
+
+See `DELIVERY_MODES.md`, `PLATFORM_FEE_AND_PAYOUT_LEDGER.md`, and this repo's PR description for the full requirements this phase implements.

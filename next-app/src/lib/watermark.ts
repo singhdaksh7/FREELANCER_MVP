@@ -8,7 +8,13 @@ import { BRAND } from "./branding";
 
 export interface WatermarkTextInput {
   clientName: string;
-  clientEmail: string;
+  /**
+   * Phase 8 — the saved-Client CRM (with its email field) was retired;
+   * `clientName` is now a plain workspace-scoped text snapshot with no
+   * associated email. Optional so a workspace with no captured email
+   * still renders a valid watermark line.
+   */
+  clientEmail?: string;
   workspaceTitle: string;
 }
 
@@ -55,7 +61,7 @@ export function escapeXmlText(value: string): string {
 export function buildWatermarkLines(input: WatermarkTextInput): string[] {
   return [
     BRAND.watermarkText,
-    `${input.clientName} (${input.clientEmail})`,
+    input.clientEmail ? `${input.clientName} (${input.clientEmail})` : input.clientName,
     `Workspace: ${input.workspaceTitle}`,
   ];
 }

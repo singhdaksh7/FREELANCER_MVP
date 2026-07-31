@@ -3,9 +3,7 @@ import {
   CreditCard,
   FolderKanban,
   LayoutDashboard,
-  LifeBuoy,
   Settings,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,18 +19,17 @@ export interface CreatorNavItem {
 /**
  * Single source of truth for creator navigation, consumed by both the
  * desktop sidebar and the mobile drawer/bottom nav so the link set can
- * never drift between them. Matches the original CreatorLayout.jsx
- * `navItems` order exactly.
+ * never drift between them. Phase 8 removed Clients (saved-Client CRM
+ * retired — see MIGRATION_STATUS.md) and Support (moved into the
+ * Settings page's Support section) from this list.
  */
 export const CREATOR_NAV_ITEMS: CreatorNavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { id: "workspaces", label: "Workspaces", href: "/workspaces", icon: FolderKanban },
-  { id: "clients", label: "Clients", href: "/clients", icon: Users },
   { id: "payments", label: "Payments", href: "/payments", icon: CreditCard },
   { id: "notifications", label: "Notifications", href: "/notifications", icon: Bell },
-  { id: "support", label: "Support", href: "/support", icon: LifeBuoy },
   { id: "settings", label: "Settings", href: "/settings", icon: Settings },
 ];
 
-/** Bottom bar only ever showed the first 5 items in the original (`navItems.slice(0, 5)`) — Settings was never reachable on mobile. */
+/** With only 5 items left post-Phase-8, the mobile bottom bar now shows every creator nav item, including Settings. */
 export const CREATOR_MOBILE_PRIMARY_NAV_ITEMS = CREATOR_NAV_ITEMS.slice(0, 5);

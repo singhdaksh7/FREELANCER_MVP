@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-export type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
+export type DeliveryMode = "PAYMENT_REQUIRED" | "APPROVAL_ONLY";
 
 /**
  * Every visual spec that needs a workspace this suite's seed data doesn't
@@ -37,14 +37,13 @@ export async function createWorkspaceViaWizard(
   await loginAsCreator(page);
   await page.goto("/workspaces/new");
   await page.getByLabel(/^title/i).fill(options.title);
+  await page.getByLabel(/client name/i).fill("Visual Suite Client");
   await page.getByRole("button", { name: /^continue$/i }).click();
   await page.getByRole("button", { name: /^continue$/i }).click();
   await page.getByRole("button", { name: /^continue$/i }).click();
 
   if (options.deliveryMode === "APPROVAL_ONLY") {
     await page.getByRole("radio", { name: /approval only/i }).check();
-  } else if (options.deliveryMode === "PREVIEW_ONLY") {
-    await page.getByRole("radio", { name: /preview only/i }).check();
   }
   if (options.amount) {
     await page.getByLabel(/^amount/i).fill(options.amount);

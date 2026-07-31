@@ -10,6 +10,7 @@ test("create workspace review step visual baseline", async ({ page }) => {
   await gotoAndStabilize(page, "/workspaces/new");
 
   await page.getByLabel(/^title/i).fill("Visual Baseline Workspace");
+  await page.getByLabel(/client name/i).fill("Visual Baseline Client");
   await page.getByRole("button", { name: /^continue$/i }).click(); // step 2
   await page.getByRole("button", { name: /^continue$/i }).click(); // step 3
   await page.getByRole("button", { name: /^continue$/i }).click(); // step 4

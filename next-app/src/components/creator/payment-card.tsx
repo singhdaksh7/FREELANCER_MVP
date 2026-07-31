@@ -24,10 +24,8 @@ export function PaymentCard({ payment, onDeferredAction }: PaymentCardProps) {
       </div>
 
       <dl className="grid grid-cols-2 gap-y-1.5 border-t border-line pt-3 text-[13px]">
-        <dt className="text-ink-muted">Gross amount</dt>
+        <dt className="text-ink-muted">Amount</dt>
         <dd className="text-right font-semibold text-ink">{formatINR(payment.amount)}</dd>
-        <dt className="text-ink-muted">Net payout</dt>
-        <dd className="text-right font-semibold text-success">{formatINR(payment.netAmount)}</dd>
         <dt className="text-ink-muted">Date</dt>
         <dd className="text-right text-ink">{formatPaymentDate(payment.paidAt)}</dd>
       </dl>
