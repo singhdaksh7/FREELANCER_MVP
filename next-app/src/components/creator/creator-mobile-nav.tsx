@@ -6,11 +6,7 @@ import { CREATOR_MOBILE_PRIMARY_NAV_ITEMS } from "./nav-items";
 import { cn } from "@/lib/cn";
 
 /**
- * Fixed bottom navigation, mobile only. Shows the same first-5 primary
- * destinations as the original CreatorLayout.jsx (`navItems.slice(0, 5)`)
- * — Settings was never reachable from here in the approved design and
- * still isn't; it now lives in the mobile drawer instead (see
- * CreatorMobileHeader), which the original had no equivalent of.
+ * Fixed bottom navigation, mobile only. Minimum 44px touch targets.
  */
 export function CreatorMobileNav() {
   const pathname = usePathname();
@@ -18,11 +14,11 @@ export function CreatorMobileNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 flex h-[60px] items-center justify-around border-t border-vault-navy-light bg-vault-navy md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 flex h-[64px] items-center justify-around border-t border-[#16203D] bg-primary-navy md:hidden"
     >
       {CREATOR_MOBILE_PRIMARY_NAV_ITEMS.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname === item.href;
+        const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
 
         return (
           <Link
@@ -30,11 +26,11 @@ export function CreatorMobileNav() {
             href={item.href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex min-w-11 flex-col items-center gap-0.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue",
-              isActive ? "font-semibold text-vault-blue" : "text-slate-400",
+              "flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 px-2 py-1 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-blue",
+              isActive ? "font-semibold text-primary-blue" : "text-[#98A2B3]",
             )}
           >
-            <Icon size={18} aria-hidden="true" />
+            <Icon size={20} aria-hidden="true" />
             <span>{item.label}</span>
           </Link>
         );

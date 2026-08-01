@@ -12,20 +12,18 @@ export interface CreatorShellProps {
 }
 
 /**
- * Creator application chrome: 240px desktop sidebar + sticky desktop
- * header, or compact mobile header + bottom nav below the md breakpoint.
- * Stays a Server Component — only the pieces that need interactivity
- * (nav active-state, the mobile drawer) are Client Components.
+ * Creator application shell: 248px desktop sidebar + sticky header,
+ * or compact mobile header + bottom nav.
  */
 export function CreatorShell({ creator, unreadNotificationCount, children }: CreatorShellProps) {
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-app-bg">
       <CreatorSidebar creator={creator} unreadNotificationCount={unreadNotificationCount} />
       <CreatorMobileHeader creator={creator} unreadNotificationCount={unreadNotificationCount} />
 
-      <div className="flex min-h-screen flex-col pb-mobile-nav md:pb-0 md:pl-sidebar">
+      <div className="flex min-h-screen flex-col pb-mobile-nav md:pb-0 md:pl-[248px]">
         <CreatorHeader unreadNotificationCount={unreadNotificationCount} />
-        <main className="flex-1 px-4 py-6 md:px-6 md:py-6">{children}</main>
+        <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
 
       <CreatorMobileNav />

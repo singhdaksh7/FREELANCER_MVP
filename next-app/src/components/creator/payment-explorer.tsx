@@ -1,10 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Clock, IndianRupee, SearchX } from "lucide-react";
 import type { PaymentListItem, PaymentSummary } from "@/data-access/payments";
 import { FilterSelect } from "@/components/ui/filter-select";
 import { EmptyState } from "@/components/ui/empty-state";
-import { MetricCard } from "@/components/ui/metric-card";
 import { Toast } from "@/components/ui/toast";
 import { useToastMessage } from "@/hooks/use-toast-message";
 import { useUrlFilters } from "@/hooks/use-url-filters";
@@ -12,9 +12,9 @@ import { PAYMENT_DATE_RANGE_OPTIONS, PAYMENT_STATUS_OPTIONS } from "@/lib/filter
 import { formatINR } from "@/lib/format-currency";
 import { PaymentTable } from "./payment-table";
 import { PaymentCard } from "./payment-card";
+import { PaymentDrawer } from "./payment-drawer";
 
 export interface PaymentExplorerProps {
-  /** Already filtered server-side by the current `status`/`date` params — see src/data-access/payments.ts. */
   payments: PaymentListItem[];
   summary: PaymentSummary;
   hasAnyPayments: boolean;
@@ -23,32 +23,63 @@ export interface PaymentExplorerProps {
 export function PaymentExplorer({ payments, summary, hasAnyPayments }: PaymentExplorerProps) {
   const { getParam, setParam } = useUrlFilters();
   const { toast, showToast } = useToastMessage();
+  const [selectedPayment, setSelectedPayment] = useState<PaymentListItem | null>(null);
+
+  const activeTab = getParam("status", "All");
+
+  const tabs = ["All", "Pending", "Paid", "Failed", "Refunded"];
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <MetricCard
-          label="Total Received"
-          value={formatINR(summary.totalReceived)}
-          icon={IndianRupee}
-          iconColor="var(--color-success)"
-        />
-        <MetricCard
-          label="Outstanding Amount"
-          value={formatINR(summary.outstandingAmount)}
-          icon={Clock}
-          iconColor="var(--color-warning)"
-          helperText="Not yet settled"
-        />
-      </div>
+    <div className="flex flex-col gap-6">
+      {/* Financial Summary */}
+      <section className="rounded-xl border border-line bg-card p-6 shadow-sm">
+        <h2 className="mb-4 text-base font-bold text-primary-text">Financial Overview</h2>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-4">
+          <div className="flex flex-col gap-1 border-r-0 border-line pb-4 sm:border-r sm:pb-0 sm:pr-6">
+            <span className="text-xs font-semibold text-secondary-text uppercase tracking-wider">Total Received</span>
+            <span className="text-2xl font-black text-success">{formatINR(summary.totalReceived)}</span>
+          </div>
+          <div className="flex flex-col gap-1 border-r-0 border-line pb-4 sm:border-r sm:pb-0 sm:pr-6">
+            <span className="text-xs font-semibold text-secondary-text uppercase tracking-wider">Outstanding</span>
+            <span className="text-2xl font-black text-warning">{formatINR(summary.outstandingAmount)}</span>
+          </div>
+          <div className="flex flex-col gap-1 border-r-0 border-line pb-4 sm:border-r sm:pb-0 sm:pr-6">
+            <span className="text-xs font-semibold text-secondary-text uppercase tracking-wider">Paid Projects</span>
+            <span className="text-2xl font-black text-primary-text">
+              {payments.filter(p => p.status === "PAID").length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold text-secondary-text uppercase tracking-wider">Pending Payments</span>
+            <span className="text-2xl font-black text-primary-text">
+              {payments.filter(p => p.status === "PENDING" || p.status === "CREATED").length}
+            </span>
+          </div>
+        </div>
+      </section>
 
-      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line bg-surface-card p-4">
-        <FilterSelect
-          value={getParam("status", "All")}
-          onChange={(value) => setParam("status", value)}
-          options={PAYMENT_STATUS_OPTIONS}
-          aria-label="Filter by payment status"
-        />
+      {/* Tabs & Date Filter */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-2">
+        <div className="flex gap-2 overflow-x-auto">
+          {tabs.map((t) => {
+            const isActive = activeTab.toLowerCase() === t.toLowerCase() || (t === "All" && activeTab === "All");
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setParam("status", t === "All" ? "All" : t.toUpperCase())}
+                className={`rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
+                  isActive
+                    ? "bg-primary-blue text-white"
+                    : "bg-card text-secondary-text hover:bg-app-bg"
+                }`}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
+
         <FilterSelect
           value={getParam("date", "all")}
           onChange={(value) => setParam("date", value, ["all", ""])}
@@ -72,19 +103,28 @@ export function PaymentExplorer({ payments, summary, hasAnyPayments }: PaymentEx
           <PaymentTable
             payments={payments}
             caption="Payments matching the current filters"
+            onSelectPayment={(payment) => setSelectedPayment(payment)}
             onDeferredAction={(message) => showToast(message, "info")}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:hidden">
             {payments.map((payment) => (
-              <PaymentCard
-                key={payment.id}
-                payment={payment}
-                onDeferredAction={(message) => showToast(message, "info")}
-              />
+              <div key={payment.id} onClick={() => setSelectedPayment(payment)} className="cursor-pointer">
+                <PaymentCard
+                  payment={payment}
+                  onDeferredAction={(message) => showToast(message, "info")}
+                />
+              </div>
             ))}
           </div>
         </>
       )}
+
+      {/* Detail Drawer */}
+      <PaymentDrawer
+        payment={selectedPayment}
+        onClose={() => setSelectedPayment(null)}
+        onReceiptAction={(msg) => showToast(msg, "success")}
+      />
 
       <Toast toast={toast} />
     </div>

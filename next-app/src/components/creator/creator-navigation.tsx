@@ -13,21 +13,19 @@ export interface CreatorNavigationProps {
 
 /**
  * Primary creator nav link list (desktop sidebar + mobile drawer share
- * this). Active state is derived from the current pathname, which is why
- * this is a Client Component — the rest of the sidebar/header stays server
- * rendered.
+ * this). Active state is derived from the current pathname.
  */
 export function CreatorNavigation({ unreadNotificationCount, onNavigate }: CreatorNavigationProps) {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Creator navigation" className="flex flex-col gap-1 px-3 py-2">
-      <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <nav aria-label="Creator navigation" className="flex flex-col gap-1 px-3 py-3">
+      <p className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
         Main Menu
       </p>
       {CREATOR_NAV_ITEMS.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname === item.href;
+        const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
         const badge = item.id === "notifications" ? unreadNotificationCount : 0;
 
         return (
@@ -38,21 +36,21 @@ export function CreatorNavigation({ unreadNotificationCount, onNavigate }: Creat
             aria-current={isActive ? "page" : undefined}
             title={item.deferred ? "Available in a later phase" : undefined}
             className={cn(
-              "flex items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue",
+              "flex items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-blue",
               isActive
-                ? "bg-vault-navy-light font-semibold text-white"
-                : "font-medium text-slate-400 hover:text-white",
+                ? "bg-primary-blue/15 font-semibold text-white"
+                : "font-medium text-[#98A2B3] hover:text-white",
             )}
           >
             <span className="flex items-center gap-3">
-              <Icon size={18} color={isActive ? "var(--color-vault-blue)" : "#94A3B8"} aria-hidden="true" />
+              <Icon size={18} color={isActive ? "#356DF3" : "#98A2B3"} aria-hidden="true" />
               <span>
                 {item.label}
                 {item.deferred && <span className="sr-only"> (available in a later phase)</span>}
               </span>
             </span>
             {badge > 0 && (
-              <span className="rounded-full bg-vault-blue px-1.5 py-0.5 text-[11px] font-bold text-white">
+              <span className="rounded-full bg-primary-blue px-2 py-0.5 text-[11px] font-bold text-white">
                 {badge}
               </span>
             )}

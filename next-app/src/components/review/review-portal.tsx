@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lock, ShieldCheck, MessageSquare, X, MapPin } from "lucide-react";
+import { Lock, Unlock, ShieldCheck, MessageSquare, X, MapPin, CheckCircle2, Download, Send, AlertTriangle } from "lucide-react";
 import { ReviewCommentsPanel } from "./review-comments-panel";
 import { RequestChangesModal } from "./request-changes-modal";
 import { ApproveProjectModal } from "./approve-project-modal";
@@ -19,7 +19,6 @@ export interface ReviewPortalProps {
   token: string;
   workspace: {
     title: string;
-    /** null for an APPROVAL_ONLY/PREVIEW_ONLY workspace with no price set. */
     amount: number | null;
     currency: string;
     creatorName: string;
@@ -31,21 +30,7 @@ export interface ReviewPortalProps {
   comments: ReviewCommentThreadItem[];
   activeChangeRequest: ActiveChangeRequest | null;
   approval: ApprovalSummary | null;
-  /**
-   * Creator-authenticated "Preview Client View" mode (see
-   * /workspaces/[id]/preview) — renders the identical UI a client sees,
-   * but disables every action that would mutate review state (approve,
-   * request changes, comment, pin, annotate, pay, download originals).
-   * Never set for the real, token-authorized `/review/[token]` route.
-   */
   readOnlyPreview?: boolean;
-  /**
-   * Required when `readOnlyPreview` is true — preview images are then
-   * fetched through the creator-authenticated
-   * `/api/workspaces/[id]/files/[fileId]/preview-url` route (ownership
-   * checked server-side) instead of the token-authorized one, since a
-   * creator preview has no review token at all.
-   */
   workspaceId?: string;
 }
 
@@ -71,10 +56,8 @@ export function ReviewPortal({
   const [activeVersionId, setActiveVersionId] = useState<string | null>(files[0]?.currentVersionId ?? null);
   const [reviewerName, setReviewerName] = useState(workspace.client.name ?? "");
   const [mobileCommentsOpen, setMobileCommentsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "comments">("overview");
   const [approved, setApproved] = useState(Boolean(approval));
-  // Set immediately on a successful "Request Changes" submission — see
-  // RequestChangesModal's doc comment for why this can't rely solely on
-  // the server-revalidated `activeChangeRequest` prop alone.
   const [changeRequestJustSubmitted, setChangeRequestJustSubmitted] = useState(false);
   const [preview, setPreview] = useState<PreviewState>({ loading: false, url: null, locked: false, message: null, error: null });
   const [addPinMode, setAddPinMode] = useState(false);
@@ -83,11 +66,8 @@ export function ReviewPortal({
   const [annotateMode, setAnnotateMode] = useState(false);
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
-  // Terminal statuses after which the portal becomes read-only — history
-  // stays visible, but no further comments/approval/payment/requests/pins
-  // are possible. See "Master review link behaviour" in
-  // REQUIREMENTS_ALIGNMENT.md.
   const isReadOnly = workspace.status === "DELIVERED" || workspace.status === "CLOSED" || readOnlyPreview;
+  const isPaid = workspace.status === "PAID" || workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED";
   const canPin = activeFile?.fileKind === "IMAGE" && !isReadOnly;
   const visiblePins = comments.filter(
     (c) => c.workspaceFileId === activeFileId && c.fileVersionId === activeVersionId && c.pinNumber !== null,
@@ -136,64 +116,87 @@ export function ReviewPortal({
   const isPreviewOnly = workspace.deliveryMode === "PREVIEW_ONLY";
   const hasOpenChangeRequest = Boolean(activeChangeRequest) || changeRequestJustSubmitted;
   const canRequestChanges = !approved && !hasOpenChangeRequest && !isReadOnly;
-  // A preview-only client can never approve for delivery — leaving a
-  // comment or requesting changes is the only available action. See
-  // DELIVERY_MODES.md.
   const canApprove = !approved && !hasOpenChangeRequest && !isPreviewOnly && !isReadOnly;
   const currentVersionNumber = activeFile?.versions.find((v) => v.id === activeVersionId)?.versionNumber;
 
   return (
-    <div className="flex min-h-screen flex-col bg-vault-navy text-white">
+    <div className="flex min-h-screen flex-col bg-[#0B0F19] text-white">
       {readOnlyPreview && (
-        <div role="status" className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-center text-xs font-semibold text-amber-200 sm:px-6">
+        <div role="status" className="border-b border-warning/30 bg-warning/15 px-4 py-2 text-center text-xs font-semibold text-warning">
           Preview mode — this is how your client will see the review page.
         </div>
       )}
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/10 bg-vault-navy-light px-4 py-3 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2">
-          <ShieldCheck size={18} className="shrink-0 text-vault-blue" aria-hidden="true" />
+
+      {/* Header */}
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#1F2937] bg-[#111827] px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-blue text-white">
+            <Lock size={18} aria-hidden="true" />
+          </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-white">{workspace.title}</p>
-            <p className="text-[11px] text-slate-400">
-              Secure preview{currentVersionNumber ? ` · v${currentVersionNumber}` : ""} · shared by {workspace.creatorName}
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-black text-white">{workspace.title}</p>
+              {currentVersionNumber && (
+                <span className="rounded bg-primary-blue px-1.5 py-0.5 text-[10px] font-bold text-white uppercase">
+                  v{currentVersionNumber}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#9CA3AF]">
+              Client: <strong className="text-white">{workspace.client.name}</strong> · Shared by {workspace.creatorName}
             </p>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
+          {isPaid ? (
+            <div className="flex items-center gap-1.5 rounded-full bg-success-bg/20 px-3 py-1 text-xs font-bold text-success">
+              <Unlock size={14} /> Files Unlocked
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded-full bg-warning-bg/20 px-3 py-1 text-xs font-bold text-warning">
+              <Lock size={14} /> Gated Delivery Lock
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setMobileCommentsOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1.5 text-xs font-semibold text-white sm:hidden"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[#374151] px-3 py-1.5 text-xs font-semibold text-white lg:hidden"
           >
             <MessageSquare size={14} aria-hidden="true" /> Comments ({comments.length})
           </button>
         </div>
       </header>
 
+      {/* Main Content Workspace Grid */}
       {files.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-slate-400">
+        <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-[#9CA3AF]">
           No files are available for review yet.
         </div>
       ) : (
         <div className="flex flex-1 flex-col lg:flex-row">
-          <div className="flex flex-1 flex-col">
-            <div className="flex gap-2 overflow-x-auto border-b border-white/10 bg-vault-navy-light px-4 py-2 sm:px-6">
+          {/* Left Canvas Panel */}
+          <div className="flex flex-1 flex-col bg-[#030712]">
+            {/* File Switcher Header */}
+            <div className="flex gap-2 overflow-x-auto border-b border-[#1F2937] bg-[#111827] px-4 py-2 sm:px-6">
               {files.map((file) => (
                 <button
                   key={file.id}
                   type="button"
                   onClick={() => selectFile(file)}
-                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold ${
-                    file.id === activeFileId ? "bg-vault-blue text-white" : "text-slate-300 hover:bg-white/10"
+                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
+                    file.id === activeFileId ? "bg-primary-blue text-white" : "bg-[#1F2937] text-white hover:bg-[#374151]"
                   }`}
                 >
-                  {file.displayName}
+                  📄 {file.displayName}
                 </button>
               ))}
             </div>
 
+            {/* Version Switcher */}
             {activeFile && activeFile.versions.length > 1 && (
-              <div className="flex gap-2 border-b border-white/10 bg-vault-navy px-4 py-1.5 text-xs sm:px-6">
+              <div className="flex gap-2 border-b border-[#1F2937] bg-[#111827] px-4 py-1.5 text-xs sm:px-6">
                 {activeFile.versions.map((v) => (
                   <button
                     key={v.id}
@@ -203,8 +206,8 @@ export function ReviewPortal({
                       setAddPinMode(false);
                       setPendingPin(null);
                     }}
-                    className={`rounded px-2 py-1 ${
-                      v.id === activeVersionId ? "bg-white/20 font-semibold text-white" : "text-slate-400 hover:text-white"
+                    className={`rounded px-2.5 py-1 text-xs font-bold ${
+                      v.id === activeVersionId ? "bg-white/20 text-white" : "text-[#9CA3AF] hover:text-white"
                     }`}
                   >
                     v{v.versionNumber}
@@ -213,8 +216,9 @@ export function ReviewPortal({
               </div>
             )}
 
+            {/* Pin Toolbar */}
             {canPin && !annotateMode && (
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-vault-navy px-4 py-1.5 sm:px-6">
+              <div className="flex items-center justify-between gap-2 border-b border-[#1F2937] bg-[#111827] px-4 py-1.5 text-xs sm:px-6">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -224,48 +228,43 @@ export function ReviewPortal({
                     }}
                     aria-pressed={addPinMode}
                     className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ${
-                      addPinMode ? "bg-vault-blue text-white" : "text-slate-300 hover:bg-white/10"
+                      addPinMode ? "bg-primary-blue text-white" : "text-[#9CA3AF] hover:text-white"
                     }`}
                   >
-                    <MapPin size={12} aria-hidden="true" /> {addPinMode ? "Click the image to place a pin" : "Add Pin"}
+                    <MapPin size={12} aria-hidden="true" /> {addPinMode ? "Click image to pin" : "Add Pin"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setAnnotateMode(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-[#9CA3AF] hover:text-white"
                   >
                     Annotate
                   </button>
                 </div>
-                {pendingPin && (
-                  <button
-                    type="button"
-                    onClick={() => setPendingPin(null)}
-                    className="text-xs font-semibold text-slate-400 hover:text-white"
-                  >
-                    Cancel pin
-                  </button>
-                )}
               </div>
             )}
 
-            <div className="relative flex flex-1 items-center justify-center bg-black/40 p-4 sm:p-8">
-              {preview.loading && <p className="text-sm text-slate-400">Loading protected preview…</p>}
+            {/* Interactive Image Canvas */}
+            <div className="relative flex flex-1 items-center justify-center p-4 sm:p-8 overflow-hidden">
+              {preview.loading && <p className="text-sm text-[#9CA3AF]">Loading protected preview…</p>}
               {preview.error && <p className="text-sm text-danger">{preview.error}</p>}
               {preview.locked && (
                 <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-                  <Lock size={28} className="text-slate-400" aria-hidden="true" />
-                  <p className="text-sm text-slate-300">{preview.message}</p>
+                  <Lock size={28} className="text-[#9CA3AF]" aria-hidden="true" />
+                  <p className="text-sm text-[#9CA3AF]">{preview.message}</p>
                 </div>
               )}
               {preview.url && (
-                <div className="relative inline-block max-h-[70vh] w-full max-w-3xl">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed preview URL, not a static asset */}
+                <div className="relative inline-block max-h-[70vh] w-full max-w-3xl rounded-xl overflow-hidden shadow-2xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={preview.url}
                     alt={`Protected preview of ${activeFile?.displayName ?? "file"}`}
-                    className="max-h-[70vh] w-full rounded-md object-contain"
+                    className="max-h-[70vh] w-full object-contain bg-[#111827]"
                   />
+                  {!isPaid && (
+                    <div className="watermark-overlay absolute inset-0 pointer-events-none" />
+                  )}
                   {annotateMode && activeFileId && activeVersionId ? (
                     <AnnotationCanvas
                       token={token}
@@ -294,105 +293,116 @@ export function ReviewPortal({
                 </div>
               )}
             </div>
-
-            <div className="border-t border-white/10 bg-vault-navy-light p-3 text-center text-[11px] text-slate-400 sm:p-4" style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}>
-              Original files remain securely locked until payment is completed.
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-vault-navy-light p-3 sm:p-4">
-              {approved || approval ? (
-                <div className="flex w-full max-w-sm flex-col items-center gap-3 text-center">
-                  <p className="text-sm font-semibold text-success">
-                    Approved{approval ? ` by ${approval.reviewerName} on ${formatDateTime(approval.approvedAt)}` : ""}
-                  </p>
-                  {readOnlyPreview ? (
-                    <p className="text-xs text-slate-400">
-                      Payment is disabled in preview mode.
-                    </p>
-                  ) : workspace.deliveryMode === "PAYMENT_REQUIRED" ? (
-                    <PaymentPanel
-                      token={token}
-                      amount={workspace.amount ?? 0}
-                      currency={workspace.currency}
-                      workspaceTitle={workspace.title}
-                      creatorName={workspace.creatorName}
-                      clientName={workspace.client.name}
-                    />
-                  ) : workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED" ? (
-                    <p className="text-xs text-slate-400">
-                      Files released — use your download link from earlier in this conversation, or ask the creator
-                      to resend it.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-400">
-                      Approved — waiting for the creator to release files.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {isPreviewOnly && isReadOnly && (
-                    <p role="status" className="w-full text-center text-xs text-slate-400">
-                      This project is closed. Comment and version history remain visible, but no further comments or
-                      changes can be submitted.
-                    </p>
-                  )}
-                  {isPreviewOnly && !isReadOnly && (
-                    <p role="status" className="w-full text-center text-xs text-slate-400">
-                      This is a preview-only project — leave a comment or request changes below. Original files are
-                      not released through {BRAND.productName}.
-                    </p>
-                  )}
-                  {hasOpenChangeRequest && (
-                    <p role="status" className="w-full text-center text-xs text-warning">
-                      Change request submitted — waiting on a new revision before you can approve.
-                    </p>
-                  )}
-                  {canRequestChanges && (
-                    <RequestChangesModal
-                      token={token}
-                      reviewerName={reviewerName}
-                      onSubmitted={() => setChangeRequestJustSubmitted(true)}
-                    />
-                  )}
-                  {canApprove && (
-                    <ApproveProjectModal
-                      token={token}
-                      amount={workspace.amount}
-                      deliveryMode={workspace.deliveryMode}
-                      files={files}
-                      reviewerName={reviewerName}
-                      onApproved={() => setApproved(true)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
           </div>
 
-          <aside className="hidden w-[380px] shrink-0 flex-col gap-4 border-l border-white/10 bg-vault-navy-light p-4 lg:flex">
-            <h2 className="text-sm font-bold text-white">Comments</h2>
-            <div className="text-ink">
-              <ReviewCommentsPanel
-                token={token}
-                comments={comments}
-                activeFileId={activeFileId}
-                activeVersionId={activeVersionId}
-                reviewerName={reviewerName}
-                onReviewerNameChange={setReviewerName}
-                readOnly={isReadOnly}
-                pendingPin={pendingPin}
-                onPinCommentSubmitted={() => setPendingPin(null)}
-                highlightedCommentId={highlightedCommentId}
-                onSelectComment={setHighlightedCommentId}
-              />
+          {/* Right Action Panel */}
+          <aside className="hidden w-[380px] shrink-0 flex-col border-l border-[#1F2937] bg-[#111827] lg:flex">
+            <div className="flex border-b border-[#1F2937] bg-[#1F2937]">
+              <button
+                type="button"
+                onClick={() => setActiveTab("overview")}
+                className={`flex-1 py-3 text-xs font-bold ${
+                  activeTab === "overview" ? "border-b-2 border-primary-blue text-white" : "text-[#9CA3AF]"
+                }`}
+              >
+                Action Center
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("comments")}
+                className={`flex-1 py-3 text-xs font-bold ${
+                  activeTab === "comments" ? "border-b-2 border-primary-blue text-white" : "text-[#9CA3AF]"
+                }`}
+              >
+                Comments ({comments.length})
+              </button>
             </div>
+
+            {activeTab === "overview" && (
+              <div className="flex flex-1 flex-col justify-between p-6 gap-6">
+                <div className="flex flex-col gap-4">
+                  <h2 className="text-lg font-bold text-white">Client Review Summary</h2>
+                  <p className="text-xs text-[#9CA3AF] leading-relaxed">
+                    Review deliverables above. Submit comments, request revisions, or approve to unlock clean original files.
+                  </p>
+
+                  <div className="rounded-xl border border-[#374151] bg-[#1F2937] p-5">
+                    <span className="text-xs font-semibold text-[#9CA3AF] uppercase">Required Payment to Unlock</span>
+                    <div className="mt-1 text-3xl font-black text-primary-blue">
+                      {workspace.amount ? `₹${workspace.amount.toLocaleString()}` : "Approval Only"}
+                    </div>
+                    <p className="mt-2 text-[11px] text-[#9CA3AF]">
+                      🔒 Original files unlock automatically upon payment
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {approved || approval ? (
+                    <div className="flex flex-col gap-3">
+                      <p className="text-center text-xs font-bold text-success">
+                        ✓ Approved{approval ? ` by ${approval.reviewerName}` : ""}
+                      </p>
+                      {workspace.deliveryMode === "PAYMENT_REQUIRED" && (
+                        <PaymentPanel
+                          token={token}
+                          amount={workspace.amount ?? 0}
+                          currency={workspace.currency}
+                          workspaceTitle={workspace.title}
+                          creatorName={workspace.creatorName}
+                          clientName={workspace.client.name}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {canApprove && (
+                        <ApproveProjectModal
+                          token={token}
+                          amount={workspace.amount}
+                          deliveryMode={workspace.deliveryMode}
+                          files={files}
+                          reviewerName={reviewerName}
+                          onApproved={() => setApproved(true)}
+                        />
+                      )}
+                      {canRequestChanges && (
+                        <RequestChangesModal
+                          token={token}
+                          reviewerName={reviewerName}
+                          onSubmitted={() => setChangeRequestJustSubmitted(true)}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "comments" && (
+              <div className="flex flex-1 flex-col p-4">
+                <ReviewCommentsPanel
+                  token={token}
+                  comments={comments}
+                  activeFileId={activeFileId}
+                  activeVersionId={activeVersionId}
+                  reviewerName={reviewerName}
+                  onReviewerNameChange={setReviewerName}
+                  readOnly={isReadOnly}
+                  pendingPin={pendingPin}
+                  onPinCommentSubmitted={() => setPendingPin(null)}
+                  highlightedCommentId={highlightedCommentId}
+                  onSelectComment={setHighlightedCommentId}
+                />
+              </div>
+            )}
           </aside>
         </div>
       )}
 
+      {/* Mobile Comments Sheet */}
       {mobileCommentsOpen && (
-        <div className="fixed inset-0 z-20 flex flex-col justify-end lg:hidden" role="dialog" aria-modal="true" aria-label="Comments">
+        <div className="fixed inset-0 z-30 flex flex-col justify-end lg:hidden" role="dialog" aria-modal="true" aria-label="Comments">
           <button
             type="button"
             className="absolute inset-0 bg-black/70"
@@ -400,11 +410,11 @@ export function ReviewPortal({
             onClick={() => setMobileCommentsOpen(false)}
           />
           <div
-            className="relative max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-4 text-ink"
+            className="relative max-h-[80vh] overflow-y-auto rounded-t-2xl bg-[#111827] p-5 text-white"
             style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
           >
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-ink">Comments</h2>
+            <div className="mb-4 flex items-center justify-between border-b border-[#1F2937] pb-3">
+              <h2 className="text-sm font-bold text-white">Client Feedback & Comments</h2>
               <button type="button" onClick={() => setMobileCommentsOpen(false)} aria-label="Close">
                 <X size={18} aria-hidden="true" />
               </button>

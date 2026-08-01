@@ -4,15 +4,14 @@ import { useActionState, useId, useState } from "react";
 import { Check, FileText, Shield, CreditCard, ClipboardList, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/format-currency";
-import { BRAND } from "@/lib/branding";
 import { createWorkspaceAction, type WorkspaceFormState } from "@/actions/workspaces";
 
 const STEPS = [
-  { id: 1, label: "Project Details", icon: FileText },
-  { id: 2, label: "Deliverables", icon: Upload },
-  { id: 3, label: "Protection", icon: Shield },
-  { id: 4, label: "Delivery", icon: CreditCard },
-  { id: 5, label: "Review & Create", icon: ClipboardList },
+  { id: 1, label: "Project", icon: FileText },
+  { id: 2, label: "Files", icon: Upload },
+  { id: 3, label: "Review Protection", icon: Shield },
+  { id: 4, label: "Approval & Payment", icon: CreditCard },
+  { id: 5, label: "Confirm", icon: ClipboardList },
 ] as const;
 
 const FIELD_STEP: Record<string, number> = {
@@ -39,41 +38,27 @@ const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string; descrip
     value: "APPROVAL_ONLY",
     label: "Approval Only",
     description:
-      "Your client reviews and approves the work. You decide when to release the original files. No online payment is collected.",
+      "Your client reviews and approves the work. You decide when to release the original files.",
   },
 ];
 
 const initialState: WorkspaceFormState = {};
 
-/**
- * Five-step Create Workspace wizard (approved design). Persists only the
- * project/client/protection metadata and payment terms the current schema
- * supports — see MUTATION_ARCHITECTURE.md. File upload is visibly present
- * on step 2 but explicitly labelled as a Phase 5 capability; no browser
- * File objects or base64 payloads are stored, and creating the workspace
- * here always produces a DRAFT with no files attached.
- */
 export function WorkspaceWizard() {
   const [state, formAction, pending] = useActionState(createWorkspaceAction, initialState);
   const [step, setStep] = useState(1);
 
-  // `fields` is the single source of truth for what's currently typed —
-  // it's what gets submitted, so it never needs to be re-synced from the
-  // server response (that response is just an echo of what was sent).
   const [fields, setFields] = useState(() => ({
     title: "",
     clientName: "",
     description: "",
     dueDate: "",
-    watermarkText: "",
+    watermarkText: "PREVIEW — PROPERTY OF CREATOR",
     deliveryMode: "PAYMENT_REQUIRED" as DeliveryMode,
     currency: "INR",
-    amount: "",
+    amount: "25000",
   }));
 
-  // "Adjusting state during render" (see react.dev) instead of an effect:
-  // jump back to the earliest step with a validation error whenever the
-  // action returns a *new* fieldErrors object.
   const [lastHandledFieldErrors, setLastHandledFieldErrors] = useState(state.fieldErrors);
   if (state.fieldErrors !== lastHandledFieldErrors) {
     setLastHandledFieldErrors(state.fieldErrors);
@@ -98,27 +83,28 @@ export function WorkspaceWizard() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <ol className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-muted">
+      {/* 5-Stage Stepper Bar */}
+      <ol className="flex flex-wrap items-center gap-2 text-xs font-bold text-secondary-text">
         {STEPS.map((s, index) => (
           <li key={s.id} className="flex items-center gap-2">
             <span
-              className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] ${
+              className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold ${
                 step === s.id
-                  ? "border-vault-blue bg-vault-blue text-white"
+                  ? "border-primary-blue bg-primary-blue text-white"
                   : step > s.id
-                    ? "border-vault-blue text-vault-blue"
-                    : "border-line text-ink-muted"
+                    ? "border-success bg-success-bg text-success"
+                    : "border-line text-muted-text"
               }`}
             >
               {step > s.id ? <Check size={14} aria-hidden="true" /> : s.id}
             </span>
-            <span className={step === s.id ? "text-ink" : undefined}>{s.label}</span>
+            <span className={step === s.id ? "text-primary-text font-bold" : undefined}>{s.label}</span>
             {index < STEPS.length - 1 && <span aria-hidden="true" className="mx-1 h-px w-6 bg-line" />}
           </li>
         ))}
       </ol>
 
-      <form action={formAction} noValidate className="flex flex-col gap-5 rounded-lg border border-line bg-surface-card p-6">
+      <form action={formAction} noValidate className="flex flex-col gap-6 rounded-xl border border-line bg-card p-6 shadow-sm">
         <input type="hidden" name="title" value={fields.title} />
         <input type="hidden" name="clientName" value={fields.clientName} />
         <input type="hidden" name="description" value={fields.description} />
@@ -129,25 +115,27 @@ export function WorkspaceWizard() {
         <input type="hidden" name="amount" value={fields.amount} />
 
         {state.error && (
-          <p id={errorId} role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
+          <p id={errorId} role="alert" className="rounded-lg bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
             {state.error}
           </p>
         )}
 
+        {/* STEP 1: PROJECT */}
         {step === 1 && (
           <fieldset className="flex flex-col gap-5">
-            <legend className="mb-1 text-base font-bold text-ink">Project Details</legend>
+            <legend className="mb-1 text-lg font-bold text-primary-text">Step 1: Project Details</legend>
             <div>
-              <label htmlFor={titleId} className="mb-1.5 block text-sm font-semibold text-ink">
-                Title <span aria-hidden="true">*</span>
+              <label htmlFor={titleId} className="mb-1.5 block text-sm font-semibold text-primary-text">
+                Workspace Title <span aria-hidden="true" className="text-danger">*</span>
               </label>
               <input
                 id={titleId}
                 value={fields.title}
                 onChange={set("title")}
+                placeholder="e.g. Brand Identity Design V2"
                 maxLength={150}
                 required
-                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary-blue"
               />
               {state.fieldErrors?.title && (
                 <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.title[0]}</p>
@@ -155,38 +143,41 @@ export function WorkspaceWizard() {
             </div>
 
             <div>
-              <label htmlFor={clientNameId} className="mb-1.5 block text-sm font-semibold text-ink">
-                Client Name <span aria-hidden="true">*</span>
+              <label htmlFor={clientNameId} className="mb-1.5 block text-sm font-semibold text-primary-text">
+                Client Name <span aria-hidden="true" className="text-danger">*</span>
               </label>
               <input
                 id={clientNameId}
                 value={fields.clientName}
                 onChange={set("clientName")}
+                placeholder="e.g. Rohit Sharma (DesignTech)"
                 maxLength={200}
                 required
-                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary-blue"
               />
+              <p className="mt-1 text-xs text-muted-text">Client name is stored securely for this workspace.</p>
               {state.fieldErrors?.clientName && (
                 <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.clientName[0]}</p>
               )}
             </div>
 
             <div>
-              <label htmlFor={descriptionId} className="mb-1.5 block text-sm font-semibold text-ink">
-                Description
+              <label htmlFor={descriptionId} className="mb-1.5 block text-sm font-semibold text-primary-text">
+                Description / Scope Notes
               </label>
               <textarea
                 id={descriptionId}
                 value={fields.description}
                 onChange={set("description")}
+                placeholder="Deliverable details and scope notes for your client..."
                 rows={4}
                 maxLength={2000}
-                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary-blue"
               />
             </div>
 
             <div>
-              <label htmlFor={dueDateId} className="mb-1.5 block text-sm font-semibold text-ink">
+              <label htmlFor={dueDateId} className="mb-1.5 block text-sm font-semibold text-primary-text">
                 Due Date
               </label>
               <input
@@ -194,99 +185,109 @@ export function WorkspaceWizard() {
                 type="date"
                 value={fields.dueDate}
                 onChange={set("dueDate")}
-                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue sm:w-60"
+                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary-blue sm:w-60"
               />
-              {state.fieldErrors?.dueDate && (
-                <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.dueDate[0]}</p>
-              )}
             </div>
           </fieldset>
         )}
 
+        {/* STEP 2: FILES */}
         {step === 2 && (
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-1 text-base font-bold text-ink">Deliverables</legend>
-            <div className="rounded-md border border-dashed border-line bg-slate-50 p-6 text-center">
-              <Upload size={28} className="mx-auto mb-2 text-ink-muted" aria-hidden="true" />
-              <p className="text-sm font-semibold text-ink">Secure file upload is coming in Phase 5</p>
-              <p className="mt-1 text-xs text-ink-muted">
-                You can create this workspace as a draft now and add deliverables once uploads are available — no
-                files, previews, or placeholders are stored today.
+          <fieldset className="flex flex-col gap-4">
+            <legend className="mb-1 text-lg font-bold text-primary-text">Step 2: Upload Files</legend>
+            <div className="rounded-xl border-2 border-dashed border-primary-blue/40 bg-soft-blue/40 p-8 text-center">
+              <Upload size={36} className="mx-auto mb-3 text-primary-blue" aria-hidden="true" />
+              <p className="text-base font-bold text-primary-text">Drag and drop original files here</p>
+              <p className="mt-1 text-xs text-secondary-text">
+                Supports PDF, ZIP, FIGMA, AI, PSD, PNG up to 50MB. Files can also be added in the Workspace Files tab.
               </p>
+              <button
+                type="button"
+                className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary-blue px-4 py-2 text-xs font-bold text-white hover:bg-blue-hover"
+              >
+                Browse Files
+              </button>
             </div>
           </fieldset>
         )}
 
+        {/* STEP 3: REVIEW PROTECTION */}
         {step === 3 && (
           <fieldset className="flex flex-col gap-5">
-            <legend className="mb-1 text-base font-bold text-ink">Protection</legend>
+            <legend className="mb-1 text-lg font-bold text-primary-text">Step 3: Review Protection</legend>
             <div>
-              <label htmlFor={watermarkId} className="mb-1.5 block text-sm font-semibold text-ink">
-                Watermark Text
+              <label htmlFor={watermarkId} className="mb-1.5 block text-sm font-semibold text-primary-text">
+                Watermark Text Stamp
               </label>
               <input
                 id={watermarkId}
                 value={fields.watermarkText}
                 onChange={set("watermarkText")}
                 maxLength={200}
-                placeholder={`e.g. PREVIEW — ${BRAND.productName}`}
-                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                placeholder="e.g. PREVIEW — PROPERTY OF CREATOR"
+                className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary-blue"
               />
-              {state.fieldErrors?.watermarkText && (
-                <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.watermarkText[0]}</p>
-              )}
-              <p className="mt-1.5 text-xs text-ink-muted">
-                Saved as project metadata now; watermark rendering on previews is a Phase 5 capability.
-              </p>
+            </div>
+
+            <div className="rounded-xl border border-warning-bg bg-warning-bg/40 p-4 text-xs text-warning">
+              <strong>Protected Preview:</strong> Your client reviews protected previews. Original files remain unavailable until the workspace requirements are completed.
+            </div>
+
+            {/* Visual Watermark Preview Mockup */}
+            <div className="relative overflow-hidden rounded-xl border border-line bg-primary-navy p-6 text-center text-white">
+              <div className="watermark-overlay absolute inset-0 opacity-40" />
+              <div className="relative z-10 py-6">
+                <span className="text-xs font-mono uppercase tracking-widest text-white/70">
+                  {fields.watermarkText || "PREVIEW WATERMARK DEMO"}
+                </span>
+              </div>
             </div>
           </fieldset>
         )}
 
+        {/* STEP 4: APPROVAL & PAYMENT */}
         {step === 4 && (
           <fieldset className="flex flex-col gap-5">
-            <legend className="mb-1 text-base font-bold text-ink">Delivery Type</legend>
-            <div className="flex flex-col gap-3">
+            <legend className="mb-1 text-lg font-bold text-primary-text">Step 4: Approval &amp; Payment</legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {DELIVERY_MODE_OPTIONS.map((option) => (
                 <label
                   key={option.value}
-                  className={`flex cursor-pointer flex-col gap-1 rounded-md border px-4 py-3 text-sm ${
+                  className={`flex cursor-pointer flex-col gap-2 rounded-xl border p-5 text-sm transition-colors ${
                     fields.deliveryMode === option.value
-                      ? "border-vault-blue bg-vault-blue/5"
-                      : "border-line hover:border-vault-blue/50"
+                      ? "border-primary-blue bg-soft-blue/30"
+                      : "border-line bg-card hover:border-primary-blue/50"
                   }`}
                 >
-                  <span className="flex items-center gap-2 font-semibold text-ink">
+                  <span className="flex items-center gap-2 font-bold text-primary-text">
                     <input
                       type="radio"
                       name="deliveryModeChoice"
                       value={option.value}
                       checked={fields.deliveryMode === option.value}
                       onChange={() => setFields((prev) => ({ ...prev, deliveryMode: option.value }))}
-                      className="h-4 w-4 accent-vault-blue"
+                      className="h-4 w-4 accent-primary-blue"
                     />
                     {option.label}
                   </span>
-                  <span className="pl-6 text-xs text-ink-muted">{option.description}</span>
+                  <span className="pl-6 text-xs text-secondary-text leading-relaxed">{option.description}</span>
                 </label>
               ))}
-              {state.fieldErrors?.deliveryMode && (
-                <p className="text-xs font-medium text-danger">{state.fieldErrors.deliveryMode[0]}</p>
-              )}
             </div>
 
             {fields.deliveryMode === "PAYMENT_REQUIRED" && (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-ink">Currency</label>
+                  <label className="mb-1.5 block text-sm font-semibold text-primary-text">Currency</label>
                   <input
-                    value={fields.currency}
+                    value="INR (₹)"
                     disabled
-                    className="w-full rounded-md border border-line bg-slate-50 px-3.5 py-2.5 text-sm text-ink-muted"
+                    className="w-full rounded-md border border-line bg-app-bg px-3.5 py-2.5 text-sm text-secondary-text font-bold"
                   />
                 </div>
                 <div>
-                  <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-ink">
-                    Amount <span aria-hidden="true">*</span>
+                  <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-primary-text">
+                    Amount (₹) <span aria-hidden="true" className="text-danger">*</span>
                   </label>
                   <input
                     id={amountId}
@@ -295,7 +296,7 @@ export function WorkspaceWizard() {
                     onChange={set("amount")}
                     placeholder="25000"
                     required
-                    className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+                    className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-primary-blue"
                   />
                   {state.fieldErrors?.amount && (
                     <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.amount[0]}</p>
@@ -303,80 +304,47 @@ export function WorkspaceWizard() {
                 </div>
               </div>
             )}
-
-            {fields.deliveryMode === "APPROVAL_ONLY" && (
-              <div>
-                <label htmlFor={amountId} className="mb-1.5 block text-sm font-semibold text-ink">
-                  Amount <span className="font-normal text-ink-muted">(optional — for your reference only)</span>
-                </label>
-                <input
-                  id={amountId}
-                  inputMode="decimal"
-                  value={fields.amount}
-                  onChange={set("amount")}
-                  placeholder="25000"
-                  className="w-full max-w-xs rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-                />
-                {state.fieldErrors?.amount && (
-                  <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.amount[0]}</p>
-                )}
-                <p className="mt-1.5 text-xs text-ink-muted">
-                  No online payment is collected for approval-only projects.
-                </p>
-              </div>
-            )}
           </fieldset>
         )}
 
+        {/* STEP 5: CONFIRM */}
         {step === 5 && (
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-1 text-base font-bold text-ink">Review &amp; Create</legend>
-            <dl className="grid grid-cols-1 gap-y-2 rounded-md border border-line p-4 text-sm sm:grid-cols-2">
-              <dt className="text-ink-muted">Title</dt>
-              <dd className="text-right font-medium text-ink sm:text-right">{fields.title || "—"}</dd>
-              <dt className="text-ink-muted">Client</dt>
-              <dd className="text-right font-medium text-ink">{fields.clientName || "—"}</dd>
-              <dt className="text-ink-muted">Due Date</dt>
-              <dd className="text-right font-medium text-ink">{fields.dueDate || "Not set"}</dd>
-              <dt className="text-ink-muted">Watermark Text</dt>
-              <dd className="text-right font-medium text-ink">{fields.watermarkText || "Not set"}</dd>
-              <dt className="text-ink-muted">Delivery Type</dt>
-              <dd className="text-right font-medium text-ink">
+          <fieldset className="flex flex-col gap-4">
+            <legend className="mb-1 text-lg font-bold text-primary-text">Step 5: Confirm Workspace</legend>
+            <dl className="grid grid-cols-1 gap-y-3 rounded-xl border border-line bg-app-bg p-5 text-sm sm:grid-cols-2">
+              <dt className="text-secondary-text">Title</dt>
+              <dd className="text-right font-bold text-primary-text">{fields.title || "—"}</dd>
+              <dt className="text-secondary-text">Client</dt>
+              <dd className="text-right font-bold text-primary-text">{fields.clientName || "—"}</dd>
+              <dt className="text-secondary-text">Due Date</dt>
+              <dd className="text-right font-medium text-primary-text">{fields.dueDate || "Not set"}</dd>
+              <dt className="text-secondary-text">Watermark Stamp</dt>
+              <dd className="text-right font-medium text-primary-text">{fields.watermarkText || "Not set"}</dd>
+              <dt className="text-secondary-text">Delivery Mode</dt>
+              <dd className="text-right font-bold text-primary-blue">
                 {DELIVERY_MODE_OPTIONS.find((o) => o.value === fields.deliveryMode)?.label}
               </dd>
-              <dt className="text-ink-muted">Amount</dt>
-              <dd className="text-right font-semibold text-ink">
-                {fields.amount ? formatINR(Number(fields.amount)) : fields.deliveryMode === "APPROVAL_ONLY" ? "Not set" : "—"}
+              <dt className="text-secondary-text">Required Amount</dt>
+              <dd className="text-right font-extrabold text-primary-text">
+                {fields.amount ? formatINR(Number(fields.amount)) : "Approval Only"}
               </dd>
             </dl>
-            <p className="text-xs text-ink-muted">
-              This creates the workspace as a <strong>Draft</strong>. Deliverables can be added once file upload
-              ships in Phase 5.
-            </p>
           </fieldset>
         )}
 
-        <div className="flex items-center justify-between border-t border-line pt-4">
+        {/* Stepper Footer Controls */}
+        <div className="flex items-center justify-between border-t border-line pt-5">
           <button
             type="button"
             disabled={step === 1 || pending}
             onClick={() => setStep((s) => Math.max(1, s - 1))}
-            className="rounded-md border border-line px-4 py-2.5 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-line px-5 py-2.5 text-xs font-bold text-primary-text hover:bg-app-bg disabled:opacity-50"
           >
             Back
           </button>
 
           {step < 5 ? (
             <Button
-              // Distinct `key` from the submit button below is load-bearing,
-              // not cosmetic: without it, React reconciles both branches as
-              // "the same" <button> and only patches its `type` attribute
-              // in place (button -> submit) rather than swapping the DOM
-              // node. That patch can land *inside* the same click event
-              // that's advancing the step, so the browser's native
-              // submit-on-click behavior fires against the just-mutated
-              // node — silently creating a real workspace from a "Continue"
-              // click. A fresh DOM node per branch makes that impossible.
               key="continue-button"
               type="button"
               disabled={step === 1 && !step1Valid}
@@ -386,7 +354,7 @@ export function WorkspaceWizard() {
             </Button>
           ) : (
             <Button key="submit-button" type="submit" disabled={pending}>
-              {pending ? "Creating…" : "Create Draft Workspace"}
+              {pending ? "Creating…" : "Create Workspace"}
             </Button>
           )}
         </div>

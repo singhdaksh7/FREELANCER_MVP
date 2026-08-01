@@ -1,8 +1,6 @@
 /**
- * Single source of truth for status → color mapping across the app.
- * Ported 1:1 from the original Vite StatusBadge switch statement
- * (src/components/common/UIComponents.jsx) so every screen that renders
- * a workspace/client/payment status resolves to the same colors.
+ * Single source of truth for status → color mapping across INLAY (Stitch UI V1.0).
+ * Every badge and indicator resolves colors from this map.
  */
 
 export interface StatusStyle {
@@ -11,40 +9,55 @@ export interface StatusStyle {
 }
 
 const DEFAULT_STATUS_STYLE: StatusStyle = {
-  background: "var(--color-surface)",
-  color: "var(--color-ink-muted)",
+  background: "var(--color-app-bg)",
+  color: "var(--color-secondary-text)",
 };
 
 const STATUS_STYLES = {
+  // Workspace & File statuses
   Draft: { background: "#F1F5F9", color: "#475569" },
-  "Preview Processing": { background: "#FEF3C7", color: "#D97706" },
-  "In Review": { background: "#DBEAFE", color: "#2563EB" },
-  "Changes Requested": { background: "#FEE2E2", color: "#DC2626" },
+  Uploading: { background: "#FEF3C7", color: "#D97706" },
+  Processing: { background: "#FFF8E7", color: "#E8A020" },
+  "Files Processing": { background: "#FFF8E7", color: "#E8A020" },
+  Ready: { background: "#EAFBF3", color: "#12A66A" },
+  "Ready for Review": { background: "#EEF4FF", color: "#356DF3" },
+  "In Review": { background: "#EEF4FF", color: "#356DF3" },
+  "Awaiting Client": { background: "#EEF4FF", color: "#356DF3" },
+  "Changes Requested": { background: "#FFF1F2", color: "#E5484D" },
+  "New Version Pending": { background: "#FFF1F2", color: "#E5484D" },
   Approved: { background: "#E0E7FF", color: "#4F46E5" },
-  "Payment Pending": { background: "#FEF3C7", color: "#B45309" },
-  Paid: { background: "#D1FAE5", color: "#059669" },
-  "Files Unlocked": { background: "#D1FAE5", color: "#059669" },
-  Delivered: { background: "#D1FAE5", color: "#059669" },
-  Completed: { background: "#D1FAE5", color: "#059669" },
-  Active: { background: "#D1FAE5", color: "#059669" },
-  // Added in Phase 3 for the database-backed WorkspaceStatus/PaymentStatus
-  // enums, which cover a couple of states the Phase 1/2 mock data never
-  // needed. Colors follow the same semantic families as the entries above
-  // (green = settled/positive, amber = pending, red = negative/attention).
-  Cancelled: { background: "#FEE2E2", color: "#DC2626" },
-  Pending: { background: "#FEF3C7", color: "#B45309" },
+  "Payment Pending": { background: "#FFF8E7", color: "#E8A020" },
+  Paid: { background: "#EAFBF3", color: "#12A66A" },
+  "Ready to Deliver": { background: "#EAFBF3", color: "#12A66A" },
+  "Files Unlocked": { background: "#EAFBF3", color: "#12A66A" },
+  Delivered: { background: "#EAFBF3", color: "#12A66A" },
+  Completed: { background: "#EAFBF3", color: "#12A66A" },
+  Active: { background: "#EAFBF3", color: "#12A66A" },
+  Cancelled: { background: "#FFF1F2", color: "#E5484D" },
+  Failed: { background: "#FFF1F2", color: "#E5484D" },
+  
+  // Payment statuses
+  Pending: { background: "#FFF8E7", color: "#E8A020" },
   Created: { background: "#F1F5F9", color: "#475569" },
-  Failed: { background: "#FEF2F2", color: "#EF4444" },
+  "Not Required": { background: "#F1F5F9", color: "#475569" },
+  "Waiting for Approval": { background: "#EEF4FF", color: "#356DF3" },
   Refunded: { background: "#F5F3FF", color: "#8B5CF6" },
-  // Phase 7.5 — APPROVAL_ONLY/PREVIEW_ONLY terminal/waiting states.
-  "Awaiting Release": { background: "#FEF3C7", color: "#B45309" },
+
+  // Delivery & Review Link statuses
+  Locked: { background: "#FFF8E7", color: "#E8A020" },
+  Preparing: { background: "#FFF8E7", color: "#E8A020" },
+  "Not Created": { background: "#F1F5F9", color: "#475569" },
+  Revoked: { background: "#FFF1F2", color: "#E5484D" },
+  Expired: { background: "#F1F5F9", color: "#475569" },
+
+  // Support & misc
+  "Awaiting Release": { background: "#FFF8E7", color: "#E8A020" },
   Closed: { background: "#F1F5F9", color: "#475569" },
-  // Phase 7.5 — support tickets.
-  Open: { background: "#DBEAFE", color: "#2563EB" },
-  "Under Review": { background: "#FEF3C7", color: "#D97706" },
-  "Waiting on Creator": { background: "#FEE2E2", color: "#DC2626" },
-  "Waiting on Client": { background: "#FEF3C7", color: "#B45309" },
-  Resolved: { background: "#D1FAE5", color: "#059669" },
+  Open: { background: "#EEF4FF", color: "#356DF3" },
+  "Under Review": { background: "#FFF8E7", color: "#E8A020" },
+  "Waiting on Creator": { background: "#FFF1F2", color: "#E5484D" },
+  "Waiting on Client": { background: "#FFF8E7", color: "#E8A020" },
+  Resolved: { background: "#EAFBF3", color: "#12A66A" },
 } as const satisfies Record<string, StatusStyle>;
 
 export type KnownStatus = keyof typeof STATUS_STYLES;

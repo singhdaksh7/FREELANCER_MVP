@@ -13,25 +13,23 @@ export interface CreatorSidebarProps {
 }
 
 /**
- * Fixed 240px desktop sidebar. Hidden below the md breakpoint (768px) in
- * favor of the mobile header + bottom nav, matching the original
- * CreatorLayout.jsx `.desktop-sidebar { display: none }` media rule.
+ * Fixed 248px desktop sidebar per Stitch UI specifications (#10182F background).
  */
 export function CreatorSidebar({ creator, unreadNotificationCount }: CreatorSidebarProps) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-sidebar flex-col border-r border-vault-navy-light bg-vault-navy text-white md:flex">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-[#16203D] bg-primary-navy text-white md:flex">
       <Link
         href="/dashboard"
-        className="flex items-center gap-2.5 border-b border-vault-navy-light px-6 py-5"
+        className="flex items-center gap-3 border-b border-[#16203D] px-6 py-5"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-vault-blue">
+        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-blue">
           <Image src="/branding/icon-mark.png" alt="" width={18} height={18} aria-hidden="true" />
         </span>
         <span>
           <span className="block text-base font-bold tracking-tight text-white">
             {BRAND.productName}
           </span>
-          <span className="block text-[10px] uppercase tracking-wide text-slate-400">
+          <span className="block text-[10px] uppercase tracking-wide text-secondary-text">
             Payment-Gated Delivery
           </span>
         </span>

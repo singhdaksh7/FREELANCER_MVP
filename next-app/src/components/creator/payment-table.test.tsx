@@ -32,7 +32,14 @@ const PAYMENTS: PaymentListItem[] = [
 
 describe("PaymentTable", () => {
   it("renders payment status using the centralized status configuration", () => {
-    render(<PaymentTable payments={PAYMENTS} caption="Payments" onDeferredAction={vi.fn()} />);
+    render(
+      <PaymentTable
+        payments={PAYMENTS}
+        caption="Payments"
+        onSelectPayment={vi.fn()}
+        onDeferredAction={vi.fn()}
+      />
+    );
 
     const paidPayment = PAYMENTS.find((p) => p.status === "PAID")!;
     const badge = screen.getByText(paymentStatusLabel(paidPayment.status));
@@ -41,20 +48,19 @@ describe("PaymentTable", () => {
     expect(badge).toHaveStyle({ backgroundColor: expected.background, color: expected.color });
   });
 
-  it("disables the receipt action for payments that have not settled", () => {
-    render(<PaymentTable payments={PAYMENTS} caption="Payments" onDeferredAction={vi.fn()} />);
+  it("renders details button for all payments", () => {
+    render(
+      <PaymentTable
+        payments={PAYMENTS}
+        caption="Payments"
+        onSelectPayment={vi.fn()}
+        onDeferredAction={vi.fn()}
+      />
+    );
 
     const pendingPayment = PAYMENTS.find((p) => p.status !== "PAID")!;
     const row = screen.getByText(pendingPayment.workspaceTitle).closest("tr");
     expect(row).not.toBeNull();
-    expect(row!.querySelector("button")).toBeDisabled();
-  });
-
-  it("enables the receipt action for settled payments", () => {
-    render(<PaymentTable payments={PAYMENTS} caption="Payments" onDeferredAction={vi.fn()} />);
-
-    const paidPayment = PAYMENTS.find((p) => p.status === "PAID")!;
-    const row = screen.getByText(paidPayment.workspaceTitle).closest("tr");
     expect(row!.querySelector("button")).toBeEnabled();
   });
 });

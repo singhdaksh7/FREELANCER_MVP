@@ -1,33 +1,44 @@
 @import "tailwindcss";
 
 /*
- * INLAY design tokens.
- * Values are ported 1:1 from the original Vite app's src/index.css.
- * This is the single source of truth for color, radius, shadow and
- * layout-dimension tokens across the Next.js app.
+ * INLAY Stitch UI V1.0 design tokens.
+ * Single source of truth for color, radius, shadow and layout dimensions.
  */
 @theme {
-  --color-vault-navy: #111a3a;
-  --color-vault-navy-light: #1a2652;
-  --color-vault-navy-dark: #0a1026;
-  --color-vault-blue: #2563eb;
-  --color-vault-blue-hover: #1d4ed8;
-  --color-vault-blue-light: #eff6ff;
+  --color-primary-navy: #10182f;
+  --color-deep-navy: #0b1224;
+  --color-vault-navy: #10182f;
+  --color-vault-navy-light: #16203d;
+  --color-vault-navy-dark: #0b1224;
 
-  --color-surface: #f8fafc;
+  --color-primary-blue: #356df3;
+  --color-blue-hover: #2859d9;
+  --color-soft-blue: #eef4ff;
+  --color-vault-blue: #356df3;
+  --color-vault-blue-hover: #2859d9;
+  --color-vault-blue-light: #eef4ff;
+
+  --color-app-bg: #f5f7fa;
+  --color-surface: #f5f7fa;
+  --color-card: #ffffff;
   --color-surface-card: #ffffff;
-  --color-line: #e2e8f0;
 
-  --color-ink: #0f172a;
-  --color-ink-muted: #64748b;
+  --color-primary-text: #111827;
+  --color-secondary-text: #667085;
+  --color-muted-text: #98a2b3;
+  --color-ink: #111827;
+  --color-ink-muted: #667085;
   --color-ink-inverse: #ffffff;
 
-  --color-success: #10b981;
-  --color-success-bg: #ecfdf5;
-  --color-warning: #f59e0b;
-  --color-warning-bg: #fffbeb;
-  --color-danger: #ef4444;
-  --color-danger-bg: #fef2f2;
+  --color-border-color: #e5eaf0;
+  --color-line: #e5eaf0;
+
+  --color-success: #12a66a;
+  --color-success-bg: #eafbf3;
+  --color-warning: #e8a020;
+  --color-warning-bg: #fff8e7;
+  --color-danger: #e5484d;
+  --color-danger-bg: #fff1f2;
   --color-purple: #8b5cf6;
   --color-purple-bg: #f5f3ff;
 
@@ -39,27 +50,18 @@
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md:
-    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
+    0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -1px rgb(0 0 0 / 0.04);
   --shadow-lg:
-    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05);
+    0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -2px rgb(0 0 0 / 0.03);
 
-  /* Layout dimensions carried over for future (not-yet-migrated) creator
-     screens, so the tokens exist centrally before those screens land. */
-  --spacing-sidebar: 240px;
+  --spacing-sidebar: 248px;
   --spacing-header: 64px;
-  --spacing-mobile-nav: 60px;
+  --spacing-mobile-nav: 64px;
 
   --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI",
     Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 
   --breakpoint-sm: 640px;
-  /*
-   * 769px, not Tailwind's default 768px: the original CreatorLayout.jsx
-   * switches to the desktop sidebar/header at `min-width: 769px` and to
-   * the mobile bottom nav at `max-width: 768px`. Using Tailwind's stock
-   * 768px `md:` breakpoint would flip the layout one pixel earlier than
-   * the approved design at exactly 768px (e.g. a 768px tablet).
-   */
   --breakpoint-md: 769px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
@@ -70,19 +72,19 @@
 }
 
 body {
-  background-color: var(--color-surface);
-  color: var(--color-ink);
+  background-color: var(--color-app-bg);
+  color: var(--color-primary-text);
   font-family: var(--font-sans);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Watermark stripe pattern, ported verbatim for future preview screens. */
+/* Watermark stripe pattern */
 .watermark-overlay {
   background-image: repeating-linear-gradient(
     -45deg,
-    rgb(37 99 235 / 0.12),
-    rgb(37 99 235 / 0.12) 150px,
+    rgb(53 109 243 / 0.12),
+    rgb(53 109 243 / 0.12) 150px,
     transparent 150px,
     transparent 300px
   );

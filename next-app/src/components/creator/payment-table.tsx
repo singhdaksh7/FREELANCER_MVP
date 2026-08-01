@@ -1,4 +1,4 @@
-import { Receipt } from "lucide-react";
+import { Receipt, Eye } from "lucide-react";
 import type { PaymentListItem } from "@/data-access/payments";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatINR } from "@/lib/format-currency";
@@ -8,54 +8,54 @@ import { paymentStatusLabel } from "@/lib/status-labels";
 export interface PaymentTableProps {
   payments: PaymentListItem[];
   caption: string;
+  onSelectPayment: (payment: PaymentListItem) => void;
   onDeferredAction: (message: string) => void;
 }
 
-/** Desktop payments ledger. Status colors come from the shared StatusBadge/status-config, not a page-local map. */
-export function PaymentTable({ payments, caption, onDeferredAction }: PaymentTableProps) {
+export function PaymentTable({ payments, caption, onSelectPayment, onDeferredAction }: PaymentTableProps) {
   return (
-    <div className="hidden overflow-x-auto rounded-lg border border-line bg-surface-card md:block">
+    <div className="hidden overflow-x-auto rounded-xl border border-line bg-card md:block shadow-sm">
       <table className="w-full border-collapse text-left text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr className="border-b border-line bg-slate-50 text-[12px] uppercase text-ink-muted">
-            <th scope="col" className="px-6 py-3 font-medium">Transaction</th>
-            <th scope="col" className="px-6 py-3 font-medium">Workspace</th>
-            <th scope="col" className="px-6 py-3 font-medium">Client</th>
-            <th scope="col" className="px-6 py-3 font-medium">Amount</th>
-            <th scope="col" className="px-6 py-3 font-medium">Date</th>
-            <th scope="col" className="px-6 py-3 font-medium">Status</th>
-            <th scope="col" className="px-6 py-3 text-right font-medium">Receipt</th>
+          <tr className="border-b border-line bg-app-bg text-[12px] font-bold uppercase tracking-wider text-secondary-text">
+            <th scope="col" className="px-6 py-3.5">Workspace</th>
+            <th scope="col" className="px-6 py-3.5">Client</th>
+            <th scope="col" className="px-6 py-3.5">Amount</th>
+            <th scope="col" className="px-6 py-3.5">Status</th>
+            <th scope="col" className="px-6 py-3.5">Payment Date</th>
+            <th scope="col" className="px-6 py-3.5">Delivery</th>
+            <th scope="col" className="px-6 py-3.5 text-right">Action</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-line">
           {payments.map((payment) => {
             const isPaid = payment.status === "PAID";
             return (
-              <tr key={payment.id} className="border-b border-line last:border-b-0">
-                <td className="px-6 py-4 font-medium text-ink-muted">{payment.id}</td>
-                <td className="px-6 py-4 font-semibold text-ink">{payment.workspaceTitle}</td>
-                <td className="px-6 py-4 text-ink">{payment.clientName}</td>
-                <td className="px-6 py-4 font-semibold text-ink">{formatINR(payment.amount)}</td>
-                <td className="px-6 py-4 text-xs text-ink-muted">{formatPaymentDate(payment.paidAt)}</td>
+              <tr
+                key={payment.id}
+                onClick={() => onSelectPayment(payment)}
+                className="cursor-pointer transition-colors hover:bg-soft-blue/30"
+              >
+                <td className="px-6 py-4 font-bold text-primary-text">{payment.workspaceTitle}</td>
+                <td className="px-6 py-4 text-primary-text">{payment.clientName}</td>
+                <td className="px-6 py-4 font-extrabold text-primary-text">{formatINR(payment.amount)}</td>
                 <td className="px-6 py-4">
                   <StatusBadge status={paymentStatusLabel(payment.status)} />
                 </td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-xs text-secondary-text">{formatPaymentDate(payment.paidAt)}</td>
+                <td className="px-6 py-4">
+                  <span className={`text-xs font-semibold ${isPaid ? "text-success" : "text-warning"}`}>
+                    {isPaid ? "Unlocked" : "Locked"}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
-                    disabled={!isPaid}
-                    onClick={() =>
-                      onDeferredAction(`Receipts for ${payment.workspaceTitle} are available in a later phase.`)
-                    }
-                    title={
-                      isPaid
-                        ? "Receipts are available in a later phase"
-                        : "Receipts are only available for completed payments"
-                    }
-                    className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => onSelectPayment(payment)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-primary-text hover:bg-app-bg"
                   >
-                    <Receipt size={13} aria-hidden="true" /> Receipt
+                    <Eye size={13} aria-hidden="true" /> Details
                   </button>
                 </td>
               </tr>
