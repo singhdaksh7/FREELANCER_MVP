@@ -384,6 +384,11 @@ export function ReviewPortal({
               )}
               {preview.url && (
                 <div className="relative inline-block max-h-[70vh] w-full max-w-3xl rounded-xl overflow-hidden shadow-2xl">
+                  {activeFile?.fileKind === "PDF" && (
+                    <span className="absolute left-2 top-2 z-10 rounded bg-black/70 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                      PDF Preview — Page 1
+                    </span>
+                  )}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={preview.url}

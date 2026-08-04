@@ -4,6 +4,15 @@
 // Client Components alike.
 import { FileKind } from "@/generated/prisma/enums";
 
+// HEIC/HEIF (the default photo format on iPhones) is deliberately NOT in
+// this set: this deployment's prebuilt Sharp/libvips binary bundles a
+// HEIF decoder that is AVIF-only (`sharp.format.heif.input.fileSuffix`
+// is `[".avif"]`, verified against the exact shipped binary) — prebuilt
+// Sharp binaries never include an HEVC decoder due to patent licensing,
+// so a real-world HEIC photo would be accepted here only to fail with an
+// opaque error at watermark-generation time. Re-check
+// `sharp.format.heif` against the deployed binary before ever adding
+// "image/heic"/"image/heif" here.
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PDF_MIME_TYPES = new Set(["application/pdf"]);
 const ARCHIVE_MIME_TYPES = new Set(["application/zip", "application/x-zip-compressed"]);
@@ -40,9 +49,24 @@ export function mimeTypeToFileKind(mimeType: string): FileKind {
   return FileKind.OTHER;
 }
 
-/** Only IMAGE files get a generated visual preview in this phase — PDF/ZIP are "locked deliverables," see the Files-tab UI. */
+/**
+ * Whether this file kind is *capable* of having a generated protected
+ * preview at all — this is what routes the worker's processJob() between
+ * the Sharp image pipeline (IMAGE), the pdf.js page-1 rasterization
+ * pipeline (PDF, see pdf-preview.ts/image-preview.ts's
+ * generatePdfWatermarkedPreview), and markNonPreviewableReady (ARCHIVE/
+ * OTHER, which never gets a generated preview — a ZIP has no meaningful
+ * single-frame visual representation).
+ *
+ * This alone does NOT mean a preview currently exists for a given file —
+ * every preview-serving code path additionally requires
+ * `version.status === "READY" && version.previewStorageKey` (see the
+ * preview-url routes and files.ts's `previewAvailable`), so a PDF whose
+ * render failed or is still processing correctly shows a processing/retry
+ * state, never a preview.
+ */
 export function isPreviewableFileKind(kind: FileKind): boolean {
-  return kind === FileKind.IMAGE;
+  return kind === FileKind.IMAGE || kind === FileKind.PDF;
 }
 
 export function humanReadableFileKind(kind: FileKind): string {

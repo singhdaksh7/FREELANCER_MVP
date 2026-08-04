@@ -414,7 +414,7 @@ export function WorkspaceWizard({ draft, files, uploadLimits, initialStep }: Wor
             {files.length > 0 && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {files.map((file) => (
-                  <FileCard key={file.id} file={file} workspaceId={draftId} />
+                  <FileCard key={file.id} file={file} workspaceId={draftId} deliveryMode={fields.deliveryMode} />
                 ))}
               </div>
             )}

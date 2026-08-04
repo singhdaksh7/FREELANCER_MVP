@@ -141,6 +141,22 @@ export function getPreviewLimits(): PreviewLimits {
   };
 }
 
+export interface PdfPreviewLimits {
+  /** Refuses to even attempt a render past this page count — bounds parse/metadata cost on a pathological multi-thousand-page PDF, even though only page 1 is ever rendered. */
+  maxPageCount: number;
+  /** Rendered raster is capped so neither dimension exceeds this, regardless of the PDF's declared page size — bounds canvas memory. */
+  maxOutputDimensionPx: number;
+  renderTimeoutMs: number;
+}
+
+export function getPdfPreviewLimits(): PdfPreviewLimits {
+  return {
+    maxPageCount: intEnv("PDF_PREVIEW_MAX_PAGE_COUNT", 2000),
+    maxOutputDimensionPx: intEnv("PDF_PREVIEW_MAX_OUTPUT_DIMENSION_PX", 1600),
+    renderTimeoutMs: intEnv("PDF_PREVIEW_RENDER_TIMEOUT_MS", 20_000),
+  };
+}
+
 export interface WorkerConfig {
   pollIntervalMs: number;
   maxAttempts: number;

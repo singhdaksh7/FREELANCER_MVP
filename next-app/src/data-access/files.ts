@@ -104,7 +104,14 @@ export async function getWorkspaceFiles(workspaceId: string): Promise<WorkspaceF
       height: file.currentVersion?.height ?? null,
       processingError: file.currentVersion?.processingError ?? null,
       attempts,
-      canRetry: file.status === "FAILED" && attempts < maxAttempts,
+      // Also retryable when READY but missing a preview for a now-previewable
+      // kind (e.g. a PDF uploaded before PDF preview generation existed, or
+      // an image rejected by a since-relaxed dimension limit) — the exact
+      // "recoverable through a normal Retry Processing action, no manual DB
+      // edits" path for files affected by either fix.
+      canRetry:
+        (file.status === "FAILED" && attempts < maxAttempts) ||
+        (file.status === "READY" && isPreviewableFileKind(file.fileKind) && !file.currentVersion?.previewStorageKey),
       canDelete: !financiallyLocked,
       canUploadNewVersion:
         !financiallyLocked &&
@@ -143,10 +150,18 @@ export async function getOwnedFilePreviewUrl(fileId: string): Promise<string> {
   return createPreviewPresignedUrl(file.currentVersion.previewStorageKey);
 }
 
-/** Re-queues processing for a failed file, up to the configured attempt limit. */
+/**
+ * Re-queues processing for a failed file, up to the configured attempt
+ * limit — also usable on a READY file whose kind is previewable but has
+ * no generated preview yet (a file uploaded before PDF preview support,
+ * or an image rejected by a since-relaxed dimension limit), so those
+ * files recover through this same action rather than a manual DB edit.
+ */
 export async function retryFileProcessing(fileId: string): Promise<void> {
   const { creator, file } = await requireOwnedWorkspaceFile(fileId);
-  if (file.status !== "FAILED" || !file.currentVersion) {
+  const needsPreviewReprocess =
+    file.status === "READY" && isPreviewableFileKind(file.fileKind) && !file.currentVersion?.previewStorageKey;
+  if ((file.status !== "FAILED" && !needsPreviewReprocess) || !file.currentVersion) {
     throw new FileNotRetryableError("Only a failed file can be retried.");
   }
 

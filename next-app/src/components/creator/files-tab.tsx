@@ -15,6 +15,7 @@ export interface FilesTabProps {
   files: WorkspaceFileListItem[];
   uploadLimits: UploadLimits;
   canUpload: boolean;
+  deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
 }
 
 const TRANSIENT_STATUSES = new Set(["UPLOAD_PENDING", "UPLOADING", "UPLOADED", "PROCESSING"]);
@@ -41,7 +42,7 @@ const POLL_INTERVAL_MS = 2500;
  * clobbered by a concurrently-landing poll refresh's stale response,
  * leaving a just-deleted file's card visibly stuck on-screen.
  */
-export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUpload }: FilesTabProps) {
+export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUpload, deliveryMode }: FilesTabProps) {
   const { queue, enqueueFiles, removeItem } = useFileUploadQueue(workspaceId, uploadLimits);
   const router = useRouter();
   const refreshInFlight = useRef(false);
@@ -179,6 +180,7 @@ export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUploa
               key={file.id}
               file={file}
               workspaceId={workspaceId}
+              deliveryMode={deliveryMode}
               onMutationPendingChange={handleMutationPendingChange}
               onDeleted={handleFileDeleted}
             />

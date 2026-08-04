@@ -14,6 +14,8 @@ export interface WatermarkTextInput {
    */
   clientName: string;
   workspaceTitle: string;
+  /** Extra label tiled as the first watermark line — used to mark a non-photo-sourced preview (e.g. "PDF Preview — Page 1") as what it is. Omitted for ordinary image previews. */
+  sourceLabel?: string;
 }
 
 export interface WatermarkConfig {
@@ -69,8 +71,10 @@ const UNSUPPORTED_CLIENT_NAME_FALLBACK = "Client Preview";
 export function buildWatermarkLines(input: WatermarkTextInput): string[] {
   const trimmedName = input.clientName.trim();
   const safeClientName = trimmedName.length > 0 ? trimmedName : UNSUPPORTED_CLIENT_NAME_FALLBACK;
+  const trimmedSourceLabel = input.sourceLabel?.trim();
 
   return [
+    ...(trimmedSourceLabel ? [trimmedSourceLabel] : []),
     BRAND.watermarkText,
     `CLIENT: ${safeClientName}`,
     `Workspace: ${input.workspaceTitle}`,

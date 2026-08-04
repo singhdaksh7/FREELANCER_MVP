@@ -127,6 +127,7 @@ export function WorkspaceDetailTabs({
               files={files}
               uploadLimits={uploadLimits}
               canUpload={!workspace.financiallyLocked}
+              deliveryMode={workspace.deliveryMode}
             />
           </div>
         )}

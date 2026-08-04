@@ -9,9 +9,11 @@
  * `server-only`-mocked client under Vitest).
  */
 import type { PrismaClient } from "../generated/prisma/client";
+import { FileKind } from "../generated/prisma/enums";
 import { s3StorageProvider } from "../storage/s3-storage-provider";
 import { generateStorageKey, STORAGE_PREFIXES } from "../storage/storage-keys";
-import { generateWatermarkedPreview, UnsupportedImageError, ImageTooLargeError } from "../lib/image-preview";
+import { generateWatermarkedPreview, generatePdfWatermarkedPreview, UnsupportedImageError, ImageTooLargeError } from "../lib/image-preview";
+import { UnsupportedPdfError, PdfTooLargeError, PdfProcessingTimeoutError } from "../lib/pdf-preview";
 import { sha256Hex } from "../lib/checksum";
 import { isPreviewableFileKind } from "../lib/file-kind";
 import { numberToStorageBigInt } from "../lib/bytes";
@@ -64,6 +66,15 @@ export function summarizeError(error: unknown): SafeErrorSummary {
   }
   if (error instanceof UnsupportedImageError) {
     return { code: "UNSUPPORTED_IMAGE", message: "This image could not be processed into a preview." };
+  }
+  if (error instanceof PdfTooLargeError) {
+    return { code: "PDF_TOO_LARGE", message: error.message };
+  }
+  if (error instanceof PdfProcessingTimeoutError) {
+    return { code: "PDF_TIMEOUT", message: "This PDF took too long to preview. Please try again." };
+  }
+  if (error instanceof UnsupportedPdfError) {
+    return { code: "UNSUPPORTED_PDF", message: "This PDF could not be processed into a preview." };
   }
   return { code: "PROCESSING_FAILED", message: "This file could not be processed. Please try again." };
 }
@@ -143,7 +154,27 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>, jobTag: string): Promise<void> {
+interface GeneratedPreviewLike {
+  buffer: Buffer;
+  width: number;
+  height: number;
+  mimeType: string;
+}
+
+/**
+ * Shared "download original -> generate a watermarked preview -> upload ->
+ * update DB" pipeline for every previewable FileKind. IMAGE and PDF only
+ * differ in how the preview buffer itself is produced (Sharp directly vs.
+ * pdf.js page-1 rasterization + Sharp) — everything else (storage keys,
+ * checksum, transaction shape, activity log, timing logs) is identical,
+ * so it lives here exactly once.
+ */
+async function processPreviewableJob(
+  prisma: PrismaLike,
+  job: NonNullable<ClaimedJob>,
+  jobTag: string,
+  generate: (originalBuffer: Buffer, workspace: { clientName: string; title: string }) => Promise<GeneratedPreviewLike>,
+): Promise<void> {
   const version = job.fileVersion;
   const file = version.file;
   const { workspace } = file;
@@ -156,10 +187,7 @@ async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>,
   );
 
   const previewStart = Date.now();
-  const preview = await generateWatermarkedPreview(originalBuffer, {
-    clientName: workspace.clientName,
-    workspaceTitle: workspace.title,
-  });
+  const preview = await generate(originalBuffer, workspace);
   const previewGenMs = Date.now() - previewStart;
   console.log(
     `[file-worker] preview generated job=${jobTag} width=${preview.width} height=${preview.height} durationMs=${previewGenMs}`,
@@ -207,6 +235,18 @@ async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>,
   });
 }
 
+async function processImageJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>, jobTag: string): Promise<void> {
+  await processPreviewableJob(prisma, job, jobTag, (originalBuffer, workspace) =>
+    generateWatermarkedPreview(originalBuffer, { clientName: workspace.clientName, workspaceTitle: workspace.title }),
+  );
+}
+
+async function processPdfJob(prisma: PrismaLike, job: NonNullable<ClaimedJob>, jobTag: string): Promise<void> {
+  await processPreviewableJob(prisma, job, jobTag, (originalBuffer, workspace) =>
+    generatePdfWatermarkedPreview(originalBuffer, { clientName: workspace.clientName, workspaceTitle: workspace.title }),
+  );
+}
+
 /**
  * Processes exactly one claimed job to completion or failure. Every job
  * is attempted exactly once — see process-files.ts's doc comment on why
@@ -238,7 +278,11 @@ export async function processJob(prisma: PrismaLike, job: NonNullable<ClaimedJob
       console.log(`[file-worker] job completed job=${jobTag} totalMs=${Date.now() - totalStart}`);
       return;
     }
-    await processImageJob(prisma, job, jobTag);
+    if (file.fileKind === FileKind.PDF) {
+      await processPdfJob(prisma, job, jobTag);
+    } else {
+      await processImageJob(prisma, job, jobTag);
+    }
     console.log(`[file-worker] job completed job=${jobTag} totalMs=${Date.now() - totalStart}`);
   } catch (error) {
     console.error(`[worker] Job ${job.id} (file ${file.id}) failed:`, error);

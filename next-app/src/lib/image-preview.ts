@@ -3,6 +3,7 @@
 import sharp from "sharp";
 import { getPreviewLimits, getSharpConcurrency } from "@/storage/storage-config";
 import { buildWatermarkLines, buildWatermarkSvg, type WatermarkTextInput } from "./watermark";
+import { renderPdfFirstPage } from "./pdf-preview";
 
 // Only overrides Sharp's own CPU-count-based default when SHARP_CONCURRENCY
 // is explicitly set (e.g. on a resource-constrained demo instance).
@@ -92,4 +93,28 @@ export async function generateWatermarkedPreview(
   } catch {
     throw new UnsupportedImageError("Image could not be processed into a preview.");
   }
+}
+
+export interface GeneratedPdfPreview extends GeneratedPreview {
+  pageCount: number;
+}
+
+/**
+ * PDF equivalent of `generateWatermarkedPreview`: rasterizes page 1 only
+ * (see pdf-preview.ts — the original PDF is never touched), then runs the
+ * resulting page image through the exact same resize/watermark/re-encode/
+ * metadata-stripping pipeline a photo gets, with an extra "PDF Preview —
+ * Page N" line baked into the tiled watermark so the output is never
+ * mistaken for the original document.
+ */
+export async function generatePdfWatermarkedPreview(
+  originalPdfBuffer: Buffer,
+  watermarkInput: WatermarkTextInput,
+): Promise<GeneratedPdfPreview> {
+  const page = await renderPdfFirstPage(originalPdfBuffer);
+  const preview = await generateWatermarkedPreview(page.buffer, {
+    ...watermarkInput,
+    sourceLabel: `PDF Preview — Page 1 of ${page.pageCount}`,
+  });
+  return { ...preview, pageCount: page.pageCount };
 }

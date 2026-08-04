@@ -48,7 +48,12 @@ services:
       - key: MAX_WORKSPACE_STORAGE_BYTES
         value: "20971520"
       - key: MAX_IMAGE_DIMENSION
-        value: "4000"
+        # 4000px rejected common phone-camera photos (e.g. a standard
+        # iPhone photo is 3024x4032 — 32px over the old limit), causing
+        # legitimate image uploads to fail processing in production. 6000px
+        # comfortably covers phone/DSLR resolutions while still bounding
+        # Sharp's decode memory well under the code default (8000px).
+        value: "6000"
       - key: PREVIEW_MAX_DIMENSION
         value: "1200"
       - key: MAX_DELIVERY_BUNDLE_BYTES

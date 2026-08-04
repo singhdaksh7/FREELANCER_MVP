@@ -40,7 +40,10 @@ function makeRequest(url: string) {
 describe("creator preview-url route (GET /api/workspaces/[id]/files/[fileId]/preview-url)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireOwnedWorkspace.mockResolvedValue({ creator: { id: "creator_1" }, workspace: { id: "ws_1" } });
+    requireOwnedWorkspace.mockResolvedValue({
+      creator: { id: "creator_1" },
+      workspace: { id: "ws_1", deliveryMode: "APPROVAL_ONLY" },
+    });
   });
 
   it("maps OwnershipError to a generic 404", async () => {
@@ -113,7 +116,7 @@ describe("creator preview-url route (GET /api/workspaces/[id]/files/[fileId]/pre
     expect(response.status).toBe(404);
   });
 
-  it("returns a locked response for non-previewable file kinds without querying storage", async () => {
+  it("returns a locked response for non-previewable file kinds without querying storage, with APPROVAL_ONLY copy that never mentions payment", async () => {
     findFirstWorkspaceFile.mockResolvedValueOnce({
       id: "f_1",
       workspaceId: "ws_1",
@@ -138,7 +141,68 @@ describe("creator preview-url route (GET /api/workspaces/[id]/files/[fileId]/pre
 
     expect(response.status).toBe(200);
     expect(body.locked).toBe(true);
+    expect(body.message).toBe(
+      "Preview is not available for this file type. The original remains protected until approval and freelancer release.",
+    );
+    expect(body.message.toLowerCase()).not.toContain("payment");
     expect(createPreviewPresignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("locked-response copy mentions payment for a PAYMENT_REQUIRED workspace", async () => {
+    requireOwnedWorkspace.mockResolvedValue({
+      creator: { id: "creator_1" },
+      workspace: { id: "ws_1", deliveryMode: "PAYMENT_REQUIRED" },
+    });
+    findFirstWorkspaceFile.mockResolvedValueOnce({
+      id: "f_1",
+      workspaceId: "ws_1",
+      fileKind: "ARCHIVE",
+      displayName: "assets.zip",
+      sizeBytes: BigInt(1024),
+      currentVersionId: "v_current",
+    });
+    findFirstFileVersion.mockResolvedValueOnce({
+      id: "v_current",
+      versionNumber: 1,
+      status: "READY",
+      previewStorageKey: null,
+      submittedAt: null,
+    });
+
+    const { GET } = await import("./route");
+    const response = await GET(makeRequest("http://localhost/x"), {
+      params: Promise.resolve({ id: "ws_1", fileId: "f_1" }),
+    });
+    const body = await response.json();
+
+    expect(body.message).toBe(
+      "Preview is not available for this file type. The original remains protected until approval, payment, and freelancer release.",
+    );
+  });
+
+  it("a PDF file (previewable kind) is never routed through the locked branch — falls through to the 409 still-processing check", async () => {
+    findFirstWorkspaceFile.mockResolvedValueOnce({
+      id: "f_1",
+      workspaceId: "ws_1",
+      fileKind: "PDF",
+      currentVersionId: "v_current",
+    });
+    findFirstFileVersion.mockResolvedValueOnce({
+      id: "v_current",
+      versionNumber: 1,
+      status: "PROCESSING",
+      previewStorageKey: null,
+      submittedAt: null,
+    });
+
+    const { GET } = await import("./route");
+    const response = await GET(makeRequest("http://localhost/x"), {
+      params: Promise.resolve({ id: "ws_1", fileId: "f_1" }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.locked).toBeUndefined();
   });
 
   it("returns 409 while the current version is still processing", async () => {

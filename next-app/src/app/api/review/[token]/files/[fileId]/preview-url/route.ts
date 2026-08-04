@@ -9,6 +9,7 @@ import {
 } from "@/data-access/review-auth";
 import { createPreviewPresignedUrl } from "@/storage/signed-urls";
 import { isPreviewableFileKind } from "@/lib/file-kind";
+import { unpreviewableFileLockedMessage } from "@/lib/preview-lock-copy";
 import { bigIntToDisplayNumber } from "@/lib/bytes";
 
 /**
@@ -72,7 +73,7 @@ export async function GET(
       fileKind: file.fileKind,
       displayName: file.displayName,
       sizeBytes: bigIntToDisplayNumber(file.sizeBytes),
-      message: "Preview not available in this MVP — this is a locked deliverable pending payment.",
+      message: unpreviewableFileLockedMessage(context.workspace.deliveryMode),
     });
   }
 

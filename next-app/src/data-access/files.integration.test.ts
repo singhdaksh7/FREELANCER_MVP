@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, afterAll, beforeAll } from "vitest";
 import sharp from "sharp";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
 import { s3StorageProvider } from "@/storage/s3-storage-provider";
 import { getStorageConfig } from "@/storage/storage-config";
@@ -42,6 +44,22 @@ async function makeJpeg(width = 640, height = 480): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: { r: 30, g: 90, b: 160 } } })
     .jpeg()
     .toBuffer();
+}
+
+async function makePdf(pageCount = 1): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < pageCount; i++) {
+    const page = doc.addPage([600, 800]);
+    page.drawText(`Page ${i + 1}`, { x: 50, y: 700, size: 30, font });
+  }
+  return Buffer.from(await doc.save());
+}
+
+async function makeZip(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("readme.txt", "integration test archive contents");
+  return zip.generateAsync({ type: "nodebuffer" });
 }
 
 /** Really PUTs to the presigned URL (a real HTTP request to local MinIO) — the same request a browser would make. */
@@ -294,6 +312,66 @@ describe("worker processing", () => {
 
     const v2OriginalBytes = await s3StorageProvider.getObjectBuffer(v2.originalStorageKey);
     expect(Buffer.compare(v2OriginalBytes, v2Jpeg)).toBe(0);
+  });
+
+  it("PDF: rasterizes page 1 into a real, distinct protected preview and marks the file READY", async () => {
+    signInAs(ARJUN_ID);
+    const { createUploadSession, completeUploadSession } = await import("./uploads");
+
+    const pdf = await makePdf(2);
+    const session = await createUploadSession(ARJUN_WORKSPACE_ID, {
+      fileName: "integration-test-worker.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: pdf.byteLength,
+    });
+    await putToPresignedUrl(session.uploadUrl, pdf, "application/pdf");
+    const { fileId } = await completeUploadSession(session.sessionId);
+    createdFileIds.push(fileId);
+
+    const created = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId } });
+    expect(created.fileKind).toBe("PDF");
+    const job = await claimJobForVersion(created.currentVersionId!);
+    await processJob(prisma, job);
+
+    const file = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId }, include: { currentVersion: true } });
+    expect(file.status).toBe("READY");
+    expect(file.currentVersion!.previewStorageKey).not.toBeNull();
+    createdStorageKeys.push(file.currentVersion!.originalStorageKey, file.currentVersion!.previewStorageKey!);
+
+    // The original PDF stays private and byte-identical; the preview is a
+    // distinct, watermarked JPEG raster of page 1 only.
+    const originalBytes = await s3StorageProvider.getObjectBuffer(file.currentVersion!.originalStorageKey);
+    expect(Buffer.compare(originalBytes, pdf)).toBe(0);
+
+    const previewBytes = await s3StorageProvider.getObjectBuffer(file.currentVersion!.previewStorageKey!);
+    const previewMetadata = await sharp(previewBytes).metadata();
+    expect(previewMetadata.format).toBe("jpeg");
+    expect(Buffer.compare(previewBytes, originalBytes)).not.toBe(0);
+  });
+
+  it("ARCHIVE (ZIP): marked READY with no generated preview, never treated as a locked-deliverable-pending-payment case", async () => {
+    signInAs(ARJUN_ID);
+    const { createUploadSession, completeUploadSession } = await import("./uploads");
+
+    const zip = await makeZip();
+    const session = await createUploadSession(ARJUN_WORKSPACE_ID, {
+      fileName: "integration-test-worker.zip",
+      mimeType: "application/zip",
+      sizeBytes: zip.byteLength,
+    });
+    await putToPresignedUrl(session.uploadUrl, zip, "application/zip");
+    const { fileId } = await completeUploadSession(session.sessionId);
+    createdFileIds.push(fileId);
+
+    const created = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId } });
+    expect(created.fileKind).toBe("ARCHIVE");
+    const job = await claimJobForVersion(created.currentVersionId!);
+    await processJob(prisma, job);
+
+    const file = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId }, include: { currentVersion: true } });
+    expect(file.status).toBe("READY");
+    expect(file.currentVersion!.previewStorageKey).toBeNull();
+    createdStorageKeys.push(file.currentVersion!.originalStorageKey);
   });
 
   it("refuses preview access to a different creator", async () => {

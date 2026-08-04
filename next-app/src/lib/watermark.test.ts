@@ -36,6 +36,20 @@ describe("buildWatermarkLines", () => {
     expect(empty.join(" ")).toContain("CLIENT: Client Preview");
     expect(whitespace.join(" ")).toContain("CLIENT: Client Preview");
   });
+
+  it("prepends sourceLabel as the first line when supplied (PDF previews), and omits it otherwise (ordinary image previews)", () => {
+    const withLabel = buildWatermarkLines({
+      clientName: "Rohit Sharma",
+      workspaceTitle: "Brand Identity Design",
+      sourceLabel: "PDF Preview — Page 1 of 3",
+    });
+    expect(withLabel[0]).toBe("PDF Preview — Page 1 of 3");
+    expect(withLabel).toContain("INLAY PROTECTED PREVIEW");
+
+    const withoutLabel = buildWatermarkLines({ clientName: "Rohit Sharma", workspaceTitle: "Brand Identity Design" });
+    expect(withoutLabel[0]).toBe("INLAY PROTECTED PREVIEW");
+    expect(withoutLabel.some((line) => line.includes("PDF Preview"))).toBe(false);
+  });
 });
 
 describe("buildWatermarkSvg", () => {

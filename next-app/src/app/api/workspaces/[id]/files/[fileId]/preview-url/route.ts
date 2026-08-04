@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireOwnedWorkspace, OwnershipError } from "@/data-access/authorization";
 import { createPreviewPresignedUrl } from "@/storage/signed-urls";
 import { isPreviewableFileKind } from "@/lib/file-kind";
+import { unpreviewableFileLockedMessage } from "@/lib/preview-lock-copy";
 import { bigIntToDisplayNumber } from "@/lib/bytes";
 
 /**
@@ -30,8 +31,9 @@ export async function GET(
   const { id: workspaceId, fileId } = await params;
   const versionId = request.nextUrl.searchParams.get("versionId") ?? undefined;
 
+  let ownedWorkspace: Awaited<ReturnType<typeof requireOwnedWorkspace>>;
   try {
-    await requireOwnedWorkspace(workspaceId);
+    ownedWorkspace = await requireOwnedWorkspace(workspaceId);
   } catch (error) {
     if (error instanceof OwnershipError) {
       return NextResponse.json({ error: "This workspace could not be found." }, { status: 404 });
@@ -63,7 +65,7 @@ export async function GET(
       fileKind: file.fileKind,
       displayName: file.displayName,
       sizeBytes: bigIntToDisplayNumber(file.sizeBytes),
-      message: "Preview not available in this MVP — this is a locked deliverable pending payment.",
+      message: unpreviewableFileLockedMessage(ownedWorkspace.workspace.deliveryMode),
     });
   }
 

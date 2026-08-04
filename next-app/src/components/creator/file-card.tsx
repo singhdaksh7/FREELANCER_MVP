@@ -10,6 +10,7 @@ import { retryFileProcessingAction, type FileActionState } from "@/actions/files
 import { formatBytes } from "@/lib/bytes";
 import { isSupportedMimeType } from "@/lib/file-kind";
 import { fetchPreviewUrl } from "@/lib/preview-client";
+import { unpreviewableFileLockedMessage } from "@/lib/preview-lock-copy";
 import type { WorkspaceFileListItem } from "@/data-access/files";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -100,6 +101,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
 export interface FileCardProps {
   file: WorkspaceFileListItem;
   workspaceId: string;
+  deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
   /**
    * Reports whether this card has a mutation (retry/delete) in flight, so
    * FilesTab can pause its own router.refresh() polling while one is
@@ -114,7 +116,7 @@ export interface FileCardProps {
 }
 
 /** One uploaded file's card: identity, status, protected preview (image-only), version history, retry/remove/upload-new-version actions. */
-export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted }: FileCardProps) {
+export function FileCard({ file, workspaceId, deliveryMode, onMutationPendingChange, onDeleted }: FileCardProps) {
   const router = useRouter();
   const [retryState, retryAction, retryPending] = useActionState(retryFileProcessingAction, initialRetryState);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -178,6 +180,21 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
 
   const Icon = file.fileKind === "IMAGE" ? ImageIcon : file.fileKind === "ARCHIVE" ? FileArchive : FileIcon;
   const isTransient = ["UPLOAD_PENDING", "UPLOADING", "UPLOADED", "PROCESSING"].includes(file.status);
+  const isPreviewableKind = file.fileKind === "IMAGE" || file.fileKind === "PDF";
+
+  const retryButton = (
+    <form action={retryAction}>
+      <input type="hidden" name="fileId" value={file.id} />
+      <input type="hidden" name="workspaceId" value={workspaceId} />
+      <button
+        type="submit"
+        disabled={retryPending}
+        className="inline-flex min-h-[44px] items-center gap-1.5 self-start rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw size={13} aria-hidden="true" /> {retryPending ? "Retrying…" : "Retry Processing"}
+      </button>
+    </form>
+  );
 
   return (
     <div data-testid="file-card" data-file-name={file.displayName} className="flex flex-col gap-3 rounded-lg border border-line bg-surface-card p-4">
@@ -196,6 +213,9 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
 
       {canPreview && (
         <div className="flex flex-col gap-2">
+          {file.fileKind === "PDF" && (
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">PDF Preview — Page 1</p>
+          )}
           {previewLoading && !previewUrl && (
             <div role="status" aria-live="polite" className="flex flex-col gap-1">
               <span className="sr-only">Loading protected preview…</span>
@@ -230,7 +250,28 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
       )}
 
       {file.status === "READY" && !file.previewAvailable && (
-        <LockedFileCard message="Locked original — preview not available in this MVP." />
+        <div className="flex flex-col gap-2">
+          {isPreviewableKind ? (
+            // A previewable kind (IMAGE/PDF) with no generated preview —
+            // e.g. uploaded before PDF preview support existed, or an
+            // image rejected by a since-relaxed dimension limit. Distinct
+            // from LockedFileCard: this one can be recovered without any
+            // manual DB edit, via the same Retry Processing action a
+            // FAILED file uses (see retryFileProcessing's
+            // needsPreviewReprocess branch).
+            <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-ink-muted">
+              No preview has been generated yet for this file.
+            </p>
+          ) : (
+            <LockedFileCard message={unpreviewableFileLockedMessage(deliveryMode)} />
+          )}
+          {isPreviewableKind && retryState.error && (
+            <p role="alert" className="text-xs font-medium text-danger">
+              {retryState.error}
+            </p>
+          )}
+          {isPreviewableKind && (file.canRetry ? retryButton : <p className="text-xs text-ink-muted">Retry limit reached.</p>)}
+        </div>
       )}
 
       {file.status === "FAILED" && (
@@ -241,21 +282,7 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
               {retryState.error}
             </p>
           )}
-          {file.canRetry ? (
-            <form action={retryAction}>
-              <input type="hidden" name="fileId" value={file.id} />
-              <input type="hidden" name="workspaceId" value={workspaceId} />
-              <button
-                type="submit"
-                disabled={retryPending}
-                className="inline-flex min-h-[44px] items-center gap-1.5 self-start rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <RefreshCw size={13} aria-hidden="true" /> {retryPending ? "Retrying…" : "Retry Processing"}
-              </button>
-            </form>
-          ) : (
-            <p className="text-xs text-ink-muted">Retry limit reached.</p>
-          )}
+          {file.canRetry ? retryButton : <p className="text-xs text-ink-muted">Retry limit reached.</p>}
         </div>
       )}
 

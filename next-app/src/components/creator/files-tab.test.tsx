@@ -70,7 +70,7 @@ describe("FilesTab polling", () => {
   });
 
   it("never has more than one router.refresh() scheduled at a time while a file is transient", async () => {
-    render(<FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload />);
+    render(<FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />);
 
     await vi.advanceTimersByTimeAsync(2500);
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -81,12 +81,12 @@ describe("FilesTab polling", () => {
 
   it("stops polling once no transient files remain", async () => {
     const { rerender } = render(
-      <FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload />,
+      <FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />,
     );
     await vi.advanceTimersByTimeAsync(2500);
     expect(refresh).toHaveBeenCalledTimes(1);
 
-    rerender(<FilesTab workspaceId="ws_1" files={[transientFile({ status: "READY" })]} uploadLimits={uploadLimits} canUpload />);
+    rerender(<FilesTab workspaceId="ws_1" files={[transientFile({ status: "READY" })]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />);
     refresh.mockClear();
 
     await vi.advanceTimersByTimeAsync(10_000);
@@ -95,7 +95,7 @@ describe("FilesTab polling", () => {
 
   it("stops polling on unmount instead of leaking a pending timer", async () => {
     const { unmount } = render(
-      <FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload />,
+      <FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />,
     );
     unmount();
     refresh.mockClear();
@@ -115,6 +115,7 @@ describe("FilesTab polling", () => {
         files={[transientFile({ id: "file-1", canDelete: true }), transientFile({ id: "file-2" })]}
         uploadLimits={uploadLimits}
         canUpload
+        deliveryMode="APPROVAL_ONLY"
       />,
     );
 

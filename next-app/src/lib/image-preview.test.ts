@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { generateWatermarkedPreview, UnsupportedImageError, ImageTooLargeError } from "./image-preview";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+import { generateWatermarkedPreview, generatePdfWatermarkedPreview, UnsupportedImageError, ImageTooLargeError } from "./image-preview";
 
 const WATERMARK_INPUT = { clientName: "Rohit Sharma", workspaceTitle: "Brand Identity" };
+
+async function makePdf(pageCount: number): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < pageCount; i++) {
+    const page = doc.addPage([600, 800]);
+    page.drawText(`Page ${i + 1}`, { x: 50, y: 700, size: 30, font });
+  }
+  return Buffer.from(await doc.save());
+}
 
 async function makeJpeg(width: number, height: number): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: { r: 10, g: 120, b: 200 } } })
@@ -81,6 +92,42 @@ describe("generateWatermarkedPreview — watermark regression", () => {
     const originalCopy = Buffer.from(input);
     await generateWatermarkedPreview(input, WATERMARK_INPUT);
     expect(Buffer.compare(input, originalCopy)).toBe(0);
+  });
+});
+
+describe("generatePdfWatermarkedPreview", () => {
+  it("produces a watermarked JPEG preview of page 1 only, reporting the true page count", async () => {
+    const pdf = await makePdf(3);
+    const preview = await generatePdfWatermarkedPreview(pdf, WATERMARK_INPUT);
+    expect(preview.mimeType).toBe("image/jpeg");
+    expect(preview.pageCount).toBe(3);
+
+    const metadata = await sharp(preview.buffer).metadata();
+    expect(metadata.format).toBe("jpeg");
+  });
+
+  it("bakes a 'PDF Preview' label into the output, distinguishing it from an ordinary image preview", async () => {
+    // Can't OCR the rendered pixels in a unit test, but can prove the two
+    // preview paths produce genuinely different output for otherwise
+    // identical watermark inputs — generatePdfWatermarkedPreview passes an
+    // extra sourceLabel line (see watermark.ts) that generateWatermarkedPreview
+    // never does.
+    const pdf = await makePdf(1);
+    const pdfPreview = await generatePdfWatermarkedPreview(pdf, WATERMARK_INPUT);
+
+    const flatImage = await sharp({ create: { width: 600, height: 800, channels: 3, background: "white" } })
+      .jpeg()
+      .toBuffer();
+    const imagePreview = await generateWatermarkedPreview(flatImage, WATERMARK_INPUT);
+
+    expect(Buffer.compare(pdfPreview.buffer, imagePreview.buffer)).not.toBe(0);
+  });
+
+  it("the original PDF buffer is never mutated", async () => {
+    const pdf = await makePdf(1);
+    const originalCopy = Buffer.from(pdf);
+    await generatePdfWatermarkedPreview(pdf, WATERMARK_INPUT);
+    expect(Buffer.compare(pdf, originalCopy)).toBe(0);
   });
 });
 

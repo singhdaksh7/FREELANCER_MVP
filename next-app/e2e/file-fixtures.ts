@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
+import JSZip from "jszip";
 
 /** Minimal, structurally-valid PDF (well-known "Hello World" example) — enough for magic-byte detection and a real decode, without a heavy fixture binary checked into the repo. */
 const MINIMAL_PDF = `%PDF-1.1
@@ -99,5 +100,15 @@ export function writeMinimalPdfFixture(dir: string, name: string): string {
 export function writeUnsupportedFixture(dir: string, name: string): string {
   const path = join(dir, name);
   writeFileSync(path, Buffer.from("MZ this is not a real executable, just disallowed content"));
+  return path;
+}
+
+/** A structurally-real ZIP archive — always ARCHIVE-classified, and (unlike PDF/IMAGE) never gets a generated visual preview, since a ZIP has no meaningful single-frame representation. */
+export async function writeMinimalZipFixture(dir: string, name: string): Promise<string> {
+  const zip = new JSZip();
+  zip.file("readme.txt", "e2e fixture archive contents");
+  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  const path = join(dir, name);
+  writeFileSync(path, buffer);
   return path;
 }
