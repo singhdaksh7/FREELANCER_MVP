@@ -52,6 +52,53 @@ describe("generateWatermarkedPreview — dimension calculation", () => {
     const metadata = await sharp(preview.buffer).metadata();
     expect(metadata.format).toBe("jpeg");
   });
+
+  it("accepts a real PNG input end to end (not just format-detection)", async () => {
+    const pngInput = await sharp({ create: { width: 800, height: 600, channels: 4, background: { r: 10, g: 200, b: 90, alpha: 1 } } })
+      .png()
+      .toBuffer();
+    const preview = await generateWatermarkedPreview(pngInput, WATERMARK_INPUT);
+    expect(preview.width).toBe(800);
+    expect(preview.height).toBe(600);
+    expect(preview.mimeType).toBe("image/jpeg");
+  });
+
+  it("accepts a real WebP input end to end", async () => {
+    const webpInput = await sharp({ create: { width: 800, height: 600, channels: 3, background: { r: 200, g: 90, b: 40 } } })
+      .webp()
+      .toBuffer();
+    const preview = await generateWatermarkedPreview(webpInput, WATERMARK_INPUT);
+    expect(preview.width).toBe(800);
+    expect(preview.height).toBe(600);
+    expect(preview.mimeType).toBe("image/jpeg");
+  });
+
+  it("processes a standard phone-camera portrait photo (3024x4032) without hitting the dimension-protection limit", async () => {
+    const input = await makeJpeg(3024, 4032);
+    const preview = await generateWatermarkedPreview(input, WATERMARK_INPUT);
+    // Well under the default 8000px input limit and the demo deployment's
+    // 6000px MAX_IMAGE_DIMENSION (see render.yaml) — must process
+    // normally, only downscaled to the output cap.
+    expect(preview.height).toBeLessThanOrEqual(1600);
+    expect(preview.width).toBeLessThanOrEqual(1600);
+    const aspectRatio = preview.width / preview.height;
+    expect(aspectRatio).toBeCloseTo(3024 / 4032, 2);
+  });
+
+  it("auto-orients a rotated (EXIF-tagged) photo instead of preserving the raw sensor orientation", async () => {
+    // A landscape sensor buffer (300x200) with EXIF orientation 6 ("rotate
+    // 90° CW to display upright") must be *displayed* portrait (200x300) —
+    // generateWatermarkedPreview's .rotate() (no args) auto-applies EXIF
+    // orientation, exactly like every phone camera app / browser does.
+    const rotated = await sharp({ create: { width: 300, height: 200, channels: 3, background: "purple" } })
+      .withMetadata({ orientation: 6 })
+      .jpeg()
+      .toBuffer();
+
+    const preview = await generateWatermarkedPreview(rotated, WATERMARK_INPUT);
+    expect(preview.width).toBe(200);
+    expect(preview.height).toBe(300);
+  });
 });
 
 describe("generateWatermarkedPreview — validation", () => {

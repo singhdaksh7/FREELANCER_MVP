@@ -8,7 +8,7 @@ import { ConfirmFetchDialog } from "@/components/ui/confirm-fetch-dialog";
 import { LockedFileCard } from "@/components/ui/locked-file-card";
 import { retryFileProcessingAction, type FileActionState } from "@/actions/files";
 import { formatBytes } from "@/lib/bytes";
-import { isSupportedMimeType } from "@/lib/file-kind";
+import { isSupportedMimeType, unsupportedFileMessage } from "@/lib/file-kind";
 import { fetchPreviewUrl } from "@/lib/preview-client";
 import { unpreviewableFileLockedMessage } from "@/lib/preview-lock-copy";
 import type { WorkspaceFileListItem } from "@/data-access/files";
@@ -37,7 +37,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
     setError(null);
     try {
       if (!isSupportedMimeType(selected.type)) {
-        throw new Error("This file type isn't supported.");
+        throw new Error(unsupportedFileMessage(selected));
       }
       const sessionResponse = await fetch(`/api/workspaces/${workspaceId}/files/${file.id}/versions/upload-sessions`, {
         method: "POST",

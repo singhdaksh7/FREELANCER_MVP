@@ -18,15 +18,73 @@ import { sha256Hex } from "../lib/checksum";
 import { isPreviewableFileKind } from "../lib/file-kind";
 import { numberToStorageBigInt } from "../lib/bytes";
 import { ActivityAction } from "../lib/activity-log";
+import { getWorkerConfig } from "../storage/storage-config";
 
 const WORKER_ACTOR_NAME = "File Processing Worker";
+const STALE_PROCESSING_MESSAGE = "Processing did not complete — the worker may have restarted. Retry to try again.";
 
 export type PrismaLike = PrismaClient;
 
 export type ClaimedJob = Awaited<ReturnType<typeof claimNextJob>>;
 
+/**
+ * Reaps jobs left in PROCESSING past the configured lease (a worker
+ * process that crashed or was restarted mid-job — e.g. a Render
+ * free-tier spin-down/redeploy — never gets to call markJobFailed or
+ * complete the job itself, so without this the file/version would stay
+ * "Processing" forever). Marks each one FAILED with a clear message,
+ * exactly like a normal in-process failure — never READY, never edited
+ * outside this same code path, and the existing `canRetry`/attempts
+ * accounting is untouched, so the normal Retry Processing button appears
+ * whenever attempts remain. Runs before every claim attempt so a single
+ * worker restart recovers on its very next poll.
+ */
+async function reapStaleProcessingJobs(prisma: PrismaLike): Promise<void> {
+  const { processingLeaseMs } = getWorkerConfig();
+  const cutoff = new Date(Date.now() - processingLeaseMs);
+
+  // Atomically flip each stale job out of PROCESSING first (bounds a race
+  // with another worker instance concurrently reaping/completing the same
+  // row) — the returned ids are then safe to fan out the FileVersion/
+  // WorkspaceFile/activity-log updates for.
+  const staleJobs = await prisma.$queryRaw<{ id: string }[]>`
+    UPDATE file_processing_jobs
+    SET status = 'FAILED', "errorCode" = 'STALE_PROCESSING', "errorMessage" = ${STALE_PROCESSING_MESSAGE}, "completedAt" = now(), "updatedAt" = now()
+    WHERE status = 'PROCESSING' AND "startedAt" < ${cutoff}
+    RETURNING id
+  `;
+  if (staleJobs.length === 0) return;
+
+  for (const { id } of staleJobs) {
+    const job = await prisma.fileProcessingJob.findUnique({
+      where: { id },
+      include: { fileVersion: { include: { file: { include: { workspace: true } } } } },
+    });
+    if (!job) continue;
+
+    const file = job.fileVersion.file;
+    const isVersionUpload = file.pendingVersionId === job.fileVersion.id;
+
+    await prisma.$transaction([
+      prisma.fileVersion.update({
+        where: { id: job.fileVersion.id },
+        data: { processingError: STALE_PROCESSING_MESSAGE, status: "FAILED" },
+      }),
+      ...(isVersionUpload ? [] : [prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "FAILED" as const } })]),
+    ]);
+    await recordWorkerActivity(prisma, {
+      action: isVersionUpload ? ActivityAction.FILE_VERSION_PROCESSING_FAILED : ActivityAction.FILE_PROCESSING_FAILED,
+      creatorId: file.workspace.creatorId,
+      workspaceId: file.workspaceId,
+      fileName: file.displayName,
+    });
+  }
+}
+
 /** Atomically claims exactly one PENDING job via `FOR UPDATE SKIP LOCKED` — see process-files.ts's doc comment for why this pattern. */
 export async function claimNextJob(prisma: PrismaLike) {
+  await reapStaleProcessingJobs(prisma);
+
   const claimed = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE file_processing_jobs
     SET status = 'PROCESSING', "startedAt" = now(), "updatedAt" = now()

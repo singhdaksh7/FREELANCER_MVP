@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
-import { isSupportedMimeType, mimeTypeToFileKind, isPreviewableFileKind, humanReadableFileKind } from "./file-kind";
+import { isSupportedMimeType, mimeTypeToFileKind, isPreviewableFileKind, humanReadableFileKind, unsupportedFileMessage } from "./file-kind";
 import { FileKind } from "@/generated/prisma/enums";
 
 describe("isSupportedMimeType", () => {
@@ -28,6 +28,30 @@ describe("isSupportedMimeType", () => {
   it("rejects HEIC/HEIF — this deployment's Sharp binary has no HEVC decoder (AVIF-only HEIF support), so accepting it would only fail later at watermark-generation time", () => {
     expect(isSupportedMimeType("image/heic")).toBe(false);
     expect(isSupportedMimeType("image/heif")).toBe(false);
+  });
+});
+
+describe("unsupportedFileMessage", () => {
+  it("gives HEIC/HEIF an explicit, actionable message naming the supported formats", () => {
+    expect(unsupportedFileMessage({ type: "image/heic", name: "IMG_1234.heic" })).toBe(
+      "This image format is not supported yet. Please upload JPEG, PNG, or WebP.",
+    );
+    expect(unsupportedFileMessage({ type: "image/heif", name: "IMG_1234.heif" })).toBe(
+      "This image format is not supported yet. Please upload JPEG, PNG, or WebP.",
+    );
+  });
+
+  it("falls back to the file extension when the browser reports no/empty MIME type for a HEIC file", () => {
+    expect(unsupportedFileMessage({ type: "", name: "IMG_1234.HEIC" })).toBe(
+      "This image format is not supported yet. Please upload JPEG, PNG, or WebP.",
+    );
+  });
+
+  it("gives every other unsupported type the generic message", () => {
+    expect(unsupportedFileMessage({ type: "video/mp4", name: "clip.mp4" })).toBe("This file type isn't supported.");
+    expect(unsupportedFileMessage({ type: "application/octet-stream", name: "data.bin" })).toBe(
+      "This file type isn't supported.",
+    );
   });
 });
 

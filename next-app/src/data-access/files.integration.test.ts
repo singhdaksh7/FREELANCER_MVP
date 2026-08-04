@@ -446,6 +446,163 @@ describe("worker processing", () => {
     const afterSecondAttempt = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: file.id } });
     expect(afterSecondAttempt.status).toBe("FAILED"); // still corrupt — expected to fail again
   });
+
+  it("one failed job does not stop the worker from claiming and completing the next PENDING job", async () => {
+    signInAs(ARJUN_ID);
+    const { createUploadSession, completeUploadSession } = await import("./uploads");
+
+    // A corrupt upload's job will fail...
+    const corruptKey = `originals/integration-test-nonblocking-corrupt-${Date.now()}.jpg`;
+    await s3StorageProvider.putObjectBuffer(corruptKey, Buffer.from("not a real jpeg"), "image/jpeg");
+    createdStorageKeys.push(corruptKey);
+    const corruptFile = await prisma.workspaceFile.create({
+      data: { workspaceId: ARJUN_WORKSPACE_ID, displayName: "nonblocking-corrupt.jpg", fileKind: "IMAGE", mimeType: "image/jpeg", sizeBytes: BigInt(16), status: "PROCESSING" },
+    });
+    createdFileIds.push(corruptFile.id);
+    const corruptVersion = await prisma.fileVersion.create({
+      data: { fileId: corruptFile.id, versionNumber: 1, originalStorageKey: corruptKey, originalChecksum: "deadbeef2", originalSizeBytes: BigInt(16), mimeType: "image/jpeg" },
+    });
+    await prisma.workspaceFile.update({ where: { id: corruptFile.id }, data: { currentVersionId: corruptVersion.id } });
+    await prisma.fileProcessingJob.create({ data: { fileVersionId: corruptVersion.id, status: "PENDING", attempts: 1 } });
+
+    // ...but a genuinely valid upload queued right after it must still process successfully.
+    const jpeg = await makeJpeg(500, 400);
+    const session = await createUploadSession(ARJUN_WORKSPACE_ID, {
+      fileName: "nonblocking-valid.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: jpeg.byteLength,
+    });
+    await putToPresignedUrl(session.uploadUrl, jpeg, "image/jpeg");
+    const { fileId: validFileId } = await completeUploadSession(session.sessionId);
+    createdFileIds.push(validFileId);
+
+    const corruptJob = await claimJobForVersion(corruptVersion.id);
+    await processJob(prisma, corruptJob);
+    const afterCorrupt = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: corruptFile.id } });
+    expect(afterCorrupt.status).toBe("FAILED");
+
+    const validFile = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: validFileId } });
+    const validJob = await claimJobForVersion(validFile.currentVersionId!);
+    await processJob(prisma, validJob);
+    const afterValid = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: validFileId }, include: { currentVersion: true } });
+    expect(afterValid.status).toBe("READY");
+    expect(afterValid.currentVersion!.previewStorageKey).not.toBeNull();
+    createdStorageKeys.push(afterValid.currentVersion!.originalStorageKey, afterValid.currentVersion!.previewStorageKey!);
+  });
+
+  it("processes an IMAGE job immediately followed by a PDF job, and a PDF job immediately followed by an IMAGE job, with no state leaking between them", async () => {
+    signInAs(ARJUN_ID);
+    const { createUploadSession, completeUploadSession } = await import("./uploads");
+
+    async function uploadAndProcess(buffer: Buffer, fileName: string, mimeType: string) {
+      const session = await createUploadSession(ARJUN_WORKSPACE_ID, { fileName, mimeType, sizeBytes: buffer.byteLength });
+      await putToPresignedUrl(session.uploadUrl, buffer, mimeType);
+      const { fileId } = await completeUploadSession(session.sessionId);
+      createdFileIds.push(fileId);
+      const created = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId } });
+      const job = await claimJobForVersion(created.currentVersionId!);
+      await processJob(prisma, job);
+      const result = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId }, include: { currentVersion: true } });
+      if (result.currentVersion?.originalStorageKey) createdStorageKeys.push(result.currentVersion.originalStorageKey);
+      if (result.currentVersion?.previewStorageKey) createdStorageKeys.push(result.currentVersion.previewStorageKey);
+      return result;
+    }
+
+    const jpeg1 = await makeJpeg(500, 400);
+    const pdf1 = await makePdf(1);
+    const jpeg2 = await makeJpeg(600, 300);
+
+    const image1 = await uploadAndProcess(jpeg1, "sequence-image-1.jpg", "image/jpeg");
+    expect(image1.status).toBe("READY");
+    expect(image1.fileKind).toBe("IMAGE");
+
+    const pdf1Result = await uploadAndProcess(pdf1, "sequence-pdf-1.pdf", "application/pdf");
+    expect(pdf1Result.status).toBe("READY");
+    expect(pdf1Result.fileKind).toBe("PDF");
+    expect(pdf1Result.currentVersion!.previewStorageKey).not.toBeNull();
+
+    const image2 = await uploadAndProcess(jpeg2, "sequence-image-2.jpg", "image/jpeg");
+    expect(image2.status).toBe("READY");
+    expect(image2.fileKind).toBe("IMAGE");
+    // The image pipeline's own output dimensions, not affected by the PDF
+    // job processed in between (no shared/leaked canvas or watermark state).
+    expect(image2.currentVersion!.width).toBe(600);
+    expect(image2.currentVersion!.height).toBe(300);
+  });
+
+  it("stale PROCESSING job recovery: a job left claimed past the processing lease is reaped to FAILED (never READY), and does not block claiming the next real job", async () => {
+    signInAs(ARJUN_ID);
+    const { createUploadSession, completeUploadSession } = await import("./uploads");
+
+    // Simulate a worker crash mid-job: a job stuck in PROCESSING with a
+    // startedAt far in the past — never touched by application code
+    // outside claimNextJob's own reap step.
+    const staleKey = `originals/integration-test-stale-${Date.now()}.jpg`;
+    await s3StorageProvider.putObjectBuffer(staleKey, await makeJpeg(400, 300), "image/jpeg");
+    createdStorageKeys.push(staleKey);
+    const staleFile = await prisma.workspaceFile.create({
+      data: { workspaceId: ARJUN_WORKSPACE_ID, displayName: "stale-processing.jpg", fileKind: "IMAGE", mimeType: "image/jpeg", sizeBytes: BigInt(1000), status: "PROCESSING" },
+    });
+    createdFileIds.push(staleFile.id);
+    const staleVersion = await prisma.fileVersion.create({
+      data: { fileId: staleFile.id, versionNumber: 1, originalStorageKey: staleKey, originalChecksum: "stalechecksum", originalSizeBytes: BigInt(1000), mimeType: "image/jpeg" },
+    });
+    await prisma.workspaceFile.update({ where: { id: staleFile.id }, data: { currentVersionId: staleVersion.id } });
+    const staleJob = await prisma.fileProcessingJob.create({
+      data: { fileVersionId: staleVersion.id, status: "PROCESSING", attempts: 1, startedAt: new Date(Date.now() - 60 * 60_000) },
+    });
+
+    // A genuinely fresh PENDING job queued after the stale one.
+    const jpeg = await makeJpeg(300, 200);
+    const session = await createUploadSession(ARJUN_WORKSPACE_ID, { fileName: "after-stale.jpg", mimeType: "image/jpeg", sizeBytes: jpeg.byteLength });
+    await putToPresignedUrl(session.uploadUrl, jpeg, "image/jpeg");
+    const { fileId: freshFileId } = await completeUploadSession(session.sessionId);
+    createdFileIds.push(freshFileId);
+
+    // claimNextJob (production's real entrypoint) must reap the stale job
+    // as a side effect and still successfully claim *some* PENDING job
+    // (there may be other leftover PENDING jobs from earlier tests in this
+    // file ahead of the fresh one in claim order — the point here is that
+    // the stale row never blocks claiming, not which job comes first).
+    const claimed = await claimNextJob(prisma);
+    expect(claimed).not.toBeNull();
+    await processJob(prisma, claimed!);
+
+    // The fresh job queued after the stale one must still be claimable and
+    // process successfully — proof the stale row didn't wedge the queue.
+    // (claimNextJob above may have already claimed it directly if no other
+    // leftover PENDING jobs preceded it in this file's shared database.)
+    const freshFileBefore = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: freshFileId } });
+    if (freshFileBefore.status !== "READY") {
+      const freshJob = await claimJobForVersion(freshFileBefore.currentVersionId!);
+      await processJob(prisma, freshJob);
+    }
+
+    const staleAfter = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: staleFile.id }, include: { currentVersion: true } });
+    expect(staleAfter.status).toBe("FAILED");
+    expect(staleAfter.currentVersion!.status).toBe("FAILED");
+    expect(staleAfter.currentVersion!.processingError).toMatch(/restarted|retry/i);
+
+    const staleJobAfter = await prisma.fileProcessingJob.findUniqueOrThrow({ where: { id: staleJob.id } });
+    expect(staleJobAfter.status).toBe("FAILED");
+    expect(staleJobAfter.errorCode).toBe("STALE_PROCESSING");
+
+    // Retry Processing must be safely available (never manually set to READY).
+    const { retryFileProcessing } = await import("./files");
+    await expect(retryFileProcessing(staleFile.id)).resolves.not.toThrow();
+    const afterRetryRequest = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: staleFile.id } });
+    expect(afterRetryRequest.status).toBe("PROCESSING");
+
+    const retriedJob = await claimJobForVersion(staleVersion.id);
+    await processJob(prisma, retriedJob);
+    const afterRetryProcessed = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: staleFile.id }, include: { currentVersion: true } });
+    expect(afterRetryProcessed.status).toBe("READY");
+    createdStorageKeys.push(afterRetryProcessed.currentVersion!.previewStorageKey!);
+
+    const freshAfter = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: freshFileId }, include: { currentVersion: true } });
+    expect(freshAfter.status).toBe("READY");
+    createdStorageKeys.push(freshAfter.currentVersion!.originalStorageKey, freshAfter.currentVersion!.previewStorageKey!);
+  });
 });
 
 describe("job claiming — atomic, no double-processing", () => {

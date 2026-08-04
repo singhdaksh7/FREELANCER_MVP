@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isSupportedMimeType } from "@/lib/file-kind";
+import { isSupportedMimeType, unsupportedFileMessage } from "@/lib/file-kind";
 import { prewarmFileWorkerAction } from "@/actions/worker-wake";
 
 export interface UploadLimits {
@@ -54,7 +54,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
       setQueue((prev) => [...prev, { id, name: file.name, sizeBytes: file.size, progress: 0, status: "validating" }]);
 
       if (!isSupportedMimeType(file.type)) {
-        updateItem(id, { status: "error", errorMessage: "This file type isn't supported." });
+        updateItem(id, { status: "error", errorMessage: unsupportedFileMessage(file) });
         return;
       }
       if (file.size > limits.maxFileSizeBytes) {

@@ -69,15 +69,32 @@ export async function generateWatermarkedPreview(
   if (!metadata.width || !metadata.height) {
     throw new UnsupportedImageError("Image has no readable dimensions.");
   }
-  if (metadata.width > limits.maxInputDimensionPx || metadata.height > limits.maxInputDimensionPx) {
+
+  // `metadata()` always reports the *raw*, pre-rotation sensor dimensions
+  // and the original EXIF orientation tag — it never reflects the queued
+  // `.rotate()` above, since that hasn't run yet. EXIF orientations 5-8
+  // mean a 90°/270° auto-rotation, which swaps width/height once the
+  // pipeline actually executes. Sizing the resize target and the
+  // watermark SVG from the raw (unswapped) dimensions works for
+  // orientations 1-4 but, for 5-8, produces a resize target with the
+  // wrong aspect ratio — Sharp's own aspect-preserving `fit: "inside"`
+  // then yields an actual output smaller than the watermark SVG in one
+  // dimension, and `.composite()` throws "Image to composite must have
+  // same dimensions or smaller." A rotated phone photo (a common,
+  // everyday case — not degenerate input) must not fail here.
+  const isSidewaysOrientation = metadata.orientation !== undefined && metadata.orientation >= 5 && metadata.orientation <= 8;
+  const naturalWidth = isSidewaysOrientation ? metadata.height : metadata.width;
+  const naturalHeight = isSidewaysOrientation ? metadata.width : metadata.height;
+
+  if (naturalWidth > limits.maxInputDimensionPx || naturalHeight > limits.maxInputDimensionPx) {
     throw new ImageTooLargeError(
-      `Image dimensions (${metadata.width}x${metadata.height}) exceed the ${limits.maxInputDimensionPx}px limit.`,
+      `Image dimensions (${naturalWidth}x${naturalHeight}) exceed the ${limits.maxInputDimensionPx}px limit.`,
     );
   }
 
-  const scale = Math.min(1, limits.maxOutputDimensionPx / Math.max(metadata.width, metadata.height));
-  const outputWidth = Math.max(1, Math.round(metadata.width * scale));
-  const outputHeight = Math.max(1, Math.round(metadata.height * scale));
+  const scale = Math.min(1, limits.maxOutputDimensionPx / Math.max(naturalWidth, naturalHeight));
+  const outputWidth = Math.max(1, Math.round(naturalWidth * scale));
+  const outputHeight = Math.max(1, Math.round(naturalHeight * scale));
 
   const watermarkSvg = buildWatermarkSvg(outputWidth, outputHeight, buildWatermarkLines(watermarkInput));
 

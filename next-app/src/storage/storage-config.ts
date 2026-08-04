@@ -168,6 +168,16 @@ export interface WorkerConfig {
    * job concurrently. Demo deployments keep this at 1 (conservative).
    */
   concurrency: number;
+  /**
+   * A job claimed (status flipped to PROCESSING) longer than this ago,
+   * with no completion, is presumed abandoned by a crashed/restarted
+   * worker process and is reaped (marked FAILED, surfacing the normal
+   * Retry Processing action) rather than blocking that file in
+   * "Processing" forever. Generous enough to comfortably cover a large
+   * phone photo or multi-page PDF under load — see job-processor.ts's
+   * reapStaleProcessingJobs.
+   */
+  processingLeaseMs: number;
 }
 
 export function getWorkerConfig(): WorkerConfig {
@@ -175,6 +185,7 @@ export function getWorkerConfig(): WorkerConfig {
     pollIntervalMs: intEnv("FILE_WORKER_POLL_INTERVAL_MS", 2000),
     maxAttempts: intEnv("FILE_WORKER_MAX_ATTEMPTS", 3),
     concurrency: intEnv("FILE_WORKER_CONCURRENCY", 1),
+    processingLeaseMs: intEnv("FILE_WORKER_PROCESSING_LEASE_MS", 5 * 60_000),
   };
 }
 

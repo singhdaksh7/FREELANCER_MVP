@@ -53,22 +53,47 @@ describe("wakeWorker", () => {
     expect(String(init.body)).not.toContain("top-secret-value");
   });
 
-  it("never throws and does not reject when the wake request fails — a failed wake must never fail the caller's mutation", async () => {
-    process.env.WORKER_WAKE_URL = "https://worker.example/wake";
-    process.env.WORKER_WAKE_SECRET = "secret";
-    global.fetch = vi.fn().mockRejectedValue(new Error("network down")) as unknown as typeof fetch;
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("never throws and does not reject when every wake attempt fails — a failed wake must never fail the caller's mutation", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.WORKER_WAKE_URL = "https://worker.example/wake";
+      process.env.WORKER_WAKE_SECRET = "secret";
+      global.fetch = vi.fn().mockRejectedValue(new Error("network down")) as unknown as typeof fetch;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    expect(() => wakeWorker("delivery")).not.toThrow();
-    // Let the rejected fetch's .catch() handler run.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(() => wakeWorker("delivery")).not.toThrow();
+      // Let the first rejected attempt's catch handler schedule + run the retry.
+      await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(errorSpy).toHaveBeenCalled();
-    const loggedText = errorSpy.mock.calls.map((c) => JSON.stringify(c)).join(" ");
-    expect(loggedText).not.toContain("secret");
+      expect(errorSpy).toHaveBeenCalled();
+      const loggedText = errorSpy.mock.calls.map((c) => JSON.stringify(c)).join(" ");
+      expect(loggedText).not.toContain("secret");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("bounds the request with a short timeout signal", () => {
+  it("retries once after a cold-start connection failure before giving up — a dropped connection during a Render free-tier cold start shouldn't be the only attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.WORKER_WAKE_URL = "https://worker.example/wake";
+      process.env.WORKER_WAKE_SECRET = "secret";
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("connection reset mid cold-start"))
+        .mockResolvedValueOnce(new Response(null, { status: 202 }));
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      wakeWorker("file");
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bounds each request with a timeout signal generous enough for a Render free-tier cold start (not a short blip)", () => {
     process.env.WORKER_WAKE_URL = "https://worker.example/wake";
     process.env.WORKER_WAKE_SECRET = "secret";
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));

@@ -42,6 +42,25 @@ export function isSupportedMimeType(mimeType: string): boolean {
   return ALLOWED_MIME_TYPES.has(mimeType) && !EXPLICITLY_REJECTED_MIME_TYPES.has(mimeType);
 }
 
+const HEIC_MIME_TYPES = new Set(["image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"]);
+
+/**
+ * Client-facing rejection message for a File that failed
+ * isSupportedMimeType — HEIC/HEIF gets its own explicit, actionable
+ * message (rather than the generic "not supported") since it's the
+ * single most common real-world rejection: the default photo format on
+ * iPhones. Browsers are inconsistent about reporting a HEIC file's MIME
+ * type (some report "", "image/heic", or "image/heif"), so this also
+ * falls back to the file extension.
+ */
+export function unsupportedFileMessage(file: { type: string; name: string }): string {
+  const isHeic = HEIC_MIME_TYPES.has(file.type) || /\.hei[cf]$/i.test(file.name);
+  if (isHeic) {
+    return "This image format is not supported yet. Please upload JPEG, PNG, or WebP.";
+  }
+  return "This file type isn't supported.";
+}
+
 export function mimeTypeToFileKind(mimeType: string): FileKind {
   if (IMAGE_MIME_TYPES.has(mimeType)) return FileKind.IMAGE;
   if (PDF_MIME_TYPES.has(mimeType)) return FileKind.PDF;
