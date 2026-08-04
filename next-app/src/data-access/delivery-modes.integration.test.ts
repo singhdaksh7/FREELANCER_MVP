@@ -163,6 +163,79 @@ describe("APPROVAL_ONLY delivery mode", () => {
     const { releaseApprovedFiles, WorkspaceNotReleasableError } = await import("./delivery-release");
     await expect(releaseApprovedFiles(fixture.workspace.id)).rejects.toBeInstanceOf(WorkspaceNotReleasableError);
   });
+
+  it("the creator UI's canReleaseFiles guard flips off as soon as a DeliveryBundle exists, independent of the worker having run yet", async () => {
+    const fixture = await createInReviewWorkspaceFixture({ title: "IT Approval-Only Release Guard", deliveryMode: "APPROVAL_ONLY" });
+
+    const { authorizeReviewToken } = await import("./review-auth");
+    const context = await authorizeReviewToken(fixture.reviewToken);
+    const { approveWorkspace } = await import("./approvals");
+    await approveWorkspace(context, { reviewerName: "Test Reviewer", termsAccepted: true });
+
+    signInAsArjun();
+    const { getOwnedWorkspaceDetail } = await import("./workspaces");
+    const beforeRelease = await getOwnedWorkspaceDetail(fixture.workspace.id);
+    expect(beforeRelease?.canReleaseFiles).toBe(true);
+
+    const { releaseApprovedFiles } = await import("./delivery-release");
+    await releaseApprovedFiles(fixture.workspace.id);
+
+    // Status is still AWAITING_CREATOR_RELEASE at this point (the worker
+    // hasn't claimed the job yet) — canReleaseFiles must already be false
+    // purely because a DeliveryBundle now exists, so the button can never
+    // be double-clicked into a second release while preparation is in
+    // flight.
+    const stillAwaiting = await prisma.workspace.findUniqueOrThrow({ where: { id: fixture.workspace.id } });
+    expect(stillAwaiting.status).toBe("AWAITING_CREATOR_RELEASE");
+    const afterRelease = await getOwnedWorkspaceDetail(fixture.workspace.id);
+    expect(afterRelease?.canReleaseFiles).toBe(false);
+
+    // Drain this workspace's own delivery job so it can't be claimed by a
+    // later test's claimNextDeliveryJob() call (the queue is a shared,
+    // FIFO, cross-workspace table within this file).
+    const job = await claimNextDeliveryJob(prisma);
+    expect(job!.deliveryBundle.workspaceId).toBe(fixture.workspace.id);
+    await processDeliveryJob(prisma, job!);
+  });
+
+  it("gates both individual-file and bundle downloads identically: blocked before FILES_UNLOCKED, both succeed only after", async () => {
+    const fixture = await createInReviewWorkspaceFixture({ title: "IT Approval-Only Download Gating", deliveryMode: "APPROVAL_ONLY" });
+
+    const { authorizeReviewToken } = await import("./review-auth");
+    const { claimDownloadSession, DownloadNotReadyError } = await import("./downloads");
+    const preApprovalContext = await authorizeReviewToken(fixture.reviewToken);
+    await expect(claimDownloadSession(preApprovalContext)).rejects.toBeInstanceOf(DownloadNotReadyError);
+
+    const { approveWorkspace } = await import("./approvals");
+    const approveContext = await authorizeReviewToken(fixture.reviewToken);
+    await approveWorkspace(approveContext, { reviewerName: "Test Reviewer", termsAccepted: true });
+
+    const postApprovalContext = await authorizeReviewToken(fixture.reviewToken);
+    await expect(claimDownloadSession(postApprovalContext)).rejects.toBeInstanceOf(DownloadNotReadyError);
+
+    signInAsArjun();
+    const { releaseApprovedFiles } = await import("./delivery-release");
+    await releaseApprovedFiles(fixture.workspace.id);
+    const job = await claimNextDeliveryJob(prisma);
+    await processDeliveryJob(prisma, job!);
+
+    const unlockedWorkspace = await prisma.workspace.findUniqueOrThrow({ where: { id: fixture.workspace.id } });
+    expect(unlockedWorkspace.status).toBe("FILES_UNLOCKED");
+
+    const claimContext = await authorizeReviewToken(fixture.reviewToken);
+    const downloadPath = await claimDownloadSession(claimContext);
+    const rawDownloadToken = downloadPath.replace("/download/", "");
+
+    const { authorizeDownloadGrant } = await import("./download-auth");
+    const downloadContext = await authorizeDownloadGrant(rawDownloadToken);
+
+    const { downloadOriginalFile, downloadBundle } = await import("./downloads");
+    const individualResult = await downloadOriginalFile(downloadContext, fixture.file.id, { userAgent: "vitest", ip: "127.0.0.1" });
+    expect(individualResult.url).toContain("http");
+
+    const bundleResult = await downloadBundle(downloadContext, { userAgent: "vitest", ip: "127.0.0.1" });
+    expect(bundleResult.url).toContain("http");
+  });
 });
 
 describe("PREVIEW_ONLY delivery mode", () => {

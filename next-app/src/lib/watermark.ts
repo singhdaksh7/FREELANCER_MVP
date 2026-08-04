@@ -7,14 +7,12 @@
 import { BRAND } from "./branding";
 
 export interface WatermarkTextInput {
-  clientName: string;
   /**
    * Phase 8 — the saved-Client CRM (with its email field) was retired;
-   * `clientName` is now a plain workspace-scoped text snapshot with no
-   * associated email. Optional so a workspace with no captured email
-   * still renders a valid watermark line.
+   * this is now a plain workspace-scoped text snapshot with no associated
+   * email.
    */
-  clientEmail?: string;
+  clientName: string;
   workspaceTitle: string;
 }
 

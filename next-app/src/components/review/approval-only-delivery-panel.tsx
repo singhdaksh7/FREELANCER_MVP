@@ -112,8 +112,12 @@ export function ApprovalOnlyDeliveryPanel({ token }: ApprovalOnlyDeliveryPanelPr
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
-  const wrap = (children: React.ReactNode) => (
-    <div className="flex flex-col items-center gap-2 rounded-md border border-white/10 bg-black/20 p-4 text-center">
+  const wrap = (children: React.ReactNode, isError = false) => (
+    <div
+      role={isError ? "alert" : "status"}
+      aria-live={isError ? "assertive" : "polite"}
+      className="flex flex-col items-center gap-2 rounded-md border border-white/10 bg-black/20 p-4 text-center"
+    >
       {children}
     </div>
   );
@@ -126,9 +130,8 @@ export function ApprovalOnlyDeliveryPanel({ token }: ApprovalOnlyDeliveryPanelPr
     return wrap(
       <>
         <Clock size={22} className="text-warning" aria-hidden="true" />
-        <p className="text-sm font-semibold text-white">
-          Approved. Waiting for the freelancer to release the final files.
-        </p>
+        <p className="text-sm font-semibold text-success">Files Approved</p>
+        <p className="text-sm font-semibold text-white">Waiting for the freelancer to release the final files.</p>
         <p className="text-xs text-slate-400">
           Original files remain locked until the freelancer explicitly releases this approved version.
         </p>
@@ -154,7 +157,7 @@ export function ApprovalOnlyDeliveryPanel({ token }: ApprovalOnlyDeliveryPanelPr
         {downloadPath && (
           <a
             href={downloadPath}
-            className="mt-1 inline-flex items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90"
+            className="mt-1 inline-flex min-h-[44px] items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           >
             Download Approved Files
           </a>
@@ -186,10 +189,11 @@ export function ApprovalOnlyDeliveryPanel({ token }: ApprovalOnlyDeliveryPanelPr
           claimedRef.current = false;
           void claimDownload();
         }}
-        className="mt-1 inline-flex items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90"
+        className="mt-1 inline-flex min-h-[44px] items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
         Try Again
       </button>
     </>,
+    true,
   );
 }

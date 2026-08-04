@@ -1,13 +1,15 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import { startTransition, useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Image as ImageIcon, File as FileIcon, FileArchive, RefreshCw, Eye, Lock, UploadCloud } from "lucide-react";
+import { Image as ImageIcon, File as FileIcon, FileArchive, RefreshCw, RotateCw, UploadCloud } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmFetchDialog } from "@/components/ui/confirm-fetch-dialog";
+import { LockedFileCard } from "@/components/ui/locked-file-card";
 import { retryFileProcessingAction, type FileActionState } from "@/actions/files";
 import { formatBytes } from "@/lib/bytes";
 import { isSupportedMimeType } from "@/lib/file-kind";
+import { fetchPreviewUrl } from "@/lib/preview-client";
 import type { WorkspaceFileListItem } from "@/data-access/files";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -21,6 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const initialRetryState: FileActionState = {};
+const MAX_AUTO_RETRIES = 1;
 
 function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileListItem; workspaceId: string }) {
   const router = useRouter();
@@ -72,7 +75,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50">
+      <label className="inline-flex min-h-[44px] w-fit cursor-pointer items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50">
         <UploadCloud size={13} aria-hidden="true" /> {uploading ? "Uploading…" : "Upload New Version"}
         <input
           ref={inputRef}
@@ -85,7 +88,11 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
           }}
         />
       </label>
-      {error && <p className="text-xs font-medium text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -114,6 +121,44 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [deletePending, setDeletePending] = useState(false);
+  const autoRefreshedRef = useRef(false);
+
+  const canPreview = file.status === "READY" && file.previewAvailable;
+
+  const loadPreview = useCallback(async () => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    const result = await fetchPreviewUrl(`/api/files`, file.id);
+    setPreviewLoading(false);
+    if (result.status !== "ready" || !result.url) {
+      setPreviewError(result.error ?? "Preview unavailable.");
+      return;
+    }
+    setPreviewUrl(result.url);
+  }, [file.id]);
+
+  // Preview loads automatically as soon as the file is READY with a
+  // protected preview available — matches the client review portal's
+  // auto-load behavior instead of requiring a manual click here too.
+  useEffect(() => {
+    autoRefreshedRef.current = false;
+    if (canPreview) void loadPreview();
+    else {
+      setPreviewUrl(null);
+      setPreviewError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadPreview already depends on file.id
+  }, [canPreview, file.currentVersionNumber]);
+
+  function handlePreviewImageError() {
+    if (autoRefreshedRef.current) {
+      setPreviewUrl(null);
+      setPreviewError("This preview could not be loaded.");
+      return;
+    }
+    autoRefreshedRef.current = true;
+    void loadPreview();
+  }
 
   async function confirmDelete() {
     const response = await fetch(`/api/workspaces/${workspaceId}/files/${file.id}/delete`, { method: "POST" });
@@ -130,21 +175,6 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
     return () => onMutationPendingChange?.(file.id, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-report when the pending flag itself changes
   }, [mutationPending, file.id]);
-
-  async function openPreview() {
-    setPreviewLoading(true);
-    setPreviewError(null);
-    try {
-      const response = await fetch(`/api/files/${file.id}/preview-url`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Preview unavailable.");
-      setPreviewUrl(data.url);
-    } catch (error) {
-      setPreviewError(error instanceof Error ? error.message : "Preview unavailable.");
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
 
   const Icon = file.fileKind === "IMAGE" ? ImageIcon : file.fileKind === "ARCHIVE" ? FileArchive : FileIcon;
   const isTransient = ["UPLOAD_PENDING", "UPLOADING", "UPLOADED", "PROCESSING"].includes(file.status);
@@ -164,39 +194,53 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
         <StatusBadge status={STATUS_LABELS[file.status] ?? file.status} data-testid="file-status" />
       </div>
 
-      {file.status === "READY" && file.previewAvailable && (
+      {canPreview && (
         <div className="flex flex-col gap-2">
-          {previewUrl ? (
+          {previewLoading && !previewUrl && (
+            <div role="status" aria-live="polite" className="flex flex-col gap-1">
+              <span className="sr-only">Loading protected preview…</span>
+              <div className="h-40 w-full animate-pulse rounded-md border border-line bg-slate-100" aria-hidden="true" />
+            </div>
+          )}
+          {previewUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- short-lived signed S3/MinIO URL, not a next/image-optimizable static asset
             <img
               src={previewUrl}
               alt={`Protected preview of ${file.displayName}`}
+              onError={handlePreviewImageError}
               className="max-h-56 w-full rounded-md border border-line bg-slate-50 object-contain"
             />
-          ) : (
-            <button
-              type="button"
-              onClick={openPreview}
-              disabled={previewLoading}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-line py-2 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Eye size={14} aria-hidden="true" /> {previewLoading ? "Loading preview…" : "View Protected Preview"}
-            </button>
           )}
-          {previewError && <p className="text-xs font-medium text-danger">{previewError}</p>}
+          {previewError && (
+            <div role="alert" className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-danger">{previewError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  autoRefreshedRef.current = false;
+                  void loadPreview();
+                }}
+                className="inline-flex min-h-[44px] w-fit items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50"
+              >
+                <RotateCw size={13} aria-hidden="true" /> Retry
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {file.status === "READY" && !file.previewAvailable && (
-        <p className="flex items-center gap-1.5 rounded-md bg-slate-50 px-3 py-2 text-xs text-ink-muted">
-          <Lock size={13} aria-hidden="true" /> Locked original — preview not available in this MVP.
-        </p>
+        <LockedFileCard message="Locked original — preview not available in this MVP." />
       )}
 
       {file.status === "FAILED" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium text-danger">{file.processingError ?? "Processing failed."}</p>
-          {retryState.error && <p className="text-xs font-medium text-danger">{retryState.error}</p>}
+          {retryState.error && (
+            <p role="alert" className="text-xs font-medium text-danger">
+              {retryState.error}
+            </p>
+          )}
           {file.canRetry ? (
             <form action={retryAction}>
               <input type="hidden" name="fileId" value={file.id} />
@@ -204,7 +248,7 @@ export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted
               <button
                 type="submit"
                 disabled={retryPending}
-                className="inline-flex items-center gap-1.5 self-start rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-[44px] items-center gap-1.5 self-start rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw size={13} aria-hidden="true" /> {retryPending ? "Retrying…" : "Retry Processing"}
               </button>

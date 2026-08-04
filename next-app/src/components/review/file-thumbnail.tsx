@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { File as FileIcon, FileArchive, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { File as FileIcon, FileArchive, RotateCw } from "lucide-react";
 import { formatBytes } from "@/lib/bytes";
+import { fetchPreviewUrl } from "@/lib/preview-client";
 import type { ReviewableFile } from "@/data-access/review-files";
 
 export interface FileThumbnailProps {
@@ -11,9 +12,12 @@ export interface FileThumbnailProps {
   previewUrlBase: string;
   active: boolean;
   onSelect: () => void;
+  onKeyDownNav?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 type ThumbState = "idle" | "loading" | "ready" | "error";
+
+const MAX_AUTO_RETRIES = 1;
 
 /**
  * One tile in the file rail: a small thumbnail (for IMAGE files, cropped
@@ -28,11 +32,23 @@ type ThumbState = "idle" | "loading" | "ready" | "error";
  * the rail — a workspace with many files shouldn't fire off that many
  * signed-URL requests up front.
  */
-export function FileThumbnail({ file, previewUrlBase, active, onSelect }: FileThumbnailProps) {
+export function FileThumbnail({ file, previewUrlBase, active, onSelect, onKeyDownNav }: FileThumbnailProps) {
   const [state, setState] = useState<ThumbState>("idle");
   const [url, setUrl] = useState<string | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const autoRetriesRef = useRef(0);
   const isImage = file.fileKind === "IMAGE";
+
+  const loadThumbnail = useCallback(async () => {
+    setState("loading");
+    const result = await fetchPreviewUrl(previewUrlBase, file.id, file.currentVersionId);
+    if (result.status !== "ready" || !result.url) {
+      setState("error");
+      return;
+    }
+    setUrl(result.url);
+    setState("ready");
+  }, [file.id, file.currentVersionId, previewUrlBase]);
 
   useEffect(() => {
     if (!isImage) return;
@@ -44,36 +60,32 @@ export function FileThumbnail({ file, previewUrlBase, active, onSelect }: FileTh
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
           observer.disconnect();
-          void loadThumbnail();
+          if (!cancelled) void loadThumbnail();
         }
       },
       { rootMargin: "200px" },
     );
     observer.observe(node);
 
-    async function loadThumbnail() {
-      if (cancelled) return;
-      setState("loading");
-      try {
-        const res = await fetch(`${previewUrlBase}/${file.id}/preview-url?versionId=${file.currentVersionId}`);
-        const data = await res.json();
-        if (cancelled) return;
-        if (!res.ok || data.locked || !data.url) {
-          setState("error");
-          return;
-        }
-        setUrl(data.url);
-        setState("ready");
-      } catch {
-        if (!cancelled) setState("error");
-      }
-    }
-
     return () => {
       cancelled = true;
       observer.disconnect();
     };
-  }, [file.id, file.currentVersionId, isImage, previewUrlBase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadThumbnail already depends on the same keys
+  }, [file.id, file.currentVersionId, isImage]);
+
+  // A previously-loaded thumbnail's presigned URL is short-lived (60s) — if
+  // the browser re-requests it (cache eviction, tab restore) after expiry,
+  // retry once with a fresh URL instead of leaving a permanently-broken
+  // image icon in the rail.
+  function handleImageError() {
+    if (autoRetriesRef.current < MAX_AUTO_RETRIES) {
+      autoRetriesRef.current += 1;
+      void loadThumbnail();
+      return;
+    }
+    setState("error");
+  }
 
   const Icon = file.fileKind === "ARCHIVE" ? FileArchive : FileIcon;
 
@@ -82,10 +94,11 @@ export function FileThumbnail({ file, previewUrlBase, active, onSelect }: FileTh
       ref={buttonRef}
       type="button"
       onClick={onSelect}
+      onKeyDown={onKeyDownNav}
       aria-pressed={active}
       data-testid="file-thumbnail"
       data-thumb-state={isImage ? state : "n/a"}
-      className={`flex shrink-0 items-center gap-2 rounded-md border-2 px-2 py-1.5 text-xs font-bold transition-colors ${
+      className={`flex min-h-[44px] shrink-0 items-center gap-2 rounded-md border-2 px-2 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-blue ${
         active ? "border-primary-blue bg-primary-blue/10 text-white" : "border-transparent bg-[#1F2937] text-white hover:bg-[#374151]"
       }`}
       title={file.displayName}
@@ -99,6 +112,7 @@ export function FileThumbnail({ file, previewUrlBase, active, onSelect }: FileTh
                 src={url}
                 alt=""
                 loading="lazy"
+                onError={handleImageError}
                 className="h-full w-full object-cover"
               />
             )}
@@ -106,8 +120,18 @@ export function FileThumbnail({ file, previewUrlBase, active, onSelect }: FileTh
               <span className="absolute inset-0 animate-pulse bg-[#4B5563]" aria-hidden="true" />
             )}
             {state === "error" && (
-              <span className="absolute inset-0 flex items-center justify-center">
-                <AlertTriangle size={12} className="text-warning" aria-hidden="true" />
+              <span
+                role="button"
+                tabIndex={-1}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  autoRetriesRef.current = 0;
+                  void loadThumbnail();
+                }}
+                className="absolute inset-0 flex items-center justify-center"
+                title="Retry loading preview"
+              >
+                <RotateCw size={12} className="text-warning" aria-hidden="true" />
               </span>
             )}
           </>

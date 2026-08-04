@@ -36,7 +36,7 @@ export function ApproveProjectModal({ token, amount, deliveryMode, files, review
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="inline-flex items-center justify-center rounded-md bg-success px-4 py-2.5 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-success px-4 py-2.5 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
         Approve Project
       </button>
@@ -131,14 +131,14 @@ export function ApproveProjectModal({ token, amount, deliveryMode, files, review
               type="button"
               onClick={() => dialogRef.current?.close()}
               disabled={pending}
-              className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-[44px] rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="rounded-md bg-success px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-[44px] rounded-md bg-success px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
             >
               {pending ? "Approving…" : "Approve Project"}
             </button>

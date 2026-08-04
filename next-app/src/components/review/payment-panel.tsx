@@ -200,8 +200,12 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
     }
   }
 
-  const wrap = (children: React.ReactNode) => (
-    <div className="flex flex-col items-center gap-2 rounded-md border border-white/10 bg-black/20 p-4 text-center">
+  const wrap = (children: React.ReactNode, isError = false) => (
+    <div
+      role={isError ? "alert" : "status"}
+      aria-live={isError ? "assertive" : "polite"}
+      className="flex flex-col items-center gap-2 rounded-md border border-white/10 bg-black/20 p-4 text-center"
+    >
       {children}
     </div>
   );
@@ -219,7 +223,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
         {downloadPath ? (
           <a
             href={downloadPath}
-            className="mt-1 inline-flex items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90"
+            className="mt-1 inline-flex min-h-[44px] items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           >
             Download Approved Files
           </a>
@@ -234,7 +238,8 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
     return wrap(
       <>
         <Loader2 size={22} className="animate-spin text-vault-blue" aria-hidden="true" />
-        <p className="text-sm font-semibold text-white">Payment received. Preparing your files…</p>
+        <p className="text-sm font-semibold text-success">Payment Received</p>
+        <p className="text-sm font-semibold text-white">Waiting for the freelancer to release the final files.</p>
         <p className="text-xs text-slate-400">Your originals are being securely packaged for download. This usually takes a moment.</p>
       </>,
     );
@@ -274,11 +279,12 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
         <button
           type="button"
           onClick={handlePay}
-          className="mt-1 inline-flex items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90"
+          className="mt-1 inline-flex min-h-[44px] items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
         >
           Try Again
         </button>
       </>,
+      true,
     );
   }
 
@@ -291,7 +297,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
         <button
           type="button"
           onClick={handlePay}
-          className="mt-1 inline-flex items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90"
+          className="mt-1 inline-flex min-h-[44px] items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
         >
           Resume Payment
         </button>
@@ -302,6 +308,8 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
   // "ready"
   return wrap(
     <>
+      <p className="text-sm font-semibold text-success">Files Approved</p>
+      <p className="text-sm font-semibold text-white">Payment Required</p>
       <div className="flex items-center gap-2">
         <ShieldCheck size={18} className="text-vault-blue" aria-hidden="true" />
         <p className="text-sm font-bold text-white">{formatINR(amount)} due</p>
@@ -313,7 +321,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
       <button
         type="button"
         onClick={handlePay}
-        className="mt-1 inline-flex items-center justify-center gap-2 rounded-md bg-success px-5 py-2.5 text-sm font-semibold text-white hover:bg-success/90"
+        className="mt-1 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-success px-5 py-2.5 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
         <Lock size={14} aria-hidden="true" /> Pay and Unlock Files
       </button>

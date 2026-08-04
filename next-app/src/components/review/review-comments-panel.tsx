@@ -42,11 +42,15 @@ function ReplyForm({ token, parentId, reviewerName }: { token: string; parentId:
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
         <Reply size={12} aria-hidden="true" /> {pending ? "Sending…" : "Reply"}
       </button>
-      {state.error && <span className="text-xs text-danger">{state.error}</span>}
+      {state.error && (
+        <span role="alert" className="text-xs text-danger">
+          {state.error}
+        </span>
+      )}
     </form>
   );
 }
@@ -226,12 +230,16 @@ export function ReviewCommentsPanel({
             <button
               type="submit"
               disabled={pending}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-vault-blue px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-md bg-vault-blue px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
             >
               <Send size={14} aria-hidden="true" /> {pending ? "Posting…" : "Post"}
             </button>
           </div>
-          {state.error && <p className="text-xs text-danger">{state.error}</p>}
+          {state.error && (
+            <p role="alert" className="text-xs text-danger">
+              {state.error}
+            </p>
+          )}
         </form>
       )}
     </div>

@@ -53,7 +53,7 @@ export function WorkspaceActions({
     <div className="flex flex-wrap items-center gap-2">
       <Link
         href={`/workspaces/${workspaceId}/edit`}
-        className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+        className="inline-flex items-center gap-1.5 rounded-md border border-line min-h-[44px] px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
         <Pencil size={14} aria-hidden="true" /> Edit Workspace
       </Link>
@@ -61,11 +61,11 @@ export function WorkspaceActions({
       {canReleaseFiles && (
         <ConfirmDialog
           triggerLabel="Approve & Release Files"
-          triggerClassName="rounded-md bg-success px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+          triggerClassName="rounded-md bg-success min-h-[44px] px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           title="Release the approved files to your client?"
           description={`This unlocks the exact files/versions approved for "${workspaceTitle}" for your client to download. No online payment is collected for approval-only projects.`}
           confirmLabel="Yes, Release Files"
-          pendingLabel="Releasing…"
+          pendingLabel="Releasing Files…"
           action={releaseFilesAction}
           initialState={{}}
           hiddenFields={{ workspaceId }}
@@ -76,7 +76,7 @@ export function WorkspaceActions({
       {canCloseForReview && (
         <ConfirmDialog
           triggerLabel="Close Project"
-          triggerClassName="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+          triggerClassName="rounded-md border border-line min-h-[44px] px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           title="Close this project for review?"
           description={`"${workspaceTitle}" will be marked closed and its master review link becomes read-only. Comment and version history remain visible.`}
           confirmLabel="Yes, Close Project"
@@ -91,7 +91,7 @@ export function WorkspaceActions({
       {canCancel && !cancelledLocally && (
         <ConfirmFetchDialog
           triggerLabel="Cancel Workspace"
-          triggerClassName="rounded-md border border-line px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+          triggerClassName="rounded-md border border-line min-h-[44px] px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           title="Cancel this workspace?"
           description={`"${workspaceTitle}" will be marked Cancelled. This does not delete any payment or activity history.`}
           confirmLabel="Yes, Cancel Workspace"
@@ -105,7 +105,7 @@ export function WorkspaceActions({
       {canDelete && (
         <ConfirmDialog
           triggerLabel="Delete Draft"
-          triggerClassName="rounded-md border border-line px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+          triggerClassName="rounded-md border border-line min-h-[44px] px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           title="Permanently delete this draft?"
           description={`"${workspaceTitle}" has no payments or activity beyond creation, so it can be deleted permanently. This cannot be undone.`}
           confirmLabel="Delete Permanently"

@@ -242,6 +242,58 @@ describe("worker processing", () => {
 
     const previewMeta = await s3StorageProvider.headObject(file.currentVersion!.previewStorageKey!);
     expect(previewMeta).not.toBeNull();
+
+    // Regression: the delivered original must never receive watermark
+    // compositing — the object at originalStorageKey stays byte-for-byte
+    // identical to what was uploaded, while the preview object is a
+    // distinct, smaller, watermarked JPEG.
+    const originalBytes = await s3StorageProvider.getObjectBuffer(file.currentVersion!.originalStorageKey);
+    expect(Buffer.compare(originalBytes, jpeg)).toBe(0);
+
+    const previewBytes = await s3StorageProvider.getObjectBuffer(file.currentVersion!.previewStorageKey!);
+    expect(Buffer.compare(previewBytes, originalBytes)).not.toBe(0);
+  });
+
+  it("generates a fresh, independently-watermarked preview for a revised (second) version of the same file", async () => {
+    signInAs(ARJUN_ID);
+    const { createUploadSession, completeUploadSession, createFileVersionUploadSession } = await import("./uploads");
+
+    const v1Jpeg = await makeJpeg(900, 600);
+    const session = await createUploadSession(ARJUN_WORKSPACE_ID, {
+      fileName: "integration-test-revision.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: v1Jpeg.byteLength,
+    });
+    await putToPresignedUrl(session.uploadUrl, v1Jpeg, "image/jpeg");
+    const { fileId } = await completeUploadSession(session.sessionId);
+    createdFileIds.push(fileId);
+
+    const v1 = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId } });
+    await processJob(prisma, await claimJobForVersion(v1.currentVersionId!));
+
+    const v2Jpeg = await makeJpeg(900, 600); // same dimensions, distinguishable only by its own watermark content/checksum
+    const v2Session = await createFileVersionUploadSession(fileId, {
+      fileName: "integration-test-revision.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: v2Jpeg.byteLength,
+    });
+    await putToPresignedUrl(v2Session.uploadUrl, v2Jpeg, "image/jpeg");
+    const { fileId: sameFileId } = await completeUploadSession(v2Session.sessionId);
+    expect(sameFileId).toBe(fileId);
+
+    const beforeV2 = await prisma.workspaceFile.findUniqueOrThrow({ where: { id: fileId } });
+    const v2VersionId = beforeV2.pendingVersionId ?? beforeV2.currentVersionId!;
+    await processJob(prisma, await claimJobForVersion(v2VersionId));
+
+    const v2 = await prisma.fileVersion.findUniqueOrThrow({ where: { id: v2VersionId } });
+    expect(v2.previewStorageKey).not.toBeNull();
+    expect(v2.previewStorageKey).not.toBe(
+      (await prisma.fileVersion.findUniqueOrThrow({ where: { id: v1.currentVersionId! } })).previewStorageKey,
+    );
+    createdStorageKeys.push(v2.originalStorageKey, v2.previewStorageKey!);
+
+    const v2OriginalBytes = await s3StorageProvider.getObjectBuffer(v2.originalStorageKey);
+    expect(Buffer.compare(v2OriginalBytes, v2Jpeg)).toBe(0);
   });
 
   it("refuses preview access to a different creator", async () => {

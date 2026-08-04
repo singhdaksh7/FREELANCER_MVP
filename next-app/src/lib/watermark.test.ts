@@ -23,7 +23,6 @@ describe("buildWatermarkLines", () => {
   it("includes the required brand / client / workspace content", () => {
     const lines = buildWatermarkLines({
       clientName: "Rohit Sharma",
-      clientEmail: "rohit@example.com",
       workspaceTitle: "Brand Identity Design",
     });
     expect(lines.join(" ")).toContain("INLAY PROTECTED PREVIEW");
@@ -43,7 +42,6 @@ describe("buildWatermarkSvg", () => {
   it("produces well-formed, escaped SVG even with a hostile client name", () => {
     const lines = buildWatermarkLines({
       clientName: `<script>alert(1)</script>`,
-      clientEmail: "attacker@example.com",
       workspaceTitle: `"><image href=x onerror=alert(1)>`,
     });
     const svg = buildWatermarkSvg(400, 300, lines);
