@@ -7,7 +7,7 @@ import { login, createWorkspaceViaWizard, uploadFileAndWaitReady, createReviewLi
 
 /**
  * APPROVAL_ONLY: client approves with no payment CTA ever rendered, and
- * only an explicit creator "Release Approved Files" action unlocks
+ * only an explicit creator "Approve & Release Files" action unlocks
  * delivery — see DELIVERY_MODES.md.
  */
 test.describe.configure({ mode: "serial" });
@@ -43,18 +43,17 @@ test("client approves and never sees a payment CTA", async ({ page, context }) =
   await approveAsClient(page);
 
   await expect(page.getByRole("button", { name: /pay and unlock files/i })).toHaveCount(0);
-  // No dedicated "waiting for creator" reassurance copy exists for
-  // APPROVAL_ONLY — the confirmation the client actually sees is the
-  // approval acknowledgement itself, which is the durable signal there's
-  // nothing further for them to do (no payment CTA, no other action).
   await expect(page.getByText(/approved/i).first()).toBeVisible();
+  // APPROVAL_ONLY's dedicated "waiting for creator" reassurance copy — see
+  // ApprovalOnlyDeliveryPanel.
+  await expect(page.getByText(/waiting for the freelancer to release the final files/i)).toBeVisible();
 });
 
 test("creator releases the approved files, unlocking delivery", async ({ page }) => {
   await login(page);
   await page.goto(workspaceUrl);
 
-  await page.getByRole("button", { name: /release approved files/i }).click();
+  await page.getByRole("button", { name: /approve & release files/i }).click();
   await expect(page.getByRole("heading", { name: /release the approved files to your client/i })).toBeVisible();
   await page.getByRole("button", { name: /yes, release files/i }).click();
 
@@ -72,4 +71,23 @@ test("creator releases the approved files, unlocking delivery", async ({ page })
       { timeout: 30_000, intervals: [1000, 2000, 3000, 5000] },
     )
     .toBeGreaterThan(0);
+});
+
+test("client sees Download Approved Files once the delivery worker finishes, and only then", async ({ page, context }) => {
+  // The prior test already polled until the workspace reached
+  // FILES_UNLOCKED, so a single page load is enough here — the client
+  // portal's own ApprovalOnlyDeliveryPanel does the status-poll ->
+  // claim-session round trip in-page (no manual reload needed); just
+  // give its async fetch chain time to settle via toBeVisible's
+  // auto-retrying wait rather than a manual reload loop, which raced
+  // against React hydration/fetch timing and produced false negatives.
+  test.setTimeout(60_000);
+  await context.clearCookies();
+  await page.goto(reviewLinkUrl);
+
+  const downloadLink = page.getByRole("link", { name: /download approved files/i });
+  await expect(downloadLink).toBeVisible({ timeout: 20_000 });
+
+  const href = await downloadLink.getAttribute("href");
+  expect(href).toMatch(/^\/download\//);
 });

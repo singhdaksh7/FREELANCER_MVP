@@ -288,13 +288,22 @@ function buildCheckoutConfig(
 }
 
 /**
- * Safe, token-authorized payment-status lookup for the client's polling UI
- * — never exposes gateway secrets/signatures/storage keys, and (Phase 7.5
- * security-gate fix) never a raw download token either: once
+ * Safe, token-authorized delivery-status lookup for the client's polling
+ * UI — never exposes gateway secrets/signatures/storage keys, and (Phase
+ * 7.5 security-gate fix) never a raw download token either: once
  * FILES_UNLOCKED/DELIVERED, the client claims a download session
  * on-demand via `POST /api/review/[token]/downloads/claim` (see
  * src/data-access/downloads.ts's `claimDownloadSession`) — nothing here
  * hands back a bookmarkable URL directly.
+ *
+ * Deliberately mode-agnostic: an APPROVAL_ONLY workspace never has a
+ * Payment row at all, so `downloadReady`/`deliveryFailed` are derived from
+ * the DownloadGrant/DeliveryBundle looked up by `workspaceId` whenever no
+ * payment exists — the exact same signal a PAYMENT_REQUIRED workspace uses
+ * (looked up by paymentId there, since a workspace can in principle have
+ * more than one Payment attempt but only one *active* grant/bundle either
+ * way). `paymentId`/`status` stay null for APPROVAL_ONLY — callers should
+ * treat those as "not a payment-gated workspace," not as an error state.
  */
 export interface ClientPaymentStatus {
   paymentId: string | null;
@@ -319,11 +328,23 @@ export async function getClientPaymentStatus(context: ReviewContext): Promise<Cl
 
   let downloadReady = false;
   let deliveryFailed = false;
-  if (payment && (workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED")) {
-    const grant = await prisma.downloadGrant.findUnique({ where: { paymentId: payment.id }, select: { id: true } });
+  if (workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED") {
+    const grant = payment
+      ? await prisma.downloadGrant.findUnique({ where: { paymentId: payment.id }, select: { id: true } })
+      : await prisma.downloadGrant.findFirst({
+          where: { workspaceId: context.workspaceId },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
     downloadReady = grant !== null;
-  } else if (payment && workspace.status === "PAID") {
-    const bundle = await prisma.deliveryBundle.findUnique({ where: { paymentId: payment.id }, select: { status: true } });
+  } else if (workspace.status === "PAID" || workspace.status === "AWAITING_CREATOR_RELEASE") {
+    const bundle = payment
+      ? await prisma.deliveryBundle.findUnique({ where: { paymentId: payment.id }, select: { status: true } })
+      : await prisma.deliveryBundle.findFirst({
+          where: { workspaceId: context.workspaceId },
+          orderBy: { createdAt: "desc" },
+          select: { status: true },
+        });
     deliveryFailed = bundle?.status === "FAILED";
   }
 

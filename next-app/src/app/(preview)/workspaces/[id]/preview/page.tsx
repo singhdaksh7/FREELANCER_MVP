@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getOwnedWorkspaceDetail } from "@/data-access/workspaces";
-import { getReviewPortalWorkspaceData } from "@/data-access/review-portal-data";
+import { getCreatorReviewPortalData } from "@/data-access/review-portal-data";
 import { getAuthenticatedCreator } from "@/data-access/auth";
 import { ReviewPortal } from "@/components/review/review-portal";
 
@@ -31,7 +31,7 @@ export default async function WorkspacePreviewPage({ params }: { params: Promise
 
   if (!workspace || !creator) notFound();
 
-  const { files, comments, activeChangeRequest, approval } = await getReviewPortalWorkspaceData(workspace.id);
+  const { files, comments, activeChangeRequest, approval } = await getCreatorReviewPortalData(workspace.id);
 
   return (
     <ReviewPortal

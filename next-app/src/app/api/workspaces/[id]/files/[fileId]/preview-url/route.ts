@@ -7,15 +7,21 @@ import { bigIntToDisplayNumber } from "@/lib/bytes";
 
 /**
  * Creator-authenticated, workspace-scoped preview access for the
- * "Preview Client View" route (/workspaces/[id]/preview) — the
- * creator-session equivalent of
- * /api/review/[token]/files/[fileId]/preview-url, resolving the exact
- * same submitted-version logic (never an unsubmitted candidate, never an
- * original) so a creator's preview shows exactly what the client would
- * see. Ownership is checked via requireOwnedWorkspace, never trusting the
- * `id`/`fileId` path params alone. A cross-workspace fileId, an
- * unsubmitted version, or a not-owned workspace all resolve through the
- * same generic 404/403 pattern used everywhere else in this app.
+ * "Preview Client View" route (/workspaces/[id]/preview). Deliberately
+ * NOT the same authorization rule as
+ * /api/review/[token]/files/[fileId]/preview-url: the public route
+ * requires `submittedAt != null` (a client must never see an unsubmitted
+ * file), but the creator's own preview must show the current READY
+ * version immediately — even before it's ever been submitted — so the
+ * creator can confirm a fresh upload looks right before sharing a link.
+ *
+ * Only ever resolves `file.currentVersionId` — never an arbitrary
+ * `versionId` and never `pendingVersionId` (an in-flight/failed
+ * re-upload candidate): if a `versionId` query param is supplied and
+ * doesn't match the current version, this 404s exactly like a
+ * cross-workspace file would, rather than exposing any other version's
+ * preview. Ownership is checked via requireOwnedWorkspace, never trusting
+ * the `id`/`fileId` path params alone.
  */
 export async function GET(
   request: NextRequest,
@@ -37,20 +43,18 @@ export async function GET(
   const file = await prisma.workspaceFile.findFirst({
     where: { id: fileId, workspaceId, deletedAt: null },
   });
-  if (!file) {
+  if (!file || !file.currentVersionId) {
     return NextResponse.json({ error: "File not found." }, { status: 404 });
+  }
+  if (versionId && versionId !== file.currentVersionId) {
+    return NextResponse.json({ error: "This version is not available for preview." }, { status: 404 });
   }
 
   const version = await prisma.fileVersion.findFirst({
-    where: {
-      fileId: file.id,
-      submittedAt: { not: null },
-      ...(versionId ? { id: versionId } : {}),
-    },
-    orderBy: { versionNumber: "desc" },
+    where: { id: file.currentVersionId, fileId: file.id },
   });
   if (!version) {
-    return NextResponse.json({ error: "This version is not available for review." }, { status: 404 });
+    return NextResponse.json({ error: "This version is not available for preview." }, { status: 404 });
   }
 
   if (!isPreviewableFileKind(file.fileKind)) {

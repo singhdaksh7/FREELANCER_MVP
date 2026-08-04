@@ -8,7 +8,7 @@ export const BRAND = {
   productName: process.env.NEXT_PUBLIC_APP_NAME || "INLAY",
   tagline:
     "Payment-gated digital file-delivery platform for freelancers and creative agencies.",
-  watermarkText: "INLAY PREVIEW",
+  watermarkText: "INLAY PROTECTED PREVIEW",
   supportName: "INLAY Support",
   adminName: "INLAY Administration",
 } as const;

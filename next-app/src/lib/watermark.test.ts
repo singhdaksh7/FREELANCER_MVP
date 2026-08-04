@@ -26,10 +26,16 @@ describe("buildWatermarkLines", () => {
       clientEmail: "rohit@example.com",
       workspaceTitle: "Brand Identity Design",
     });
-    expect(lines.join(" ")).toContain("INLAY PREVIEW");
-    expect(lines.join(" ")).toContain("Rohit Sharma");
-    expect(lines.join(" ")).toContain("rohit@example.com");
+    expect(lines.join(" ")).toContain("INLAY PROTECTED PREVIEW");
+    expect(lines.join(" ")).toContain("CLIENT: Rohit Sharma");
     expect(lines.join(" ")).toContain("Brand Identity Design");
+  });
+
+  it("falls back to a safe generic client label when clientName is empty or whitespace-only", () => {
+    const empty = buildWatermarkLines({ clientName: "", workspaceTitle: "Brand Identity Design" });
+    const whitespace = buildWatermarkLines({ clientName: "   ", workspaceTitle: "Brand Identity Design" });
+    expect(empty.join(" ")).toContain("CLIENT: Client Preview");
+    expect(whitespace.join(" ")).toContain("CLIENT: Client Preview");
   });
 });
 

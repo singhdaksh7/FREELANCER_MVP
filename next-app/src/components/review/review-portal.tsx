@@ -8,6 +8,8 @@ import { ApproveProjectModal } from "./approve-project-modal";
 import { PaymentPanel } from "./payment-panel";
 import { PinOverlay } from "./pin-overlay";
 import { AnnotationCanvas } from "./annotation-canvas";
+import { FileThumbnail } from "./file-thumbnail";
+import { ApprovalOnlyDeliveryPanel } from "./approval-only-delivery-panel";
 import { formatDateTime } from "@/lib/format-date";
 import { InlayLogo } from "@/components/brand/inlay-logo";
 import { BRAND } from "@/lib/branding";
@@ -69,6 +71,7 @@ export function ReviewPortal({
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const isReadOnly = workspace.status === "DELIVERED" || workspace.status === "CLOSED" || readOnlyPreview;
   const isPaid = workspace.status === "PAID" || workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED";
+  const previewUrlBase = readOnlyPreview ? `/api/workspaces/${workspaceId}/files` : `/api/review/${token}/files`;
   const canPin = activeFile?.fileKind === "IMAGE" && !isReadOnly;
   const visiblePins = comments.filter(
     (c) => c.workspaceFileId === activeFileId && c.fileVersionId === activeVersionId && c.pinNumber !== null,
@@ -81,9 +84,6 @@ export function ReviewPortal({
     async function loadPreview() {
       setPreview({ loading: true, url: null, locked: false, message: null, error: null });
       try {
-        const previewUrlBase = readOnlyPreview
-          ? `/api/workspaces/${workspaceId}/files`
-          : `/api/review/${token}/files`;
         const res = await fetch(`${previewUrlBase}/${activeFileId}/preview-url?versionId=${activeVersionId}`);
         const data = await res.json();
         if (cancelled) return;
@@ -105,7 +105,7 @@ export function ReviewPortal({
     return () => {
       cancelled = true;
     };
-  }, [token, activeFileId, activeVersionId, readOnlyPreview, workspaceId]);
+  }, [activeFileId, activeVersionId, previewUrlBase]);
 
   function selectFile(file: ReviewableFile) {
     setActiveFileId(file.id);
@@ -180,16 +180,13 @@ export function ReviewPortal({
             {/* File Switcher Header */}
             <div data-testid="file-switcher" className="flex gap-2 overflow-x-auto border-b border-[#1F2937] bg-[#111827] px-4 py-2 sm:px-6">
               {files.map((file) => (
-                <button
+                <FileThumbnail
                   key={file.id}
-                  type="button"
-                  onClick={() => selectFile(file)}
-                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${
-                    file.id === activeFileId ? "bg-primary-blue text-white" : "bg-[#1F2937] text-white hover:bg-[#374151]"
-                  }`}
-                >
-                  📄 {file.displayName}
-                </button>
+                  file={file}
+                  previewUrlBase={previewUrlBase}
+                  active={file.id === activeFileId}
+                  onSelect={() => selectFile(file)}
+                />
               ))}
             </div>
 
@@ -331,7 +328,9 @@ export function ReviewPortal({
                       {workspace.amount ? `₹${workspace.amount.toLocaleString()}` : "Approval Only"}
                     </div>
                     <p className="mt-2 text-[11px] text-[#9CA3AF]">
-                      🔒 Original files unlock automatically upon payment
+                      {workspace.deliveryMode === "PAYMENT_REQUIRED"
+                        ? "🔒 Original files unlock automatically upon payment"
+                        : "🔒 Original files unlock once the freelancer releases this approved version"}
                     </p>
                   </div>
                 </div>
@@ -342,7 +341,7 @@ export function ReviewPortal({
                       <p className="text-center text-xs font-bold text-success">
                         ✓ Approved{approval ? ` by ${approval.reviewerName}` : ""}
                       </p>
-                      {workspace.deliveryMode === "PAYMENT_REQUIRED" && (
+                      {workspace.deliveryMode === "PAYMENT_REQUIRED" ? (
                         <PaymentPanel
                           token={token}
                           amount={workspace.amount ?? 0}
@@ -351,6 +350,8 @@ export function ReviewPortal({
                           creatorName={workspace.creatorName}
                           clientName={workspace.client.name}
                         />
+                      ) : (
+                        !readOnlyPreview && <ApprovalOnlyDeliveryPanel token={token} />
                       )}
                     </div>
                   ) : hasOpenChangeRequest ? (

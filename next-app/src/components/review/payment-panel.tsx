@@ -31,7 +31,7 @@ interface StatusResponse {
   paymentId: string | null;
   status: string | null;
   workspaceStatus: string;
-  downloadUrl: string | null;
+  downloadReady: boolean;
   deliveryFailed: boolean;
 }
 
@@ -54,10 +54,11 @@ function phaseFromStatus(status: StatusResponse): Phase {
  */
 export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorName, clientName }: PaymentPanelProps) {
   const [phase, setPhase] = useState<Phase>("loading");
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadPath, setDownloadPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconcileTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const claimedRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -76,14 +77,30 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
     }
   }, [token]);
 
+  // Never a bookmarkable URL from the status poll itself — once
+  // `downloadReady`, claim a fresh single-use `/download/[token]` session
+  // via POST /api/review/[token]/downloads/claim (same claim endpoint the
+  // APPROVAL_ONLY delivery panel uses).
+  const claimDownload = useCallback(async () => {
+    if (claimedRef.current) return;
+    claimedRef.current = true;
+    try {
+      const res = await fetch(`/api/review/${token}/downloads/claim`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) setDownloadPath(data.downloadPath);
+    } catch {
+      claimedRef.current = false;
+    }
+  }, [token]);
+
   const applyStatus = useCallback(
     (status: StatusResponse) => {
-      if (status.downloadUrl) setDownloadUrl(status.downloadUrl);
       const next = phaseFromStatus(status);
       setPhase(next);
+      if (next === "unlocked" && status.downloadReady) void claimDownload();
       if (next === "unlocked" || next === "failed" || next === "preparation_failed") stopPolling();
     },
-    [stopPolling],
+    [stopPolling, claimDownload],
   );
 
   const startPolling = useCallback(() => {
@@ -199,13 +216,15 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
         <PackageCheck size={24} className="text-success" aria-hidden="true" />
         <p className="text-sm font-semibold text-success">Files unlocked</p>
         <p className="text-xs text-slate-400">Your originals are ready for secure download.</p>
-        {downloadUrl && (
+        {downloadPath ? (
           <a
-            href={downloadUrl}
+            href={downloadPath}
             className="mt-1 inline-flex items-center justify-center rounded-md bg-vault-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-vault-blue/90"
           >
-            Go to Your Downloads
+            Download Approved Files
           </a>
+        ) : (
+          <p className="text-xs text-slate-400">Preparing your secure download link…</p>
         )}
       </>,
     );

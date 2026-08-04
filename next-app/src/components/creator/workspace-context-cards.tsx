@@ -16,6 +16,10 @@ export function ApprovalCard({ status }: ApprovalCardProps) {
     title = "Changes Requested";
     description = "Your client submitted feedback or requested revisions on V1.";
     bgClass = "bg-danger-bg/40 border-danger/30";
+  } else if (status === "AWAITING_CREATOR_RELEASE") {
+    title = "Client Approved — Awaiting Your Release";
+    description = 'Your client approved this version. Click "Approve & Release Files" to prepare their secure download.';
+    bgClass = "bg-success-bg/40 border-success/30";
   } else if (status === "APPROVED" || status === "PAID" || status === "FILES_UNLOCKED" || status === "DELIVERED") {
     title = "Approved";
     description = "Work has been formally approved by the client.";
@@ -73,6 +77,9 @@ export function DeliveryCard({ status }: DeliveryCardProps) {
   } else if (status === "APPROVED") {
     title = "Preparing Delivery";
     explanation = "Client approved work. Files will unlock immediately upon payment.";
+  } else if (status === "AWAITING_CREATOR_RELEASE") {
+    title = "Ready to Release";
+    explanation = "Client approved the files. Release them to generate a secure download — no payment required for approval-only projects.";
   }
 
   return (
