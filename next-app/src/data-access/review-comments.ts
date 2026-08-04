@@ -75,13 +75,24 @@ interface CreateCommentInput {
   pinY?: number;
 }
 
+/** Enough safe, already-validated comment data for a caller to render the new comment/reply immediately, without a page reload or a follow-up read. */
+export interface CreatedComment {
+  id: string;
+  parentId: string | null;
+  authorType: "CREATOR" | "CLIENT";
+  authorName: string;
+  body: string;
+  status: "OPEN";
+  createdAt: string;
+}
+
 /**
  * Shared comment-creation core for both creator and client (token-holder)
  * comments — every association a caller supplies (file, version, parent)
  * is re-verified against `workspaceId` here, so neither an authenticated
  * creator nor a review token can smuggle a cross-workspace id through.
  */
-async function createComment(input: CreateCommentInput): Promise<{ id: string }> {
+async function createComment(input: CreateCommentInput): Promise<CreatedComment> {
   const body = validateBody(input.body);
   validatePinCoordinates(input.pinX, input.pinY);
 
@@ -162,7 +173,7 @@ async function createComment(input: CreateCommentInput): Promise<{ id: string }>
         pinY: pinY ?? null,
         pinNumber: pinNumber ?? null,
       },
-      select: { id: true },
+      select: { id: true, createdAt: true },
     });
 
     await recordActivity(tx, {
@@ -182,7 +193,15 @@ async function createComment(input: CreateCommentInput): Promise<{ id: string }>
       });
     }
 
-    return { id: comment.id };
+    return {
+      id: comment.id,
+      parentId: parentId ?? null,
+      authorType: input.authorType,
+      authorName: input.actorName,
+      body,
+      status: "OPEN",
+      createdAt: comment.createdAt.toISOString(),
+    };
   });
 }
 
@@ -198,7 +217,7 @@ export interface ClientCommentInput {
 }
 
 /** Client (token-holder) comment/reply. `reviewerName`/`reviewerEmail` are unverified, client-entered identity — never treated as proof. */
-export async function addClientReviewComment(context: ReviewContext, input: ClientCommentInput): Promise<{ id: string }> {
+export async function addClientReviewComment(context: ReviewContext, input: ClientCommentInput): Promise<CreatedComment> {
   if ((READ_ONLY_WORKSPACE_STATUSES as readonly string[]).includes(context.workspace.status)) {
     throw new ReviewPortalReadOnlyError();
   }
@@ -227,7 +246,7 @@ export interface CreatorCommentInput {
 }
 
 /** Authenticated creator comment/reply — requires workspace ownership. */
-export async function addCreatorReviewComment(workspaceId: string, input: CreatorCommentInput): Promise<{ id: string }> {
+export async function addCreatorReviewComment(workspaceId: string, input: CreatorCommentInput): Promise<CreatedComment> {
   const { creator } = await requireOwnedWorkspace(workspaceId);
   return createComment({
     workspaceId,
@@ -241,14 +260,23 @@ export async function addCreatorReviewComment(workspaceId: string, input: Creato
   });
 }
 
-/** Creator resolves an OPEN comment on an owned workspace. Never deletes the comment. */
-export async function resolveReviewComment(commentId: string): Promise<void> {
+/**
+ * Creator resolves an OPEN comment on an owned workspace. Never deletes the
+ * comment. `expectedWorkspaceId`, when given, additionally requires the
+ * comment to belong to that exact workspace — so a Route Handler whose URL
+ * names a workspace can't be used to resolve a comment from a *different*
+ * workspace the same creator happens to also own. Both "doesn't exist" and
+ * "exists but wrong workspace" collapse into the same CommentNotFoundError,
+ * same as OwnershipError elsewhere — never reveal which case it was.
+ */
+export async function resolveReviewComment(commentId: string, expectedWorkspaceId?: string): Promise<void> {
   const creator = await requireAuthenticatedUser();
 
   const comment = await prisma.reviewComment.findFirst({
     where: { id: commentId, workspace: { creatorId: creator.id } },
   });
   if (!comment) throw new CommentNotFoundError();
+  if (expectedWorkspaceId && comment.workspaceId !== expectedWorkspaceId) throw new CommentNotFoundError();
   if (comment.status === "RESOLVED") return; // idempotent
 
   await prisma.$transaction(async (tx) => {

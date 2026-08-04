@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import Link from "next/link";
 import { Lock, ShieldAlert, Home } from "lucide-react";
-import { BRAND } from "@/lib/branding";
+import { InlayLogo } from "@/components/brand/inlay-logo";
 
 export interface ReviewSystemStateProps {
   code: string;
@@ -14,11 +14,12 @@ export function ReviewSystemState({ code, title, message, icon: Icon }: ReviewSy
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-primary-navy px-4 text-center text-white">
       <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border border-[#16203D] bg-deep-navy p-8 shadow-2xl">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-danger-bg/20 text-danger">
+        <InlayLogo size="sm" container />
+        <div className="mt-2 flex h-14 w-14 items-center justify-center rounded-full bg-danger-bg/20 text-danger">
           <Icon size={28} aria-hidden="true" />
         </div>
         <span className="text-xs font-mono font-bold tracking-widest text-primary-blue uppercase">
-          {BRAND.productName} · {code}
+          SYSTEM STATE · {code}
         </span>
         <h1 className="text-2xl font-black text-white">{title}</h1>
         <p className="text-sm text-[#98A2B3] leading-relaxed">{message}</p>

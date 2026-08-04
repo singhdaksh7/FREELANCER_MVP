@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { cancelWorkspaceAction, deleteWorkspaceAction, releaseFilesAction, closeWorkspaceAction } from "@/actions/workspaces";
+import { ConfirmFetchDialog } from "@/components/ui/confirm-fetch-dialog";
+import { deleteWorkspaceAction, releaseFilesAction, closeWorkspaceAction } from "@/actions/workspaces";
 
 export interface WorkspaceActionsProps {
   workspaceId: string;
@@ -29,6 +31,23 @@ export function WorkspaceActions({
   canCloseForReview = false,
 }: WorkspaceActionsProps) {
   const router = useRouter();
+  // PHASE 7 Route Handler fallback: cancellation used to run through
+  // ConfirmDialog's useActionState(cancelWorkspaceAction) — a correct,
+  // 200-OK Server Action response could fail to apply to the DOM, leaving
+  // the dialog stuck on "Cancelling…" forever. `cancelledLocally` hides
+  // the Cancel button/shows the cancelled state the instant the explicit
+  // fetch() resolves, independent of whether router.refresh() below
+  // ever lands.
+  const [cancelledLocally, setCancelledLocally] = useState(false);
+
+  async function confirmCancel() {
+    const response = await fetch(`/api/workspaces/${workspaceId}/cancel`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { error: data.error ?? "Something went wrong. Please try again." };
+    setCancelledLocally(true);
+    router.refresh();
+    return {};
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -69,21 +88,19 @@ export function WorkspaceActions({
         />
       )}
 
-      {canCancel && (
-        <ConfirmDialog
+      {canCancel && !cancelledLocally && (
+        <ConfirmFetchDialog
           triggerLabel="Cancel Workspace"
           triggerClassName="rounded-md border border-line px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           title="Cancel this workspace?"
           description={`"${workspaceTitle}" will be marked Cancelled. This does not delete any payment or activity history.`}
           confirmLabel="Yes, Cancel Workspace"
           pendingLabel="Cancelling…"
-          action={cancelWorkspaceAction}
-          initialState={{}}
-          hiddenFields={{ workspaceId }}
+          onConfirm={confirmCancel}
           destructive
-          onSuccess={() => router.refresh()}
         />
       )}
+      {cancelledLocally && <span className="text-xs text-ink-muted">Workspace cancelled.</span>}
 
       {canDelete && (
         <ConfirmDialog

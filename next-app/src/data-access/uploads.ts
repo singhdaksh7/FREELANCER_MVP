@@ -216,6 +216,7 @@ export async function createFileVersionUploadSession(
 
 export interface CompleteUploadResult {
   fileId: string;
+  workspaceId: string;
 }
 
 /**
@@ -290,11 +291,11 @@ export async function completeUploadSession(sessionId: string): Promise<Complete
 
   const originalChecksum = sha256Hex(buffer);
 
-  const { fileId } = session.targetFileId
+  const { fileId, workspaceId } = session.targetFileId
     ? await completeVersionUpload(session, { originalKey, originalChecksum, sniffedMimeType, objectMeta, creator })
     : await completeNewFileUpload(session, { originalKey, originalChecksum, fileKind, sniffedMimeType, objectMeta, creator });
 
-  return { fileId };
+  return { fileId, workspaceId };
 }
 
 interface CompleteUploadCommon {
@@ -344,7 +345,7 @@ async function completeNewFileUpload(
       workspaceId: session.workspaceId,
       metadata: { fileName: session.declaredFileName },
     });
-    return { fileId: file.id };
+    return { fileId: file.id, workspaceId: session.workspaceId };
   }).then((result) => {
     wakeWorker("file");
     return result;
@@ -398,7 +399,7 @@ async function completeVersionUpload(
       workspaceId: session.workspaceId,
       metadata: { fileName: session.declaredFileName, versionNumber: nextVersionNumber },
     });
-    return { fileId: targetFileId };
+    return { fileId: targetFileId, workspaceId: session.workspaceId };
   }).then((result) => {
     wakeWorker("file");
     return result;

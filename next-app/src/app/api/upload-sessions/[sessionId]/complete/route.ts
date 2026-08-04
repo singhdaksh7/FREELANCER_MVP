@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { completeUploadSession } from "@/data-access/uploads";
 import { apiErrorResponse } from "@/lib/api-errors";
 
@@ -13,6 +14,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
   try {
     const result = await completeUploadSession(sessionId);
+    revalidatePath(`/workspaces/${result.workspaceId}`, "page");
+    revalidatePath(`/workspaces/[id]`, "page");
+    revalidatePath(`/workspaces/[id]/preview`, "page");
     return NextResponse.json(result);
   } catch (error) {
     return apiErrorResponse(error, {

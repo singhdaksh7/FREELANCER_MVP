@@ -1,11 +1,11 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Image as ImageIcon, File as FileIcon, FileArchive, RefreshCw, Eye, Lock, UploadCloud } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { retryFileProcessingAction, deleteFileAction, type FileActionState } from "@/actions/files";
+import { ConfirmFetchDialog } from "@/components/ui/confirm-fetch-dialog";
+import { retryFileProcessingAction, type FileActionState } from "@/actions/files";
 import { formatBytes } from "@/lib/bytes";
 import { isSupportedMimeType } from "@/lib/file-kind";
 import type { WorkspaceFileListItem } from "@/data-access/files";
@@ -56,7 +56,12 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
       const completeData = await completeResponse.json();
       if (!completeResponse.ok) throw new Error(completeData.error ?? "This file could not be verified.");
 
-      router.refresh();
+      // Wrapped in startTransition — same pattern as FilesTab's polling
+      // effect and useFileUploadQueue's own post-upload refresh, so a
+      // concurrent state update can't cause Next to abort this RSC fetch.
+      startTransition(() => {
+        router.refresh();
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -88,14 +93,43 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
 export interface FileCardProps {
   file: WorkspaceFileListItem;
   workspaceId: string;
+  /**
+   * Reports whether this card has a mutation (retry/delete) in flight, so
+   * FilesTab can pause its own router.refresh() polling while one is
+   * pending — otherwise a concurrent poll-triggered refresh can race the
+   * mutation's own revalidated tree and clobber it with stale data (e.g. a
+   * deleted file's card reappearing because a stale refresh response landed
+   * after the delete action's own update).
+   */
+  onMutationPendingChange?: (fileId: string, pending: boolean) => void;
+  /** Removes this file from FilesTab's local list immediately after a confirmed successful deletion — see FilesTab's `deletedFileIds`. */
+  onDeleted?: (fileId: string) => void;
 }
 
 /** One uploaded file's card: identity, status, protected preview (image-only), version history, retry/remove/upload-new-version actions. */
-export function FileCard({ file, workspaceId }: FileCardProps) {
+export function FileCard({ file, workspaceId, onMutationPendingChange, onDeleted }: FileCardProps) {
+  const router = useRouter();
   const [retryState, retryAction, retryPending] = useActionState(retryFileProcessingAction, initialRetryState);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+
+  async function confirmDelete() {
+    const response = await fetch(`/api/workspaces/${workspaceId}/files/${file.id}/delete`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { error: data.error ?? "Something went wrong. Please try again." };
+    onDeleted?.(file.id);
+    router.refresh();
+    return {};
+  }
+
+  const mutationPending = retryPending || deletePending;
+  useEffect(() => {
+    onMutationPendingChange?.(file.id, mutationPending);
+    return () => onMutationPendingChange?.(file.id, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-report when the pending flag itself changes
+  }, [mutationPending, file.id]);
 
   async function openPreview() {
     setPreviewLoading(true);
@@ -127,7 +161,7 @@ export function FileCard({ file, workspaceId }: FileCardProps) {
             <p className="text-xs text-ink-muted">{formatBytes(file.sizeBytes)}</p>
           </div>
         </div>
-        <StatusBadge status={STATUS_LABELS[file.status] ?? file.status} />
+        <StatusBadge status={STATUS_LABELS[file.status] ?? file.status} data-testid="file-status" />
       </div>
 
       {file.status === "READY" && file.previewAvailable && (
@@ -216,16 +250,15 @@ export function FileCard({ file, workspaceId }: FileCardProps) {
 
       <div className="flex justify-end">
         {file.canDelete ? (
-          <ConfirmDialog
+          <ConfirmFetchDialog
             triggerLabel="Remove"
             triggerClassName="rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
             title={`Remove ${file.displayName}?`}
             description="This permanently removes the file from this workspace."
             confirmLabel="Remove File"
             pendingLabel="Removing…"
-            action={deleteFileAction}
-            initialState={{}}
-            hiddenFields={{ fileId: file.id, workspaceId }}
+            onConfirm={confirmDelete}
+            onPendingChange={setDeletePending}
             destructive
           />
         ) : (

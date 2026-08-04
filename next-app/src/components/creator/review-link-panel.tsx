@@ -1,17 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Share2, Copy, Check, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  createReviewLinkAction,
-  regenerateReviewLinkAction,
-  revokeReviewLinkAction,
-  type ReviewLinkActionState,
-} from "@/actions/review-links";
+import { ConfirmFetchDialog } from "@/components/ui/confirm-fetch-dialog";
+import { type ReviewLinkActionState } from "@/actions/review-links";
 import { formatDate } from "@/lib/format-date";
 
 export interface ReviewLinkPanelProps {
@@ -94,74 +89,94 @@ function OneTimeLinkReveal({ rawLink, expiresAt }: { rawLink: string; expiresAt?
   );
 }
 
-function RegenerateDialog({ workspaceId, workspaceTitle }: { workspaceId: string; workspaceTitle: string }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const [state, formAction, pending] = useActionState(regenerateReviewLinkAction, INITIAL_STATE);
-  const titleId = useId();
-
-  useEffect(() => {
-    if (state.rawLink) dialogRef.current?.close();
-  }, [state]);
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => dialogRef.current?.showModal()}
-        className="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-      >
-        Regenerate Link
-      </button>
-      <dialog
-        ref={dialogRef}
-        aria-labelledby={titleId}
-        className="w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface-card p-0 shadow-lg backdrop:bg-black/95"
-      >
-        <form action={formAction} className="flex flex-col gap-4 p-6">
-          <input type="hidden" name="workspaceId" value={workspaceId} />
-          <div>
-            <h2 id={titleId} className="text-base font-bold text-ink">
-              Regenerate the secure review link?
-            </h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              The current link for &quot;{workspaceTitle}&quot; will stop working immediately.
-            </p>
-          </div>
-          {state.error && (
-            <p role="alert" className="rounded-md bg-danger-bg px-3.5 py-2.5 text-sm font-medium text-danger">
-              {state.error}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => dialogRef.current?.close()}
-              disabled={pending}
-              className="rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Regenerating…" : "Regenerate"}
-            </Button>
-          </div>
-        </form>
-      </dialog>
-      {state.rawLink && <OneTimeLinkReveal rawLink={state.rawLink} expiresAt={state.expiresAt} />}
-    </>
-  );
-}
-
 /** Creator controls for the secure client review link: create / copy / revoke / regenerate. Replaces the Phase 4/5 disabled "Share Secure Link" placeholder. */
 export function ReviewLinkPanel({ workspaceId, workspaceTitle, reviewLink }: ReviewLinkPanelProps) {
   const router = useRouter();
-  const [createState, createAction, creating] = useActionState(createReviewLinkAction, INITIAL_STATE);
+  // PHASE 7 Route Handler fallback: creation used to run through
+  // useActionState bound to createReviewLinkAction, but the confirmed
+  // defect is that a correct, 200-OK Server Action response can fail to
+  // apply to the DOM, leaving the button stuck on "Creating…" forever even
+  // though the ReviewLink row was created. An explicit fetch() resolves in
+  // the browser regardless of RSC-merge reliability, so `creating`
+  // deterministically clears.
+  const [creating, startCreateTransition] = useTransition();
+  const [createState, setCreateState] = useState<ReviewLinkActionState>(INITIAL_STATE);
+  const creatingRef = useRef(false);
 
-  const revealedLink = createState.rawLink;
-  const revealedExpiry = createState.expiresAt;
+  function handleCreate() {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    startCreateTransition(async () => {
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceId}/review-link`, { method: "POST" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setCreateState({ error: data.error ?? "Something went wrong. Please try again." });
+          return;
+        }
+        setCreateState({ success: "Secure review link created.", rawLink: data.rawLink, expiresAt: data.expiresAt });
+        router.refresh();
+      } finally {
+        creatingRef.current = false;
+      }
+    });
+  }
+
+  // PHASE 7 Route Handler fallback: revoke/regenerate used to run through
+  // ConfirmDialog's useActionState — same confirmed defect as create above.
+  // `locallyRevoked` hides the active-link controls and reveals Create
+  // Secure Review Link the instant the explicit fetch() resolves,
+  // independent of whether the subsequent router.refresh() below ever
+  // lands. It's reset whenever the server-provided reviewLink prop itself
+  // changes (a real refresh landing, or a brand-new link created later) —
+  // adjusted during render (React's "you might not need an effect" pattern)
+  // rather than in a useEffect, so it never permanently overrides fresh
+  // server state without an extra render's worth of stale UI.
+  const reviewLinkKey = `${reviewLink?.tokenPrefix ?? ""}:${reviewLink?.status ?? ""}`;
+  const [locallyRevoked, setLocallyRevoked] = useState(false);
+  const [lastSeenReviewLinkKey, setLastSeenReviewLinkKey] = useState(reviewLinkKey);
+  const [regeneratedLink, setRegeneratedLink] = useState<{ rawLink: string; expiresAt: string | null } | null>(null);
+
+  if (reviewLinkKey !== lastSeenReviewLinkKey) {
+    setLastSeenReviewLinkKey(reviewLinkKey);
+    setLocallyRevoked(false);
+  }
+
+  async function confirmRevoke() {
+    const response = await fetch(`/api/workspaces/${workspaceId}/review-link/revoke`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { error: data.error ?? "Something went wrong. Please try again." };
+    setLocallyRevoked(true);
+    setRegeneratedLink(null);
+    // Best-effort reconciliation only — the local state above is already
+    // the durable success signal, so a refresh failure must never leave
+    // this dialog's pending state stuck.
+    try {
+      router.refresh();
+    } catch {
+      // ignored
+    }
+    return {};
+  }
+
+  async function confirmRegenerate() {
+    const response = await fetch(`/api/workspaces/${workspaceId}/review-link/regenerate`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { error: data.error ?? "Something went wrong. Please try again." };
+    setRegeneratedLink({ rawLink: data.rawLink, expiresAt: data.expiresAt ?? null });
+    try {
+      router.refresh();
+    } catch {
+      // ignored
+    }
+    return {};
+  }
+
+  const revealedLink = regeneratedLink?.rawLink ?? createState.rawLink;
+  const revealedExpiry = regeneratedLink ? regeneratedLink.expiresAt : createState.expiresAt;
   const error = createState.error;
 
-  const isUsable = reviewLink && reviewLink.status === "ACTIVE";
+  const isUsable = !locallyRevoked && reviewLink && reviewLink.status === "ACTIVE";
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-card p-4">
@@ -187,7 +202,7 @@ export function ReviewLinkPanel({ workspaceId, workspaceTitle, reviewLink }: Rev
 
       {revealedLink ? (
         <OneTimeLinkReveal rawLink={revealedLink} expiresAt={revealedExpiry} />
-      ) : reviewLink ? (
+      ) : reviewLink && !locallyRevoked ? (
         <div className="flex flex-col gap-1 text-xs text-ink-muted">
           <span>
             Status: <span className="font-semibold text-ink">{reviewLink.status}</span> (token {reviewLink.tokenPrefix}
@@ -214,29 +229,31 @@ export function ReviewLinkPanel({ workspaceId, workspaceTitle, reviewLink }: Rev
 
       <div className="flex flex-wrap gap-2">
         {!isUsable && (
-          <form action={createAction}>
-            <input type="hidden" name="workspaceId" value={workspaceId} />
-            <Button type="submit" disabled={creating}>
-              {creating ? "Creating…" : "Create Secure Review Link"}
-            </Button>
-          </form>
+          <Button type="button" onClick={handleCreate} disabled={creating}>
+            {creating ? "Creating…" : "Create Secure Review Link"}
+          </Button>
         )}
 
         {isUsable && (
           <>
-            <RegenerateDialog workspaceId={workspaceId} workspaceTitle={workspaceTitle} />
-            <ConfirmDialog
+            <ConfirmFetchDialog
+              triggerLabel="Regenerate Link"
+              triggerClassName="inline-flex items-center gap-1.5 rounded-md border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
+              title="Regenerate the secure review link?"
+              description={`The current link for "${workspaceTitle}" will stop working immediately.`}
+              confirmLabel="Regenerate"
+              pendingLabel="Regenerating…"
+              onConfirm={confirmRegenerate}
+            />
+            <ConfirmFetchDialog
               triggerLabel="Revoke Link"
               triggerClassName="rounded-md border border-line px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
               title="Revoke this review link?"
               description={`Anyone holding the current link for "${workspaceTitle}" will immediately lose access.`}
               confirmLabel="Revoke Link"
               pendingLabel="Revoking…"
-              action={revokeReviewLinkAction}
-              initialState={{}}
-              hiddenFields={{ workspaceId }}
+              onConfirm={confirmRevoke}
               destructive
-              onSuccess={() => router.refresh()}
             />
           </>
         )}

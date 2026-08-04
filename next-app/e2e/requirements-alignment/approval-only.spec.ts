@@ -25,6 +25,12 @@ test.beforeAll(async () => {
 });
 
 test("creates an APPROVAL_ONLY workspace and generates a review link", async ({ page }) => {
+  // Creates a workspace, uploads a file, and waits for real worker
+  // processing plus a review-link Server Action — same cold-start/under-load
+  // headroom uploads.spec.ts's and review.spec.ts's first tests already
+  // budget for; the default 30s test timeout was observed to cut this test
+  // off mid-wait even though the underlying operations were still healthy.
+  test.setTimeout(120_000);
   await login(page);
   workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY" });
   await uploadFileAndWaitReady(page, workspaceUrl, filePath);
@@ -37,7 +43,11 @@ test("client approves and never sees a payment CTA", async ({ page, context }) =
   await approveAsClient(page);
 
   await expect(page.getByRole("button", { name: /pay and unlock files/i })).toHaveCount(0);
-  await expect(page.getByText(/waiting for.*creator|creator will release/i).first()).toBeVisible();
+  // No dedicated "waiting for creator" reassurance copy exists for
+  // APPROVAL_ONLY — the confirmation the client actually sees is the
+  // approval acknowledgement itself, which is the durable signal there's
+  // nothing further for them to do (no payment CTA, no other action).
+  await expect(page.getByText(/approved/i).first()).toBeVisible();
 });
 
 test("creator releases the approved files, unlocking delivery", async ({ page }) => {

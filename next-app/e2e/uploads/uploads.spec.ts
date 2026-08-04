@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { login } from "../mutations/helpers";
+import { waitForFileStatus } from "../helpers/wait-for-file-status";
 
 /**
  * Functional coverage of real uploads/processing/retry/delete against the
@@ -64,10 +65,23 @@ test.beforeAll(async () => {
 });
 
 test.beforeEach(async ({ page }) => {
+  page.on("console", (msg) => console.log(`BROWSER: ${msg.text()}`));
   await login(page);
 });
 
-test("uploads a valid image and it reaches the Ready/preview-available state", async ({ page }) => {
+// This is the ONE dedicated test in the suite that proves the app's own
+// automatic UI polling (FilesTab's router.refresh() interval) actually
+// carries a file from Processing to Ready with no manual page.reload() —
+// see e2e/helpers/wait-for-file-status.ts's doc comment and Phase 6's
+// reliability plan. Every other test that needs a file to reach a status
+// uses that shared helper (which is allowed to fall back to reload()); this
+// one deliberately never reloads, so a regression in FilesTab's own polling
+// shows up here specifically rather than being masked by a reload fallback.
+test("uploads a valid image and the UI's own automatic polling carries it to Ready with no manual reload", async ({ page }) => {
+  // Raised alongside the inner assertion's own timeout below — the default
+  // 30s test timeout (playwright.config.ts) would otherwise kill the test
+  // before that wait ever gets to finish.
+  test.setTimeout(120_000);
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^files$/i }).click();
 
@@ -78,8 +92,24 @@ test("uploads a valid image and it reaches the Ready/preview-available state", a
   // (running alongside this test run) picks up the job.
   await expect(page.getByText(`valid-${RUN_ID}.jpg`)).toBeVisible();
   const card = page.locator(`[data-testid="file-card"][data-file-name="valid-${RUN_ID}.jpg"]`);
-  await expect(card.getByText("Ready", { exact: true })).toBeVisible({ timeout: 20_000 });
-  await expect(card.getByRole("button", { name: /view protected preview/i })).toBeVisible();
+  try {
+    // Generous timeout: this is the first request this suite makes against
+    // the freshly-started `next start` production server (see
+    // playwright.config.ts's webServer) — first-hit route compilation plus
+    // the file-processing worker's own cold start can together exceed 20s
+    // under load, even though the worker's own claim-to-completion time is
+    // consistently well under a second once actually running (see the
+    // `[file-worker]` timing logs in job-processor.ts). Later tests in this
+    // file never need this much headroom because the server is warm by then.
+    // No page.reload() anywhere in this test — see the doc comment above.
+    await expect(card.getByTestId("file-status")).toHaveText("Ready", { timeout: 90_000 });
+    await expect(card.getByRole("button", { name: /view protected preview/i })).toBeVisible();
+  } catch (e) {
+    console.log("DUMPING DOM:");
+    const html = await page.evaluate(() => document.body.innerHTML);
+    console.log(html);
+    throw e;
+  }
 });
 
 test("opens the protected preview", async ({ page }) => {
@@ -105,8 +135,7 @@ test("a direct refresh of the workspace details page preserves the file's Ready 
   await page.reload();
   await page.getByRole("tab", { name: /^files$/i }).click();
 
-  const card = page.locator(`[data-testid="file-card"][data-file-name="valid-${RUN_ID}.jpg"]`);
-  await expect(card.getByText("Ready", { exact: true })).toBeVisible();
+  await waitForFileStatus(page, { fileName: `valid-${RUN_ID}.jpg`, expectedStatus: "Ready", timeoutMs: 20_000 }, test.info());
 });
 
 test("rejects an unsupported file type without creating a processed file", async ({ page }) => {
@@ -130,6 +159,9 @@ test("rejects a file over the configured size limit", async ({ page }) => {
 });
 
 test("a file that fails processing shows the Failed state with a retry action", async ({ page }) => {
+  // See the "uploads a valid image" test's comment on why this needs more
+  // than the default 30s test timeout in this environment.
+  test.setTimeout(120_000);
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^files$/i }).click();
 
@@ -137,11 +169,12 @@ test("a file that fails processing shows the Failed state with a retry action", 
   await expect(page.getByText(`oversized-dimensions-${RUN_ID}.jpg`)).toBeVisible();
 
   const card = page.locator(`[data-testid="file-card"][data-file-name="oversized-dimensions-${RUN_ID}.jpg"]`);
-  await expect(card.getByText("Failed", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await waitForFileStatus(page, { fileName: `oversized-dimensions-${RUN_ID}.jpg`, expectedStatus: "Failed", reselectFilesTab: true }, test.info());
   await expect(card.getByRole("button", { name: /retry processing/i })).toBeVisible();
 });
 
 test("retrying a failed file re-queues it for processing", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^files$/i }).click();
 
@@ -151,10 +184,11 @@ test("retrying a failed file re-queues it for processing", async ({ page }) => {
   // Still oversized, so it genuinely fails again — this asserts the retry
   // mechanism itself works (a fresh attempt happens), not that the
   // outcome changes.
-  await expect(card.getByText("Failed", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await waitForFileStatus(page, { fileName: `oversized-dimensions-${RUN_ID}.jpg`, expectedStatus: "Failed", reselectFilesTab: true }, test.info());
 });
 
 test("removes an eligible file after confirmation", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^files$/i }).click();
 
@@ -163,7 +197,27 @@ test("removes an eligible file after confirmation", async ({ page }) => {
   await expect(page.getByRole("heading", { name: new RegExp(`remove oversized-dimensions-${RUN_ID}\\.jpg\\?`, "i") })).toBeVisible();
   await page.getByRole("button", { name: /remove file/i }).click();
 
-  await expect(page.getByText(`oversized-dimensions-${RUN_ID}.jpg`)).toHaveCount(0);
+  // Scoped to the file card itself (not a bare text match): the confirm
+  // dialog's own now-closed heading ("Remove <name>?") still contains this
+  // filename as a substring and never leaves the DOM, so a plain text-count
+  // assertion would never reliably reach 0.
+  //
+  // KNOWN DEFECT (Phase 6 investigation, not a test flake): the delete
+  // Server Action completes correctly and quickly — the DB row is marked
+  // DELETED and the action's own RSC response correctly omits this file
+  // from the live file list within ~200ms (confirmed via trace inspection:
+  // the deleted filename appears only in Activity-log entries, never in the
+  // file list, in that response) — yet this card was observed to remain in
+  // the DOM under a 60s/121-poll wait with zero sign of ever updating. The
+  // same shape (a ConfirmDialog-driven mutation whose own trigger/target
+  // element should disappear) also affects "Cancel Workspace" under a tight
+  // timeout, but that one DOES resolve once given a generous timeout — this
+  // one does not, at any timeout tried, which rules out "just slow" and
+  // points to a genuine client-side reconciliation defect scoped to
+  // FileCard/FilesTab specifically. Needs dedicated engineering
+  // investigation beyond this reliability-focused phase's scope; left
+  // failing (not skipped/weakened) so it isn't silently masked.
+  await expect(card).toHaveCount(0, { timeout: 20_000 });
 });
 
 test("the upload dropzone works at a mobile viewport", async ({ page }) => {

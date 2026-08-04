@@ -8,15 +8,19 @@ import { createWorkspaceViaWizard, uploadFileAndWaitReady, createReviewLink, log
 
 /** Creator Comments tab filtered to a single file version — version-specific conversations stay visually distinct. */
 test("version-specific conversation visual baseline", async ({ page, context }, testInfo) => {
+  // Fixed (no Date.now()) — the file name is rendered on screen as the
+  // selected <select> option text in the captured screenshot area (see
+  // approval-only-portal.spec.ts's equivalent comment); a brand-new,
+  // uniquely-id'd workspace is created regardless of title text.
   const dir = makeFixturesDir();
-  const fileName = `visual-version-conv-${testInfo.project.name}-${Date.now()}.jpg`;
+  const fileName = `visual-version-conv-${testInfo.project.name}.jpg`;
   const pathV1 = join(dir, fileName);
   writeFileSync(pathV1, await sharp({ create: { width: 700, height: 500, channels: 3, background: { r: 20, g: 40, b: 60 } } }).jpeg().toBuffer());
   const pathV2 = join(dir, `v2-${fileName}`);
   writeFileSync(pathV2, await sharp({ create: { width: 900, height: 650, channels: 3, background: { r: 150, g: 30, b: 30 } } }).jpeg().toBuffer());
 
   const workspaceUrl = await createWorkspaceViaWizard(page, {
-    title: `Visual Version Conversation ${testInfo.project.name} ${Date.now()}`,
+    title: `Visual Version Conversation ${testInfo.project.name}`,
     amount: "5000",
   });
   await uploadFileAndWaitReady(page, workspaceUrl, pathV1);

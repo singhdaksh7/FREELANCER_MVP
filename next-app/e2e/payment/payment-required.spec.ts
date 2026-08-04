@@ -32,6 +32,10 @@ test.beforeAll(async () => {
 });
 
 test("creates a PAYMENT_REQUIRED workspace with an amount and generates a review link", async ({ page }) => {
+  // See e2e/requirements-alignment/approval-only.spec.ts's equivalent
+  // comment: real upload/worker processing plus a review-link Server
+  // Action needs more than the default 30s test timeout.
+  test.setTimeout(120_000);
   await login(page);
   workspaceUrl = await createWorkspaceViaWizard(page, {
     title: WORKSPACE_TITLE,

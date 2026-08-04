@@ -9,6 +9,7 @@ import { PaymentPanel } from "./payment-panel";
 import { PinOverlay } from "./pin-overlay";
 import { AnnotationCanvas } from "./annotation-canvas";
 import { formatDateTime } from "@/lib/format-date";
+import { InlayLogo } from "@/components/brand/inlay-logo";
 import { BRAND } from "@/lib/branding";
 import type { ReviewableFile } from "@/data-access/review-files";
 import type { ReviewCommentThreadItem } from "@/data-access/review-comments";
@@ -130,9 +131,7 @@ export function ReviewPortal({
       {/* Header */}
       <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#1F2937] bg-[#111827] px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-blue text-white">
-            <Lock size={18} aria-hidden="true" />
-          </div>
+          <InlayLogo container size="md" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <p className="truncate text-sm font-black text-white">{workspace.title}</p>
@@ -179,7 +178,7 @@ export function ReviewPortal({
           {/* Left Canvas Panel */}
           <div className="flex flex-1 flex-col bg-[#030712]">
             {/* File Switcher Header */}
-            <div className="flex gap-2 overflow-x-auto border-b border-[#1F2937] bg-[#111827] px-4 py-2 sm:px-6">
+            <div data-testid="file-switcher" className="flex gap-2 overflow-x-auto border-b border-[#1F2937] bg-[#111827] px-4 py-2 sm:px-6">
               {files.map((file) => (
                 <button
                   key={file.id}
@@ -353,6 +352,10 @@ export function ReviewPortal({
                           clientName={workspace.client.name}
                         />
                       )}
+                    </div>
+                  ) : hasOpenChangeRequest ? (
+                    <div role="status" className="rounded-md border border-warning/40 bg-warning-bg/10 px-3.5 py-2.5 text-center text-xs font-semibold text-warning">
+                      Change request submitted. The creator has been notified and will upload a revised version for your review.
                     </div>
                   ) : (
                     <>

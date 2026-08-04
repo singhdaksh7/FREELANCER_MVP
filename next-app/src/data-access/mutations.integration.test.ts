@@ -193,3 +193,128 @@ describe("workspace mutations", () => {
     expect(stored.status).toBe("PAID");
   });
 });
+
+describe("draft-first workspace creation (create-workspace wizard)", () => {
+  it("creates a DRAFT workspace from just Step 1's fields, with sane placeholder defaults for the rest", async () => {
+    signInAs(ARJUN_ID);
+    const { createWorkspaceDraft } = await import("./workspaces");
+
+    const { id } = await createWorkspaceDraft({
+      title: `IntegrationTest Draft ${RUN_ID}`,
+      clientName: `IntegrationTest Draft Client ${RUN_ID}`,
+      description: undefined,
+      dueDate: undefined,
+    });
+    createdWorkspaceIds.push(id);
+
+    const stored = await prisma.workspace.findUniqueOrThrow({ where: { id } });
+    expect(stored.status).toBe("DRAFT");
+    expect(stored.creatorId).toBe(ARJUN_ID);
+    expect(stored.amount).toBeNull();
+    expect(stored.deliveryMode).toBe("PAYMENT_REQUIRED");
+  });
+
+  it("resolves an owned draft for wizard resumption, but never a foreign creator's draft or a non-DRAFT workspace", async () => {
+    const { createWorkspaceDraft, getOwnedDraftWorkspace } = await import("./workspaces");
+
+    signInAs(ARJUN_ID);
+    const { id } = await createWorkspaceDraft({
+      title: `IntegrationTest Resume ${RUN_ID}`,
+      clientName: `IntegrationTest Resume Client ${RUN_ID}`,
+      description: undefined,
+      dueDate: undefined,
+    });
+    createdWorkspaceIds.push(id);
+
+    const ownResult = await getOwnedDraftWorkspace(id);
+    expect(ownResult?.id).toBe(id);
+
+    signInAs(MEERA_ID);
+    const foreignResult = await getOwnedDraftWorkspace(id);
+    expect(foreignResult).toBeNull();
+
+    // A real, but non-DRAFT, workspace must also resolve to null (never
+    // leaked to the wizard as if it were an editable draft).
+    signInAs(ARJUN_ID);
+    const nonDraftResult = await getOwnedDraftWorkspace("ws_product_pkg");
+    expect(nonDraftResult).toBeNull();
+
+    // A completely nonexistent id must be indistinguishable from either case above.
+    const missingResult = await getOwnedDraftWorkspace("does-not-exist-at-all");
+    expect(missingResult).toBeNull();
+  });
+
+  it("finalizes an existing draft in place — never inserting a second workspace — and stays idempotent across a duplicate submission", async () => {
+    signInAs(ARJUN_ID);
+    const { createWorkspaceDraft, finalizeWorkspaceDraft } = await import("./workspaces");
+
+    const { id } = await createWorkspaceDraft({
+      title: `IntegrationTest Finalize ${RUN_ID}`,
+      clientName: `IntegrationTest Finalize Client ${RUN_ID}`,
+      description: undefined,
+      dueDate: undefined,
+    });
+    createdWorkspaceIds.push(id);
+
+    const workspaceCountBefore = await prisma.workspace.count();
+
+    const finalizeInput = {
+      title: `IntegrationTest Finalize ${RUN_ID}`,
+      clientName: `IntegrationTest Finalize Client ${RUN_ID}`,
+      currency: "INR" as const,
+      deliveryMode: "PAYMENT_REQUIRED" as const,
+      amount: "9999.00",
+      description: undefined,
+      dueDate: undefined,
+      watermarkText: "CONFIDENTIAL",
+    };
+
+    const first = await finalizeWorkspaceDraft(id, finalizeInput);
+    expect(first.id).toBe(id);
+
+    // A duplicate submission (double-click on "Create Workspace") must
+    // update the same row again, never create a second workspace.
+    const second = await finalizeWorkspaceDraft(id, finalizeInput);
+    expect(second.id).toBe(id);
+
+    const workspaceCountAfter = await prisma.workspace.count();
+    expect(workspaceCountAfter).toBe(workspaceCountBefore);
+
+    const stored = await prisma.workspace.findUniqueOrThrow({ where: { id } });
+    expect(stored.status).toBe("DRAFT");
+    expect(stored.amount?.toString()).toBe("9999");
+    expect(stored.watermarkText).toBe("CONFIDENTIAL");
+  });
+
+  it("refuses to finalize a draft that has moved past DRAFT, and refuses a different creator's draft", async () => {
+    signInAs(ARJUN_ID);
+    const { createWorkspaceDraft, finalizeWorkspaceDraft, cancelOwnedWorkspace, WorkspaceNotDraftError } =
+      await import("./workspaces");
+    const { OwnershipError } = await import("./authorization");
+
+    const { id } = await createWorkspaceDraft({
+      title: `IntegrationTest StaleDraft ${RUN_ID}`,
+      clientName: `IntegrationTest StaleDraft Client ${RUN_ID}`,
+      description: undefined,
+      dueDate: undefined,
+    });
+    createdWorkspaceIds.push(id);
+    await cancelOwnedWorkspace(id);
+
+    const finalizeInput = {
+      title: "Should not apply",
+      clientName: "Should not apply",
+      currency: "INR" as const,
+      deliveryMode: "PAYMENT_REQUIRED" as const,
+      amount: "1.00",
+      description: undefined,
+      dueDate: undefined,
+      watermarkText: undefined,
+    };
+
+    await expect(finalizeWorkspaceDraft(id, finalizeInput)).rejects.toBeInstanceOf(WorkspaceNotDraftError);
+
+    signInAs(MEERA_ID);
+    await expect(finalizeWorkspaceDraft(id, finalizeInput)).rejects.toBeInstanceOf(OwnershipError);
+  });
+});

@@ -6,7 +6,7 @@ import { recordActivity } from "./activity";
 import { ActivityAction, formatActivityLabel } from "@/lib/activity-log";
 import { toDecimal, toDisplayNumber, toDisplayNumberOrNull } from "@/lib/decimal";
 import { parseEnumParam, parseQueryParam, type RawSearchParams } from "@/lib/search-params";
-import type { WorkspaceCreateInput, WorkspaceUpdateInput } from "@/validation/workspace";
+import type { WorkspaceCreateInput, WorkspaceUpdateInput, WorkspaceDraftCreateInput } from "@/validation/workspace";
 import { WorkspaceStatus, type Prisma } from "@/generated/prisma/client";
 import { assertWorkspaceTransition, InvalidStatusTransitionError } from "@/lib/workspace-transitions";
 
@@ -407,6 +407,135 @@ export async function createWorkspace(input: WorkspaceCreateInput): Promise<Muta
 
     return { id: workspace.id };
   });
+}
+
+export interface WizardDraftDetail {
+  id: string;
+  title: string;
+  clientName: string;
+  description: string | null;
+  dueDate: string | null;
+  watermarkText: string | null;
+  deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
+  currency: string;
+  amount: number | null;
+}
+
+/**
+ * Creates a DRAFT workspace from Step 1 of the create-workspace wizard —
+ * before delivery mode, amount, or watermark are chosen. Those fields get
+ * sane placeholder defaults here and are overwritten by
+ * finalizeWorkspaceDraft at the wizard's final submission. This is what
+ * gives Step 2's uploads a real workspaceId to upload against before the
+ * rest of the form is filled in.
+ */
+export async function createWorkspaceDraft(input: WorkspaceDraftCreateInput): Promise<MutateWorkspaceResult> {
+  const creator = await requireAuthenticatedUser();
+
+  return prisma.$transaction(async (tx) => {
+    const workspace = await tx.workspace.create({
+      data: {
+        creatorId: creator.id,
+        clientName: input.clientName,
+        title: input.title,
+        description: input.description ?? null,
+        currency: "INR",
+        amount: null,
+        deliveryMode: "PAYMENT_REQUIRED",
+        watermarkText: null,
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
+        status: "DRAFT",
+        progress: 0,
+      },
+      select: { id: true },
+    });
+
+    await recordActivity(tx, {
+      action: ActivityAction.WORKSPACE_CREATED,
+      actorType: "CREATOR",
+      actorName: creator.name,
+      creatorId: creator.id,
+      workspaceId: workspace.id,
+      metadata: { title: input.title },
+    });
+
+    return { id: workspace.id };
+  });
+}
+
+/**
+ * Loads a DRAFT workspace for wizard resumption (Back/Continue, page
+ * refresh, or the `?draft=` URL param). Returns `null` — never throws —
+ * for a nonexistent workspace, one owned by a different creator, or one
+ * that has moved past DRAFT: the wizard treats all three identically by
+ * falling back to starting a fresh draft, so a caller can never learn
+ * which case it was (same "collapse to one generic outcome" rule as
+ * OwnershipError elsewhere in this file).
+ */
+export async function getOwnedDraftWorkspace(workspaceId: string): Promise<WizardDraftDetail | null> {
+  const creator = await requireAuthenticatedUser();
+  const workspace = await prisma.workspace.findFirst({
+    where: { id: workspaceId, creatorId: creator.id, status: "DRAFT" },
+  });
+  if (!workspace) return null;
+
+  return {
+    id: workspace.id,
+    title: workspace.title,
+    clientName: workspace.clientName,
+    description: workspace.description,
+    dueDate: workspace.dueDate ? workspace.dueDate.toISOString().slice(0, 10) : null,
+    watermarkText: workspace.watermarkText,
+    deliveryMode: workspace.deliveryMode,
+    currency: workspace.currency,
+    amount: toDisplayNumberOrNull(workspace.amount),
+  };
+}
+
+export class WorkspaceNotDraftError extends Error {
+  constructor(message = "This workspace can no longer be edited as a draft — it may have already been finalized.") {
+    super(message);
+    this.name = "WorkspaceNotDraftError";
+  }
+}
+
+/**
+ * The wizard's final submission. Unlike createWorkspaceAction (the
+ * pre-draft-first flow), this never creates a second workspace — it
+ * updates the same DRAFT row createWorkspaceDraft created at Step 1 with
+ * the fields collected in the later steps (description, due date,
+ * watermark, delivery mode, amount, currency) and leaves it in DRAFT
+ * status, exactly like createWorkspace's result. Safe to call more than
+ * once with the same input (double-submit protection): each call is a
+ * plain update of the same row, never an insert, so duplicate clicks
+ * cannot produce duplicate workspaces. Throws WorkspaceNotDraftError if
+ * the draft has moved past DRAFT since Step 1 (e.g. a stale tab
+ * resubmitting after the workspace was cancelled or deleted elsewhere).
+ */
+export async function finalizeWorkspaceDraft(
+  workspaceId: string,
+  input: WorkspaceCreateInput,
+): Promise<MutateWorkspaceResult> {
+  const { workspace } = await requireOwnedWorkspace(workspaceId);
+  if (workspace.status !== "DRAFT") {
+    throw new WorkspaceNotDraftError();
+  }
+
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: {
+      title: input.title,
+      clientName: input.clientName,
+      description: input.description ?? null,
+      watermarkText: input.watermarkText ?? null,
+      deliveryMode: input.deliveryMode,
+      currency: input.currency,
+      amount: input.amount === undefined ? null : toDecimal(input.amount),
+      dueDate: input.dueDate ? new Date(input.dueDate) : null,
+    },
+  });
+
+  return { id: workspaceId };
 }
 
 /**

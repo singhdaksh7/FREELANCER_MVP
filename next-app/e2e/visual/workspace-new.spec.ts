@@ -9,7 +9,7 @@ test("create workspace step 1 (project details) visual baseline", async ({ page 
 test("create workspace review step visual baseline", async ({ page }) => {
   await gotoAndStabilize(page, "/workspaces/new");
 
-  await page.getByLabel(/^title/i).fill("Visual Baseline Workspace");
+  await page.getByLabel(/workspace title/i).fill("Visual Baseline Workspace");
   await page.getByLabel(/client name/i).fill("Visual Baseline Client");
   await page.getByRole("button", { name: /^continue$/i }).click(); // step 2
   await page.getByRole("button", { name: /^continue$/i }).click(); // step 3
@@ -17,6 +17,6 @@ test("create workspace review step visual baseline", async ({ page }) => {
   await page.getByLabel(/^amount/i).fill("15000");
   await page.getByRole("button", { name: /^continue$/i }).click(); // step 5
 
-  await expect(page.locator("legend", { hasText: /review & create/i })).toBeVisible();
+  await expect(page.locator("legend", { hasText: /review & create workspace/i })).toBeVisible();
   await expect(page).toHaveScreenshot("workspace-new-review.png");
 });

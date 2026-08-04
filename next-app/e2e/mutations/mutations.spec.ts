@@ -32,16 +32,20 @@ test.describe("workspace CRUD", () => {
   test("creates a draft workspace through the five-step wizard, with the client name entered as plain text", async ({ page }) => {
     await page.goto("/workspaces/new");
 
-    await page.getByLabel(/^title/i).fill(WORKSPACE_TITLE);
+    await page.getByLabel(/workspace title/i).fill(WORKSPACE_TITLE);
     await page.getByLabel(/client name/i).fill(CLIENT_NAME);
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2 (deliverables)
-    await expect(page.getByText(/coming in phase 5/i)).toBeVisible();
+    await expect(page.getByText(/drag and drop files here/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /browse files/i })).toBeVisible();
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3 (protection)
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4 (payment)
     await page.getByLabel(/^amount/i).fill("18500");
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5 (review)
 
-    await expect(page.locator("legend", { hasText: /review & create/i })).toBeVisible();
+    // Step 5's own fieldset legend is the stable "which step am I on" signal
+    // (see STEPS in workspace-wizard.tsx) — asserting through it rather than
+    // through paragraph copy that can be reworded without changing behavior.
+    await expect(page.locator("legend", { hasText: /review & create workspace/i })).toBeVisible();
     await expect(page.getByText(CLIENT_NAME, { exact: true })).toBeVisible();
     // Excludes "new" (the current page) — otherwise this matches
     // immediately, before the real navigation even starts, since "new" is
@@ -49,7 +53,7 @@ test.describe("workspace CRUD", () => {
     // doc comment for why the click itself isn't awaited directly.
     await clickAndWaitForURL(
       page,
-      page.getByRole("button", { name: /create draft workspace/i }),
+      page.getByRole("button", { name: /create workspace/i }),
       /\/workspaces\/(?!new$)[a-z0-9]+$/,
     );
     workspaceUrl = page.url();
@@ -72,26 +76,38 @@ test.describe("workspace CRUD", () => {
     const approvalOnlyTitle = `Playwright Approval-Only Workspace ${RUN_ID}`;
 
     await page.goto("/workspaces/new");
-    await page.getByLabel(/^title/i).fill(approvalOnlyTitle);
+    await page.getByLabel(/workspace title/i).fill(approvalOnlyTitle);
     await page.getByLabel(/client name/i).fill(CLIENT_NAME);
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 4
 
-    await page.getByRole("radio", { name: /approval only/i }).check();
-    // No online payment is collected for approval-only projects — amount field is optional/informational.
-    await expect(page.getByText(/no online payment is collected/i).first()).toBeVisible();
+    const approvalOnlyRadio = page.getByRole("radio", { name: /approval only/i });
+    await approvalOnlyRadio.check();
+    await expect(approvalOnlyRadio).toBeChecked();
+    // Selecting Approval Only removes the amount control entirely — it's
+    // never just disabled/optional, it isn't in the form at all — so
+    // Razorpay checkout can never be initiated for this workspace later.
+    await expect(page.getByLabel(/^amount/i)).toHaveCount(0);
+    await expect(page.getByLabel(/^currency/i)).toHaveCount(0);
 
     await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5
-    await expect(page.getByText(/approval only/i)).toBeVisible();
+    await expect(page.locator("legend", { hasText: /review & create workspace/i })).toBeVisible();
+    await expect(page.getByText("Approval Only", { exact: true }).first()).toBeVisible();
 
     await clickAndWaitForURL(
       page,
-      page.getByRole("button", { name: /create draft workspace/i }),
+      page.getByRole("button", { name: /create workspace/i }),
       /\/workspaces\/(?!new$)[a-z0-9]+$/,
     );
 
     await expect(page.getByRole("heading", { name: approvalOnlyTitle })).toBeVisible();
+    // Behavior, not old explanatory copy: the finished workspace's Payment
+    // Gate card reads "Approval Only" (never a ₹ amount) and no Razorpay
+    // checkout control exists anywhere on the page.
+    await expect(page.getByText("Approval Only", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^pay now$/i })).toHaveCount(0);
+    await expect(page.getByText(/razorpay/i)).toHaveCount(0);
   });
 
   test("a direct refresh of the workspace details page keeps the same data", async ({ page }) => {
@@ -133,15 +149,19 @@ test.describe("workspace CRUD", () => {
     const hasOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(hasOverflow).toBe(false);
 
-    await page.getByLabel(/^title/i).fill("Mobile Wizard Check");
+    await page.getByLabel(/workspace title/i).fill("Mobile Wizard Check");
     await page.getByLabel(/client name/i).fill("Mobile Wizard Client");
     await page.getByRole("button", { name: /^continue$/i }).click();
-    await expect(page.getByText(/coming in phase 5/i)).toBeVisible();
+    await expect(page.getByText(/drag and drop files here/i)).toBeVisible();
     await page.getByRole("button", { name: /^back$/i }).click();
-    await expect(page.getByLabel(/^title/i)).toHaveValue("Mobile Wizard Check");
+    await expect(page.getByLabel(/workspace title/i)).toHaveValue("Mobile Wizard Check");
   });
 
   test("cancels the workspace", async ({ page }) => {
+    // The 30s assertion timeout below needs headroom beyond the default 30s
+    // *test* timeout (playwright.config.ts) to actually apply — otherwise
+    // the outer test timeout kills the test at the same moment regardless.
+    test.setTimeout(60_000);
     await page.goto(workspaceUrl);
     await page.getByRole("button", { name: /^cancel workspace$/i }).click();
     await expect(page.getByRole("heading", { name: /cancel this workspace\?/i })).toBeVisible();
@@ -151,7 +171,7 @@ test.describe("workspace CRUD", () => {
     // there's nothing to waitForURL on) — waiting for the now-illegal
     // "Cancel Workspace" trigger to disappear is the real completion signal
     // for that refreshed Server Component render.
-    await expect(page.getByRole("button", { name: /^cancel workspace$/i })).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByRole("button", { name: /^cancel workspace$/i })).toHaveCount(0, { timeout: 30_000 });
     await expect(page.getByText("Cancelled", { exact: true }).first()).toBeVisible();
   });
 });
@@ -174,14 +194,20 @@ test.describe("Preview Client View authorization", () => {
     // ws_brand_identity is seeded under Arjun — see prisma/seed.ts.
     await page.goto("/workspaces/ws_brand_identity");
     // The link opens in a new tab (target="_blank") — see review-link-panel.tsx.
+    // Two links to the same destination exist on this page (the header
+    // action bar and the Review Link panel) — `.first()` picks the header
+    // one; both resolve to the identical preview URL asserted below.
     const [previewPage] = await Promise.all([
       context.waitForEvent("page"),
-      page.getByRole("link", { name: /preview client view/i }).click(),
+      page.getByRole("link", { name: /preview client view/i }).first().click(),
     ]);
     await previewPage.waitForLoadState();
 
     await expect(previewPage).toHaveURL(/\/workspaces\/ws_brand_identity\/preview$/);
-    await expect(previewPage.getByText(/preview mode.*this is how your client will see/i)).toBeVisible();
+    // The banner's text is duplicated across a status-role wrapper and an
+    // inner span (identical text content on both) — targeting the role is
+    // the stable, unambiguous anchor.
+    await expect(previewPage.getByRole("status").filter({ hasText: /preview mode/i })).toBeVisible();
   });
 
   test("an unauthenticated visitor is redirected to /login instead of seeing the preview", async ({ page }) => {
@@ -219,7 +245,7 @@ test.describe("Preview Client View authorization", () => {
     await page.context().clearCookies();
     await login(page);
     await page.goto("/workspaces/ws_brand_identity/preview");
-    await expect(page.getByText(/preview mode/i)).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /preview mode/i })).toBeVisible();
 
     await expect(page.getByRole("button", { name: /^approve project$/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /request changes/i })).toHaveCount(0);

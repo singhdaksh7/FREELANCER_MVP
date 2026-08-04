@@ -36,7 +36,7 @@ export async function createWorkspaceViaWizard(
 ): Promise<string> {
   await loginAsCreator(page);
   await page.goto("/workspaces/new");
-  await page.getByLabel(/^title/i).fill(options.title);
+  await page.getByLabel(/workspace title/i).fill(options.title);
   await page.getByLabel(/client name/i).fill("Visual Suite Client");
   await page.getByRole("button", { name: /^continue$/i }).click();
   await page.getByRole("button", { name: /^continue$/i }).click();
@@ -50,7 +50,7 @@ export async function createWorkspaceViaWizard(
   }
 
   await page.getByRole("button", { name: /^continue$/i }).click();
-  const createButton = page.getByRole("button", { name: /create draft workspace/i });
+  const createButton = page.getByRole("button", { name: /create workspace/i });
   void createButton.click().catch(() => {});
   await page.waitForURL(/\/workspaces\/(?!new$)[a-z0-9]+$/);
   return page.url();

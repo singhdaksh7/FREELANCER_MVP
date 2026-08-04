@@ -43,6 +43,7 @@ describe("no old Project Vault branding renders on public screens", () => {
     loginAction.mockResolvedValue({});
     render(<LoginForm />);
     expect(screen.queryByText(/project vault/i)).not.toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`sign in to ${BRAND.productName}`, "i"))).toBeInTheDocument();
+    expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+    expect(screen.getByAltText("INLAY")).toBeInTheDocument();
   });
 });

@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Plus } from "lucide-react";
 import type { AuthenticatedCreator } from "@/data-access/auth";
 import { LinkButton } from "@/components/ui/link-button";
-import { BRAND } from "@/lib/branding";
+import { InlayLogo } from "@/components/brand/inlay-logo";
 import { CreatorNavigation } from "./creator-navigation";
 import { CreatorProfile } from "./creator-profile";
 
@@ -20,19 +20,9 @@ export function CreatorSidebar({ creator, unreadNotificationCount }: CreatorSide
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-[#16203D] bg-primary-navy text-white md:flex">
       <Link
         href="/dashboard"
-        className="flex items-center gap-3 border-b border-[#16203D] px-6 py-5"
+        className="flex items-center border-b border-[#16203D] px-6 py-5"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-blue">
-          <Image src="/branding/icon-mark.png" alt="" width={18} height={18} aria-hidden="true" />
-        </span>
-        <span>
-          <span className="block text-base font-bold tracking-tight text-white">
-            {BRAND.productName}
-          </span>
-          <span className="block text-[10px] uppercase tracking-wide text-secondary-text">
-            Payment-Gated Delivery
-          </span>
-        </span>
+        <InlayLogo container size="lg" />
       </Link>
 
       <div className="px-5 py-4">

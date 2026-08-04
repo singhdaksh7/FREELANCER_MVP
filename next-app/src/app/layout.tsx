@@ -9,11 +9,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  applicationName: "INLAY",
   title: {
-    default: BRAND.productName,
-    template: `%s | ${BRAND.productName}`,
+    default: "INLAY",
+    template: "%s | INLAY",
   },
-  description: BRAND.tagline,
+  description: "Secure creative review, approval, payment, and file delivery.",
 };
 
 export default function RootLayout({

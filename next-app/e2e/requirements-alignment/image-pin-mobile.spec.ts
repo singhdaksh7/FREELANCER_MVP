@@ -29,6 +29,10 @@ test.beforeAll(async () => {
 });
 
 test("creator uploads an image and generates a review link", async ({ page }) => {
+  // See approval-only.spec.ts's equivalent comment: real upload/worker
+  // processing plus a review-link Server Action needs more than the
+  // default 30s test timeout.
+  test.setTimeout(120_000);
   await login(page);
   workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000" });
   await uploadFileAndWaitReady(page, workspaceUrl, filePath);

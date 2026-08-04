@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { clickAndWaitForURL } from "../mutations/helpers";
+import { waitForFileStatus } from "../helpers/wait-for-file-status";
 
 export { login, clickAndWaitForURL, DEMO_EMAIL, DEMO_PASSWORD } from "../mutations/helpers";
 
@@ -11,7 +12,7 @@ export async function createWorkspaceViaWizard(
   options: { title: string; amount?: string; deliveryMode?: DeliveryMode },
 ): Promise<string> {
   await page.goto("/workspaces/new");
-  await page.getByLabel(/^title/i).fill(options.title);
+  await page.getByLabel(/workspace title/i).fill(options.title);
   await page.getByLabel(/client name/i).fill("Requirements Suite Client");
   await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 2 (deliverables)
   await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 3 (protection)
@@ -27,7 +28,7 @@ export async function createWorkspaceViaWizard(
   await page.getByRole("button", { name: /^continue$/i }).click(); // -> step 5 (review)
   await clickAndWaitForURL(
     page,
-    page.getByRole("button", { name: /create draft workspace/i }),
+    page.getByRole("button", { name: /create workspace/i }),
     /\/workspaces\/(?!new$)[a-z0-9]+$/,
   );
   return page.url();
@@ -39,15 +40,18 @@ export async function uploadFileAndWaitReady(page: Page, workspaceUrl: string, f
   await page.getByRole("tab", { name: /^files$/i }).click();
   await page.getByLabel(/choose files to upload/i).setInputFiles(filePath);
   const fileName = filePath.split(/[\\/]/).pop()!;
-  const card = page.locator(`[data-testid="file-card"][data-file-name="${fileName}"]`);
-  await expect(card.getByText("Ready", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await waitForFileStatus(page, { fileName, expectedStatus: "Ready", reselectFilesTab: true });
 }
 
 /** Creates a secure review link from the Files tab (must already be on it) and returns the raw URL. */
 export async function createReviewLink(page: Page): Promise<string> {
   await page.getByRole("button", { name: /create secure review link/i }).click();
   const linkInput = page.getByTestId("review-link-input");
-  await expect(linkInput).toBeVisible();
+  // See review.spec.ts's equivalent comment: this Server Action writes the
+  // workspace and generates a secure token, which can exceed the default
+  // 5s expect timeout under load — wait for its own pending state to
+  // actually finish rather than a short, arbitrary timeout.
+  await expect(linkInput).toBeVisible({ timeout: 60_000 });
   return linkInput.inputValue();
 }
 

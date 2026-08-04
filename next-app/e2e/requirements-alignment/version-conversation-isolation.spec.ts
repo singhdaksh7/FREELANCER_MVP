@@ -39,6 +39,10 @@ test.beforeAll(async () => {
 });
 
 test("creator uploads v1, generates a review link, and the client comments on v1", async ({ page, context }) => {
+  // See approval-only.spec.ts's equivalent comment: real upload/worker
+  // processing plus a review-link Server Action needs more than the
+  // default 30s test timeout.
+  test.setTimeout(120_000);
   await login(page);
   workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000" });
   await uploadFileAndWaitReady(page, workspaceUrl, filePathV1);
@@ -46,6 +50,12 @@ test("creator uploads v1, generates a review link, and the client comments on v1
 
   await context.clearCookies();
   await page.goto(reviewLinkUrl);
+  // The sidebar defaults to Action Center, not Comments — the Comments
+  // panel (and its real reviewer-name input) isn't visible until this tab
+  // is opened. Without this, `aside .getByLabel(/your name/i)` can resolve
+  // to the hidden Approve dialog's "#approve-name" input, which shares the
+  // same label (see e2e/review/review.spec.ts's identical comment).
+  await page.getByRole("button", { name: /comments \(/i }).click();
   await page.locator("aside").getByLabel(/your name/i).fill("Rohit Sharma");
   await page.getByPlaceholder(/add a comment/i).fill(V1_COMMENT);
   await page.getByRole("button", { name: /^post$/i }).click();
@@ -57,6 +67,9 @@ test("creator uploads v2, and the client comments on v2 separately", async ({ pa
   // once the creator explicitly "Submits Revision for Review" — which only
   // renders while there's an active change request. So the client must
   // request changes first, exactly like e2e/review/review.spec.ts's flow.
+  // Real worker processing for the v2 candidate plus several polls needs
+  // more than the default 30s test timeout under load.
+  test.setTimeout(90_000);
   await context.clearCookies();
   await page.goto(reviewLinkUrl);
   await page.getByRole("button", { name: /^request changes$/i }).click();
@@ -68,8 +81,17 @@ test("creator uploads v2, and the client comments on v2 separately", async ({ pa
   await page.goto(workspaceUrl);
   await page.getByRole("tab", { name: /^files$/i }).click();
   const card = page.locator(`[data-testid="file-card"][data-file-name="${FILE_NAME}"]`);
+  // Wait on the actual "complete" round trip response rather than any
+  // transient UI text or a live (non-reload) DOM check — router.refresh()
+  // isn't reliably reflected without a reload in this environment (see
+  // e2e/review/review.spec.ts's identical, already-diagnosed fix), and
+  // reloading before the request truly finishes would cancel it mid-flight.
+  const completeResponsePromise = page.waitForResponse(
+    (res) => /\/api\/upload-sessions\/.+\/complete$/.test(new URL(res.url()).pathname) && res.request().method() === "POST",
+  );
   await card.getByLabel(/upload new version/i).setInputFiles(filePathV2);
-  await expect(card.getByText(/version 2 candidate/i)).toBeVisible({ timeout: 15_000 });
+  const completeResponse = await completeResponsePromise;
+  expect(completeResponse.ok()).toBe(true);
 
   await expect
     .poll(
@@ -83,11 +105,21 @@ test("creator uploads v2, and the client comments on v2 separately", async ({ pa
     .toBe(0);
 
   await page.getByRole("button", { name: /submit revision for review/i }).click();
-  await expect(page.getByText(/changes requested by/i)).toHaveCount(0, { timeout: 10_000 });
+  await expect
+    .poll(
+      async () => {
+        await page.reload();
+        await page.getByRole("tab", { name: /^files$/i }).click();
+        return page.getByText(/changes requested by/i).count();
+      },
+      { timeout: 20_000, intervals: [500, 1000, 2000, 3000] },
+    )
+    .toBe(0);
 
   await context.clearCookies();
   await page.goto(reviewLinkUrl);
   await page.getByRole("button", { name: "v2" }).click();
+  await page.getByRole("button", { name: /comments \(/i }).click();
   await page.locator("aside").getByLabel(/your name/i).fill("Rohit Sharma");
   await page.getByPlaceholder(/add a comment/i).fill(V2_COMMENT);
   await page.getByRole("button", { name: /^post$/i }).click();

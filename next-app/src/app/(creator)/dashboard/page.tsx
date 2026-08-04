@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AlertCircle, Clock, CheckCircle2, FileText, ArrowRight } from "lucide-react";
+import { AlertCircle, Clock, CheckCircle2, FileText } from "lucide-react";
 import { getDashboardData } from "@/data-access/dashboard";
 import { requireAuthenticatedUser } from "@/data-access/auth";
 import { LinkButton } from "@/components/ui/link-button";
@@ -148,7 +148,7 @@ export default async function DashboardPage() {
 
           {recentWorkspaces.length === 0 ? (
             <div className="rounded-xl border border-line bg-card p-6 text-center text-sm text-secondary-text">
-              No workspaces yet. Click "New Workspace" above to get started.
+              No workspaces yet. Click &quot;New Workspace&quot; above to get started.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

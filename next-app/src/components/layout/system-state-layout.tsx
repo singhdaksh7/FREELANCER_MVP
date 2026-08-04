@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { LinkButton } from "@/components/ui/link-button";
+import { InlayLogo } from "@/components/brand/inlay-logo";
 
 export interface SystemStateLayoutProps {
   code: string;
@@ -31,6 +32,9 @@ export function SystemStateLayout({
   return (
     <div className="flex min-h-screen items-center justify-center bg-vault-navy p-6 text-white">
       <div className="max-w-[480px] rounded-lg border border-white/10 bg-vault-navy-light p-10 text-center">
+        <div className="mb-6 flex justify-center">
+          <InlayLogo size="sm" container />
+        </div>
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/20">
           <Icon size={28} color="#EF4444" aria-hidden="true" />
         </div>

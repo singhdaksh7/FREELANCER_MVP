@@ -43,7 +43,15 @@ test("client review portal — desktop/tablet/mobile visual baseline", async ({ 
   await gotoAndStabilize(page, reviewPath);
   await expect(page.getByText(/secure preview/i)).toBeVisible();
 
-  await expect(page).toHaveScreenshot("review-portal-main.png");
+  // ws_brand_identity is a shared, never-cleaned workspace (see this file's
+  // top doc comment) — every run of this spec permanently adds another
+  // file, so the file-switcher's chip list (and therefore its rendered
+  // Date.now()-suffixed names) grows/changes across runs. Masked rather
+  // than relying on either a fixed name (would collide with prior runs'
+  // still-present files) or a full reset of shared seed data.
+  await expect(page).toHaveScreenshot("review-portal-main.png", {
+    mask: [page.getByTestId("file-switcher")],
+  });
 });
 
 test("invalid review link visual baseline", async ({ page }) => {

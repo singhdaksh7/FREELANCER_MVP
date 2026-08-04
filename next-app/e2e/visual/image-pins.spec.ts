@@ -5,12 +5,15 @@ import { createWorkspaceViaWizard, uploadFileAndWaitReady, createReviewLink } fr
 
 /** Numbered image pins on the client review portal — see pin-overlay.tsx. */
 test("numbered image pins visual baseline", async ({ page, context }, testInfo) => {
+  // Fixed (no Date.now()) — see approval-only-portal.spec.ts's equivalent
+  // comment: this file name renders on screen (file-switcher chip) and a
+  // brand-new, uniquely-id'd workspace is created regardless of title text.
   const fixturesDir = makeFixturesDir();
-  const name = `visual-pins-${testInfo.project.name}-${Date.now()}.jpg`;
+  const name = `visual-pins-${testInfo.project.name}.jpg`;
   const path = await writeValidJpegFixture(fixturesDir, name);
 
   const workspaceUrl = await createWorkspaceViaWizard(page, {
-    title: `Visual Image Pins ${testInfo.project.name} ${Date.now()}`,
+    title: `Visual Image Pins ${testInfo.project.name}`,
     amount: "5000",
   });
   await uploadFileAndWaitReady(page, workspaceUrl, path);

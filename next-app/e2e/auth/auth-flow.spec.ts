@@ -34,7 +34,7 @@ test("unauthenticated visitors are redirected from /dashboard to /login", async 
 test("a valid demo login reaches /dashboard", async ({ page }) => {
   await login(page, DEMO_EMAIL, DEMO_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Welcome back");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Good (morning|afternoon|evening),/);
 });
 
 test("an invalid login shows a generic error and does not reach the dashboard", async ({ page }) => {
@@ -66,7 +66,7 @@ test("logout ends the session and returns to the public/login experience", async
 test("the authenticated creator's real identity is displayed, not a hardcoded name", async ({ page }) => {
   await login(page, DEMO_EMAIL, DEMO_PASSWORD);
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Arjun Raj");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Good (morning|afternoon|evening), Arjun Raj/);
   await expect(page.getByText(DEMO_EMAIL)).toBeVisible();
 });
 
@@ -77,5 +77,5 @@ test("a direct refresh of a protected page keeps the session authenticated", asy
   await page.reload();
 
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Welcome back");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Good (morning|afternoon|evening),/);
 });

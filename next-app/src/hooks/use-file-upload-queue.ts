@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isSupportedMimeType } from "@/lib/file-kind";
+import { prewarmFileWorkerAction } from "@/actions/worker-wake";
 
 export interface UploadLimits {
   maxFileSizeBytes: number;
@@ -37,6 +38,7 @@ function nextQueueId(): string {
 export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const router = useRouter();
+  const hasPrewarmedRef = useRef(false);
 
   const updateItem = useCallback((id: string, patch: Partial<QueueItem>) => {
     setQueue((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -61,6 +63,11 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
           errorMessage: `File is larger than the ${Math.floor(limits.maxFileSizeBytes / (1024 * 1024))} MB limit.`,
         });
         return;
+      }
+
+      if (!hasPrewarmedRef.current) {
+        hasPrewarmedRef.current = true;
+        void prewarmFileWorkerAction().catch(() => {});
       }
 
       try {
@@ -104,7 +111,13 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
         }
 
         updateItem(id, { status: "done" });
-        router.refresh();
+        // Use a transition to prevent Next.js from aborting the RSC fetch if
+        // other state updates happen concurrently.
+        import("react").then(({ startTransition }) => {
+          startTransition(() => {
+            router.refresh();
+          });
+        });
       } catch (error) {
         updateItem(id, { status: "error", errorMessage: error instanceof Error ? error.message : "Upload failed." });
       }

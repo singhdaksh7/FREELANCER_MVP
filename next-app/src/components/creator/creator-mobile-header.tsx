@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Menu, X } from "lucide-react";
+import { InlayLogo } from "@/components/brand/inlay-logo";
 import type { AuthenticatedCreator } from "@/data-access/auth";
 import { BRAND } from "@/lib/branding";
 import { CreatorNavigation } from "./creator-navigation";
@@ -50,11 +51,8 @@ export function CreatorMobileHeader({ creator, unreadNotificationCount }: Creato
           <Menu size={22} aria-hidden="true" />
         </button>
 
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-vault-blue">
-            <Image src="/branding/icon-mark.png" alt="" width={15} height={15} aria-hidden="true" />
-          </span>
-          <span className="text-sm font-bold tracking-tight text-white">{BRAND.productName}</span>
+        <Link href="/dashboard" className="flex min-h-[44px] min-w-[44px] items-center justify-center">
+          <InlayLogo container size="sm" />
         </Link>
 
         <NotificationTrigger unreadCount={unreadNotificationCount} />
@@ -76,7 +74,7 @@ export function CreatorMobileHeader({ creator, unreadNotificationCount }: Creato
             className="animate-fade-in absolute inset-y-0 left-0 flex w-[280px] max-w-[80vw] flex-col bg-vault-navy shadow-lg"
           >
             <div className="flex items-center justify-between border-b border-vault-navy-light px-4 py-4">
-              <span className="text-sm font-bold tracking-tight text-white">{BRAND.productName}</span>
+              <InlayLogo container size="sm" />
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}

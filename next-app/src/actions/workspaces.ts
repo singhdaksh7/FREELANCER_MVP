@@ -2,15 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { workspaceCreateSchema, workspaceUpdateSchema } from "@/validation/workspace";
+import { workspaceCreateSchema, workspaceUpdateSchema, workspaceDraftCreateSchema } from "@/validation/workspace";
 import {
   createWorkspace,
+  createWorkspaceDraft,
+  finalizeWorkspaceDraft,
   updateOwnedWorkspace,
   cancelOwnedWorkspace,
   closeWorkspaceForReview,
   deleteOwnedDraftWorkspace,
   InvalidStatusTransitionError,
   WorkspaceNotDeletableError,
+  WorkspaceNotDraftError,
 } from "@/data-access/workspaces";
 import { releaseApprovedFiles, WorkspaceNotReleasableError, NoApprovalFoundError } from "@/data-access/delivery-release";
 import { OwnershipError } from "@/data-access/authorization";
@@ -71,6 +74,104 @@ export async function createWorkspaceAction(
 
   revalidatePath("/workspaces");
   revalidatePath("/dashboard");
+  redirect(`/workspaces/${workspaceId}?flash=${encodeURIComponent("Workspace created as a draft.")}`);
+}
+
+export interface CreateDraftState {
+  error?: string;
+  fieldErrors?: Partial<Record<"title" | "clientName", string[]>>;
+  workspaceId?: string;
+}
+
+/**
+ * Step 1 of the create-workspace wizard's "Continue" — creates a DRAFT
+ * workspace immediately (rather than waiting for the final step) so Step
+ * 2's uploads have a real workspaceId to target. Never redirects: the
+ * wizard stays client-side and moves to Step 2 itself once it has the
+ * returned id, recording it in the URL (`?draft=<id>&step=2`) so Back/
+ * Continue and a page refresh all resume the same draft instead of
+ * creating another one.
+ */
+export async function createWorkspaceDraftAction(
+  _prevState: CreateDraftState,
+  formData: FormData,
+): Promise<CreateDraftState> {
+  const raw = {
+    title: String(formData.get("title") ?? ""),
+    clientName: String(formData.get("clientName") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    dueDate: String(formData.get("dueDate") ?? ""),
+  };
+  const parsed = workspaceDraftCreateSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return { fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+
+  try {
+    const { id: workspaceId } = await createWorkspaceDraft(parsed.data);
+    revalidatePath("/workspaces");
+    revalidatePath("/dashboard");
+    return { workspaceId };
+  } catch (error) {
+    if (error instanceof OwnershipError) {
+      return { error: "Select a client you own to continue." };
+    }
+    console.error("Draft workspace creation failed:", error);
+    return { error: GENERIC_ERROR };
+  }
+}
+
+export interface FinalizeDraftState {
+  error?: string;
+  fieldErrors?: WorkspaceFormState["fieldErrors"];
+  values?: Record<string, string>;
+}
+
+/**
+ * The wizard's final submission once a draft already exists (the normal
+ * path once Step 1 has run createWorkspaceDraftAction). Updates the same
+ * DRAFT row rather than creating a second workspace — see
+ * finalizeWorkspaceDraft's doc comment for the duplicate-submission
+ * guarantee. Errors keep the user on the wizard (no redirect) so nothing
+ * already uploaded is lost; success redirects to the finished workspace,
+ * same as createWorkspaceAction.
+ */
+export async function finalizeWorkspaceDraftAction(
+  _prevState: FinalizeDraftState,
+  formData: FormData,
+): Promise<FinalizeDraftState> {
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+  const raw = parseWorkspaceFormData(formData);
+  const parsed = workspaceCreateSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return { fieldErrors: parsed.error.flatten().fieldErrors, values: raw };
+  }
+  if (!workspaceId) {
+    return { error: GENERIC_ERROR, values: raw };
+  }
+
+  try {
+    await finalizeWorkspaceDraft(workspaceId, parsed.data);
+  } catch (error) {
+    if (error instanceof OwnershipError) {
+      return { error: "This workspace could not be found.", values: raw };
+    }
+    if (error instanceof WorkspaceNotDraftError) {
+      return { error: error.message, values: raw };
+    }
+    console.error("Workspace finalization failed:", error);
+    return { error: GENERIC_ERROR, values: raw };
+  }
+
+  revalidatePath(`/workspaces/${workspaceId}`);
+  revalidatePath("/workspaces");
+  revalidatePath("/dashboard");
+  // Same wording as createWorkspaceAction's redirect — the workspace really
+  // is still DRAFT at this point (finalizeWorkspaceDraft never changes its
+  // status), so this is accurate, not just consistent with the pre-draft-
+  // first copy.
   redirect(`/workspaces/${workspaceId}?flash=${encodeURIComponent("Workspace created as a draft.")}`);
 }
 

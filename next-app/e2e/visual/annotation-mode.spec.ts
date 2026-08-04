@@ -5,12 +5,15 @@ import { createWorkspaceViaWizard, uploadFileAndWaitReady, createReviewLink } fr
 
 /** Doodle/freehand annotation mode open on the client review portal — see annotation-canvas.tsx. */
 test("annotation mode visual baseline", async ({ page, context }, testInfo) => {
+  // Fixed (no Date.now()) — see approval-only-portal.spec.ts's equivalent
+  // comment: this file name renders on screen (file-switcher chip) and a
+  // brand-new, uniquely-id'd workspace is created regardless of title text.
   const fixturesDir = makeFixturesDir();
-  const name = `visual-annotate-${testInfo.project.name}-${Date.now()}.jpg`;
+  const name = `visual-annotate-${testInfo.project.name}.jpg`;
   const path = await writeValidJpegFixture(fixturesDir, name);
 
   const workspaceUrl = await createWorkspaceViaWizard(page, {
-    title: `Visual Annotation Mode ${testInfo.project.name} ${Date.now()}`,
+    title: `Visual Annotation Mode ${testInfo.project.name}`,
     amount: "5000",
   });
   await uploadFileAndWaitReady(page, workspaceUrl, path);

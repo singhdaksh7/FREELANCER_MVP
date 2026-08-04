@@ -1,9 +1,34 @@
 import { defineConfig, devices } from "@playwright/test";
+import { buildSharedE2EEnv, logSelectedDatabase, resolveE2EDatabaseUrl } from "./scripts/e2e-database-env";
 
 const PORT = 4500;
 const BASE_URL = `http://localhost:${PORT}`;
 const AUTH_FILE = "e2e/visual/.auth/creator.json";
 const ADMIN_AUTH_FILE = "e2e/visual/.auth/admin.json";
+
+// DATABASE ISOLATION: every process this config spawns (the Next.js web
+// server, plus both workers below) must talk to the same explicitly
+// selected, isolated database — never whatever DATABASE_URL a plain `.env`
+// load happens to resolve to independently in that child's own process
+// (see scripts/e2e-database-env.ts for the confirmed root cause this
+// guards against). Resolved once, here, and injected into every child.
+let e2eDatabaseUrl: string;
+let e2eDatabaseName: string;
+try {
+  ({ url: e2eDatabaseUrl, databaseName: e2eDatabaseName } = resolveE2EDatabaseUrl(process.env));
+} catch (error) {
+  console.error(`\n✖ ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+
+// Ensures this Playwright process itself — test files, and any Prisma
+// client created directly in-process — also uses the same isolated
+// database, not just the spawned webServer children.
+process.env.DATABASE_URL = e2eDatabaseUrl;
+
+logSelectedDatabase(e2eDatabaseName);
+
+const sharedE2EEnv = buildSharedE2EEnv(e2eDatabaseUrl);
 
 /**
  * Visual regression + authentication E2E config. Runs against a
@@ -13,6 +38,16 @@ const ADMIN_AUTH_FILE = "e2e/visual/.auth/admin.json";
  * database to be up and seeded (`docker compose up -d`, `npm run
  * db:seed`) — the app talks to the real database, same as in
  * production, there is no mocking at this layer.
+ *
+ * `npm run test:visual` (see package.json) runs only the screenshot
+ * projects below (`setup`/`admin-setup` + the six viewport projects) —
+ * `npm run test:e2e` covers the functional projects separately. Before a
+ * "real" baseline run/update, prefer `npm run db:seed:visual` (a guarded
+ * reset+reseed, same local-only safety gate as `db:reset`) over a bare
+ * `db:seed`: several visual specs create real, permanent workspaces/files
+ * under Meera's account and admin's global dashboard/workspace/user counts
+ * are unscoped aggregates, so repeated manual runs against the same
+ * never-reset database will grow those numbers and shift baselines.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -44,6 +79,7 @@ export default defineConfig({
       // to actually upload 50+ MB — nothing else in the e2e suite
       // uploads a file anywhere near 2 MB, so this is safe to apply globally.
       env: {
+        ...sharedE2EEnv,
         UPLOAD_MAX_FILE_SIZE_BYTES: "2097152",
         // Local-only escape hatch for storage-config.ts's production
         // guard — this is a real `next build && next start` (so
@@ -63,6 +99,7 @@ export default defineConfig({
       command: "npm run worker:files",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
+      env: sharedE2EEnv,
     },
     {
       // Delivery-bundle worker (Phase 6/7.5) — required for any test that
@@ -74,6 +111,7 @@ export default defineConfig({
       command: "npm run worker:deliveries",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
+      env: sharedE2EEnv,
     },
   ],
   projects: [

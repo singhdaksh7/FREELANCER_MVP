@@ -22,6 +22,10 @@ test.beforeAll(async () => {
 });
 
 test("creator uploads an image and generates a review link", async ({ page }) => {
+  // See approval-only.spec.ts's equivalent comment: real upload/worker
+  // processing plus a review-link Server Action needs more than the
+  // default 30s test timeout.
+  test.setTimeout(120_000);
   await login(page);
   workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000" });
   await uploadFileAndWaitReady(page, workspaceUrl, filePath);
@@ -36,6 +40,11 @@ test("client places a numbered pin on the image by clicking it", async ({ page, 
   await page.getByRole("button", { name: /^add pin$/i }).click();
   const overlay = page.locator('div[role="presentation"]');
   await overlay.click({ position: { x: 100, y: 80 } });
+
+  // Placing a pin doesn't switch the sidebar's active tab — the pin
+  // composer only renders inside the Comments panel, which defaults to
+  // closed (sidebar opens on "Overview").
+  await page.getByRole("button", { name: /comments \(/i }).click();
 
   // Desktop and mobile both render a comments composer in the DOM (one
   // CSS-hidden depending on viewport) — scope to the visible desktop

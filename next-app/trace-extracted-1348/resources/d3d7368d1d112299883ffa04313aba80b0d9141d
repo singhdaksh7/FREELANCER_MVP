@@ -1,0 +1,475 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: uploads\uploads.spec.ts >> a file that fails processing shows the Failed state with a retry action
+- Location: e2e\uploads\uploads.spec.ts:140:5
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: locator('[data-testid="file-card"][data-file-name="oversized-dimensions-1785670193986.jpg"]').getByText(/Failed/i)
+Expected: visible
+Timeout: 20000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" with timeout 20000ms
+  - waiting for locator('[data-testid="file-card"][data-file-name="oversized-dimensions-1785670193986.jpg"]').getByText(/Failed/i)
+
+```
+
+```yaml
+- complementary:
+  - link "INLAY Payment-Gated Delivery":
+    - /url: /dashboard
+  - link "New Workspace":
+    - /url: /workspaces/new
+  - navigation "Creator navigation":
+    - paragraph: Main Menu
+    - link "Dashboard":
+      - /url: /dashboard
+    - link "Workspaces":
+      - /url: /workspaces
+    - link "Payments":
+      - /url: /payments
+    - link "Notifications 3":
+      - /url: /notifications
+    - link "Settings":
+      - /url: /settings
+  - text: Arjun Raj arjun@example.com
+  - button "Log out"
+- banner:
+  - searchbox "Search workspaces, clients, files"
+  - link "Notifications, 3 unread":
+    - /url: /notifications
+- main:
+  - link "Back to Workspaces":
+    - /url: /workspaces
+  - heading "Social Media Campaign" [level=1]
+  - text: Draft
+  - paragraph:
+    - text: "Client:"
+    - strong: Ananya Kapoor
+  - text: ₹18,000 Due date not set
+  - link "Preview Client View":
+    - /url: /workspaces/ws_social_campaign/preview
+  - link "Edit Workspace":
+    - /url: /workspaces/ws_social_campaign/edit
+  - button "Cancel Workspace"
+  - list:
+    - listitem: 1 Setup
+    - listitem: 2 Files
+    - listitem: 3 Client Review
+    - listitem: 4 Approval
+    - listitem: 5 Payment
+    - listitem: 6 Delivery
+  - tablist "Workspace sections":
+    - tab "Overview"
+    - tab "Files" [selected]
+    - tab "Comments"
+    - tab "Payment"
+    - tab "Activity"
+  - tabpanel "Files":
+    - paragraph: Drag and drop files here
+    - paragraph: JPEG, PNG, WebP, PDF, or ZIP — up to 2.0 MB each
+    - button "Browse Files"
+    - button "Choose files to upload"
+    - list:
+      - listitem:
+        - paragraph: oversized-dimensions-1785670193986.jpg
+        - text: Uploaded
+    - paragraph: valid-1785494731280.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-delete-confirm-tablet-768-1785494805187.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-delete-confirm-desktop-1440-1785494806859.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-failed-tablet-768-1785494809144.jpg
+    - paragraph: 1.8 KB
+    - text: Failed
+    - paragraph: This image exceeds the maximum supported dimensions.
+    - button "Retry Processing"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-failed-desktop-1440-1785494809859.jpg
+    - paragraph: 1.8 KB
+    - text: Failed
+    - paragraph: This image exceeds the maximum supported dimensions.
+    - button "Retry Processing"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-locked-tablet-768-1785494811763.pdf
+    - paragraph: 735 B
+    - text: Ready
+    - paragraph: Locked original — preview not available in this MVP.
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-locked-desktop-1440-1785494811805.pdf
+    - paragraph: 735 B
+    - text: Ready
+    - paragraph: Locked original — preview not available in this MVP.
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-ready-tablet-768-1785494811807.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-ready-desktop-1440-1785494812160.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-delete-confirm-mobile-390-1785494839137.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-failed-mobile-390-1785494839677.jpg
+    - paragraph: 1.8 KB
+    - text: Failed
+    - paragraph: This image exceeds the maximum supported dimensions.
+    - button "Retry Processing"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-locked-mobile-390-1785494840022.pdf
+    - paragraph: 735 B
+    - text: Ready
+    - paragraph: Locked original — preview not available in this MVP.
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: visual-ready-mobile-390-1785494841253.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785638437027.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785638654191.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785640107194.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785640311225.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785640442821.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785641651196.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785642192233.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785642424332.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785642547242.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785642710917.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785642850303.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785643464036.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785666018095.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785669469788.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785669720507.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: oversized-dimensions-1785669720507.jpg
+    - paragraph: 1.8 KB
+    - text: Failed
+    - paragraph: This image exceeds the maximum supported dimensions.
+    - button "Retry Processing"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785669990523.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+    - paragraph: valid-1785670193986.jpg
+    - paragraph: 3.0 KB
+    - text: Ready
+    - button "View Protected Preview"
+    - text: Upload New Version
+    - button "Upload New Version"
+    - button "Remove"
+  - heading "Secure Client Review Link" [level=3]
+  - link "Preview Client View":
+    - /url: /workspaces/ws_social_campaign/preview
+  - paragraph: No review link has been created yet. Once created, the client can view protected previews, comment, request changes, and approve — without a creator account.
+  - button "Create Secure Review Link"
+  - heading "Awaiting Client Approval" [level=3]
+  - text: Draft
+  - paragraph: Your client has access to the review link and is reviewing deliverables.
+  - heading "Payment Gate" [level=3]
+  - text: Draft Amount ₹18,000
+  - heading "Delivery Status" [level=3]
+  - text: Locked
+  - paragraph: Original files remain locked until client approval and payment.
+- alert
+```
+
+# Test source
+
+```ts
+  49  |     oversizedDimensionImagePath,
+  50  |     await sharp({ create: { width: 8400, height: 20, channels: 3, background: "red" } })
+  51  |       .jpeg()
+  52  |       .toBuffer(),
+  53  |   );
+  54  | 
+  55  |   unsupportedFilePath = join(fixturesDir, `not-allowed-${RUN_ID}.exe`);
+  56  |   writeFileSync(unsupportedFilePath, Buffer.from("MZ this is not a real executable, just disallowed content"));
+  57  | 
+  58  |   // Exceeds the e2e-configured 2 MB UPLOAD_MAX_FILE_SIZE_BYTES. Named
+  59  |   // .jpg (not .bin) so the browser assigns it a supported `image/jpeg`
+  60  |   // MIME type and the client-side pre-check actually reaches the size
+  61  |   // check, rather than rejecting it earlier for an unsupported type.
+  62  |   tooLargeFilePath = join(fixturesDir, `too-large-${RUN_ID}.jpg`);
+  63  |   writeFileSync(tooLargeFilePath, Buffer.alloc(3 * 1024 * 1024, 7));
+  64  | });
+  65  | 
+  66  | test.beforeEach(async ({ page }) => {
+  67  |   page.on("console", (msg) => console.log(`BROWSER: ${msg.text()}`));
+  68  |   await login(page);
+  69  | });
+  70  | 
+  71  | test("uploads a valid image and it reaches the Ready/preview-available state", async ({ page }) => {
+  72  |   await page.goto(WORKSPACE_PATH);
+  73  |   await page.getByRole("tab", { name: /^files$/i }).click();
+  74  | 
+  75  |   await page.getByLabel(/choose files to upload/i).setInputFiles(validImagePath);
+  76  | 
+  77  |   // Upload queue shows progress, then the file card appears and
+  78  |   // eventually transitions from Processing to Ready as the worker
+  79  |   // (running alongside this test run) picks up the job.
+  80  |   await expect(page.getByText(`valid-${RUN_ID}.jpg`)).toBeVisible();
+  81  |   const card = page.locator(`[data-testid="file-card"][data-file-name="valid-${RUN_ID}.jpg"]`);
+  82  |   try {
+  83  |     await expect(card.getByText(/Ready/i)).toBeVisible({ timeout: 20_000 });
+  84  |     await expect(card.getByRole("button", { name: /view protected preview/i })).toBeVisible();
+  85  |   } catch (e) {
+  86  |     console.log("DUMPING DOM:");
+  87  |     const html = await page.evaluate(() => document.body.innerHTML);
+  88  |     console.log(html);
+  89  |     throw e;
+  90  |   }
+  91  | });
+  92  | 
+  93  | test("opens the protected preview", async ({ page }) => {
+  94  |   await page.goto(WORKSPACE_PATH);
+  95  |   await page.getByRole("tab", { name: /^files$/i }).click();
+  96  | 
+  97  |   const card = page.locator(`[data-testid="file-card"][data-file-name="valid-${RUN_ID}.jpg"]`);
+  98  |   await card.getByRole("button", { name: /view protected preview/i }).click();
+  99  |   await expect(card.getByRole("img", { name: new RegExp(`protected preview of valid-${RUN_ID}\\.jpg`, "i") })).toBeVisible();
+  100 | });
+  101 | 
+  102 | test("never shows an original-file download action", async ({ page }) => {
+  103 |   await page.goto(WORKSPACE_PATH);
+  104 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  105 | 
+  106 |   await expect(page.getByRole("link", { name: /download/i })).toHaveCount(0);
+  107 |   await expect(page.getByRole("button", { name: /download original/i })).toHaveCount(0);
+  108 | });
+  109 | 
+  110 | test("a direct refresh of the workspace details page preserves the file's Ready state", async ({ page }) => {
+  111 |   await page.goto(WORKSPACE_PATH);
+  112 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  113 |   await page.reload();
+  114 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  115 | 
+  116 |   const card = page.locator(`[data-testid="file-card"][data-file-name="valid-${RUN_ID}.jpg"]`);
+  117 |   await expect(card.getByText(/Ready/i)).toBeVisible();
+  118 | });
+  119 | 
+  120 | test("rejects an unsupported file type without creating a processed file", async ({ page }) => {
+  121 |   await page.goto(WORKSPACE_PATH);
+  122 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  123 | 
+  124 |   await page.getByLabel(/choose files to upload/i).setInputFiles(unsupportedFilePath);
+  125 | 
+  126 |   await expect(page.getByText(`not-allowed-${RUN_ID}.exe`)).toBeVisible();
+  127 |   await expect(page.getByText(/isn't supported/i)).toBeVisible();
+  128 | });
+  129 | 
+  130 | test("rejects a file over the configured size limit", async ({ page }) => {
+  131 |   await page.goto(WORKSPACE_PATH);
+  132 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  133 | 
+  134 |   await page.getByLabel(/choose files to upload/i).setInputFiles(tooLargeFilePath);
+  135 | 
+  136 |   await expect(page.getByText(`too-large-${RUN_ID}.jpg`)).toBeVisible();
+  137 |   await expect(page.getByText(/larger than the.*MB limit/i)).toBeVisible();
+  138 | });
+  139 | 
+  140 | test("a file that fails processing shows the Failed state with a retry action", async ({ page }) => {
+  141 |   await page.goto(WORKSPACE_PATH);
+  142 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  143 | 
+  144 |   await page.getByLabel(/choose files to upload/i).setInputFiles(oversizedDimensionImagePath);
+  145 |   await expect(page.getByText(`oversized-dimensions-${RUN_ID}.jpg`)).toBeVisible();
+  146 | 
+  147 |   const card = page.locator(`[data-testid="file-card"][data-file-name="oversized-dimensions-${RUN_ID}.jpg"]`);
+  148 |   try {
+> 149 |     await expect(card.getByText(/Failed/i)).toBeVisible({ timeout: 20_000 });
+      |                                             ^ Error: expect(locator).toBeVisible() failed
+  150 |     await expect(card.getByRole("button", { name: /retry processing/i })).toBeVisible();
+  151 |   } catch (e) {
+  152 |     console.log("DUMPING DOM TEST 140:");
+  153 |     const html = await page.evaluate(() => document.body.innerHTML);
+  154 |     console.log(html);
+  155 |     throw e;
+  156 |   }
+  157 | });
+  158 | 
+  159 | test("retrying a failed file re-queues it for processing", async ({ page }) => {
+  160 |   await page.goto(WORKSPACE_PATH);
+  161 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  162 | 
+  163 |   const card = page.locator(`[data-testid="file-card"][data-file-name="oversized-dimensions-${RUN_ID}.jpg"]`);
+  164 |   await card.getByRole("button", { name: /retry processing/i }).click();
+  165 | 
+  166 |   // Still oversized, so it genuinely fails again — this asserts the retry
+  167 |   // mechanism itself works (a fresh attempt happens), not that the
+  168 |   // outcome changes.
+  169 |   await expect(card.getByText(/Failed/i)).toBeVisible({ timeout: 20_000 });
+  170 | });
+  171 | 
+  172 | test("removes an eligible file after confirmation", async ({ page }) => {
+  173 |   await page.goto(WORKSPACE_PATH);
+  174 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  175 | 
+  176 |   const card = page.locator(`[data-testid="file-card"][data-file-name="oversized-dimensions-${RUN_ID}.jpg"]`);
+  177 |   await card.getByRole("button", { name: /^remove$/i }).click();
+  178 |   await expect(page.getByRole("heading", { name: new RegExp(`remove oversized-dimensions-${RUN_ID}\\.jpg\\?`, "i") })).toBeVisible();
+  179 |   await page.getByRole("button", { name: /remove file/i }).click();
+  180 | 
+  181 |   await expect(page.getByText(`oversized-dimensions-${RUN_ID}.jpg`)).toHaveCount(0);
+  182 | });
+  183 | 
+  184 | test("the upload dropzone works at a mobile viewport", async ({ page }) => {
+  185 |   await page.setViewportSize({ width: 390, height: 844 });
+  186 |   await page.goto(WORKSPACE_PATH);
+  187 |   await page.getByRole("tab", { name: /^files$/i }).click();
+  188 | 
+  189 |   const hasOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  190 |   expect(hasOverflow).toBe(false);
+  191 | 
+  192 |   await expect(page.getByRole("button", { name: /browse files/i })).toBeVisible();
+  193 | });
+  194 | 
+```

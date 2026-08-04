@@ -19,7 +19,7 @@ export function LoginForm() {
 
   return (
     <AuthCard
-      heading={`Sign in to ${BRAND.productName}`}
+      heading="Welcome Back"
       subheading="Enter your credentials to access your workspaces"
       footer={
         <span>

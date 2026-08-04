@@ -19,6 +19,8 @@ export interface ConfirmDialogProps {
   initialState: ConfirmActionState;
   hiddenFields: Record<string, string>;
   onSuccess?: (state: ConfirmActionState) => void;
+  /** Fires whenever this dialog's own submission is pending vs. settled — lets a parent (e.g. FilesTab) pause its own polling while a mutation is in flight, so a concurrent router.refresh() can't clobber this action's own revalidated tree. */
+  onPendingChange?: (pending: boolean) => void;
   destructive?: boolean;
 }
 
@@ -40,6 +42,7 @@ export function ConfirmDialog({
   initialState,
   hiddenFields,
   onSuccess,
+  onPendingChange,
   destructive = false,
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -53,6 +56,13 @@ export function ConfirmDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire when the action's result changes
   }, [state]);
+
+  useEffect(() => {
+    onPendingChange?.(pending);
+    // Also clear on unmount, in case the dialog/card disappears mid-submit.
+    return () => onPendingChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire when pending itself changes
+  }, [pending]);
 
   return (
     <>

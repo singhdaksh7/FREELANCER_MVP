@@ -22,6 +22,10 @@ test.beforeAll(async () => {
 });
 
 test("creator uploads an image and generates a review link", async ({ page }) => {
+  // See approval-only.spec.ts's equivalent comment: real upload/worker
+  // processing plus a review-link Server Action needs more than the
+  // default 30s test timeout.
+  test.setTimeout(120_000);
   await login(page);
   workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000" });
   await uploadFileAndWaitReady(page, workspaceUrl, filePath);
@@ -46,5 +50,10 @@ test("client draws a freehand annotation and submits it", async ({ page, context
   await page.getByPlaceholder(/describe this annotation/i).fill(ANNOTATION_BODY);
   await page.getByRole("button", { name: /^submit annotation$/i }).click();
 
+  // Submitting closes the annotation overlay (AnnotationCanvas's onClose),
+  // which reveals whatever sidebar tab was already active — "Overview" by
+  // default, not "Comments". The annotation is stored as a comment, so it
+  // only renders once the Comments tab is actually open.
+  await page.getByRole("button", { name: /comments \(/i }).click();
   await expect(page.getByText(ANNOTATION_BODY)).toBeVisible({ timeout: 10_000 });
 });

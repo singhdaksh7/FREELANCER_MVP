@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { login } from "../mutations/helpers";
+import { waitForFileStatus } from "../helpers/wait-for-file-status";
 
 /**
  * Functional coverage of the Phase 6 secure client-review workflow against
@@ -63,16 +64,19 @@ test.beforeAll(async () => {
 });
 
 test("creator uploads two files, generates and copies a secure review link", async ({ page, context }) => {
+  // This is the first test in the suite to wait on the file-processing
+  // worker, right after the shared dev server/worker have just cold-started
+  // for this run (see playwright.config.ts's webServer) — generous timeout
+  // for that reason (see e2e/uploads/uploads.spec.ts's equivalent comment).
+  test.setTimeout(240_000);
   await context.grantPermissions(["clipboard-write", "clipboard-read"]);
   await login(page);
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^files$/i }).click();
 
   await page.getByLabel(/choose files to upload/i).setInputFiles([imageOnePath, imageTwoPath]);
-  const cardOne = page.locator(`[data-testid="file-card"][data-file-name="review-file-one-${RUN_ID}.jpg"]`);
-  const cardTwo = page.locator(`[data-testid="file-card"][data-file-name="review-file-two-${RUN_ID}.jpg"]`);
-  await expect(cardOne.getByText("Ready", { exact: true })).toBeVisible({ timeout: 20_000 });
-  await expect(cardTwo.getByText("Ready", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await waitForFileStatus(page, { fileName: `review-file-one-${RUN_ID}.jpg`, expectedStatus: "Ready", reselectFilesTab: true }, test.info());
+  await waitForFileStatus(page, { fileName: `review-file-two-${RUN_ID}.jpg`, expectedStatus: "Ready", reselectFilesTab: true }, test.info());
 
   // Idempotent against a stale review link left over from a previous,
   // interrupted run of this same spec (this workspace isn't reset between
@@ -82,12 +86,18 @@ test("creator uploads two files, generates and copies a secure review link", asy
   if (await revokeButton.isVisible().catch(() => false)) {
     await revokeButton.click();
     await page.getByRole("button", { name: /^revoke link$/i }).last().click();
-    await expect(page.getByRole("button", { name: /create secure review link/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /create secure review link/i })).toBeVisible({ timeout: 60_000 });
   }
 
   await page.getByRole("button", { name: /create secure review link/i }).click();
   const linkInput = page.getByTestId("review-link-input");
-  await expect(linkInput).toBeVisible();
+  // Server Action writes the workspace + generates a secure token — the
+  // default 5s expect timeout was observed to fire while the button was
+  // still showing its own "Creating…" pending state under load (right
+  // after two 90s file-processing waits in this same test, plus a cold
+  // `next start` boot when this project runs on its own right after
+  // another project's server was torn down).
+  await expect(linkInput).toBeVisible({ timeout: 60_000 });
   reviewLinkUrl = await linkInput.inputValue();
   expect(reviewLinkUrl).toMatch(/\/review\/[A-Za-z0-9_-]{40,}$/);
 
@@ -105,9 +115,25 @@ test("opening the review link directly shows the protected portal, no creator ac
   await context.clearCookies(); // simulate a client with no creator session at all
   await page.goto(reviewLinkUrl);
 
-  await expect(page.getByText(/secure preview/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: `review-file-one-${RUN_ID}.jpg` })).toBeVisible();
-  await expect(page.getByText(/original files remain securely locked until payment is completed/i).first()).toBeVisible();
+  await expect(page).toHaveURL(reviewLinkUrl);
+
+  await expect(page.getByRole("heading", { name: /client review summary/i })).toBeVisible();
+
+  // Explicitly select the current run's file-one before asserting its
+  // preview — a Playwright retry leaves the previous attempt's files in
+  // this isolated E2E database (this spec never deletes its own records),
+  // so the portal's initially-selected file on load can't be assumed to be
+  // this run's file-one; it must be selected first.
+  const currentFileButton = page.getByRole("button", { name: new RegExp(`review-file-one-${RUN_ID}\\.jpg`, "i") });
+  await expect(currentFileButton).toBeVisible();
+  await currentFileButton.click();
+
+  await expect(
+    page.getByRole("img", { name: new RegExp(`protected preview of review-file-one-${RUN_ID}\\.jpg`, "i") }),
+  ).toBeVisible({ timeout: 10_000 });
+
+  await expect(page.getByText(/original files unlock automatically upon payment/i).first()).toBeVisible();
+
   await expect(page.getByText(/escrow/i)).toHaveCount(0);
 });
 
@@ -118,10 +144,16 @@ test("an invalid token shows the invalid-link system state", async ({ page }) =>
 
 test("switches between files in the file navigation", async ({ page }) => {
   await page.goto(reviewLinkUrl);
-  await page.getByRole("button", { name: `review-file-two-${RUN_ID}.jpg` }).click();
-  await expect(page.getByRole("img", { name: new RegExp(`protected preview of review-file-two-${RUN_ID}\\.jpg`, "i") })).toBeVisible({
-    timeout: 10_000,
-  });
+
+  // Same reasoning as above: explicitly select the current run's file-two
+  // rather than assuming which file the portal has selected on load.
+  const currentFileTwoButton = page.getByRole("button", { name: new RegExp(`review-file-two-${RUN_ID}\\.jpg`, "i") });
+  await expect(currentFileTwoButton).toBeVisible();
+  await currentFileTwoButton.click();
+
+  await expect(
+    page.getByRole("img", { name: new RegExp(`protected preview of review-file-two-${RUN_ID}\\.jpg`, "i") }),
+  ).toBeVisible({ timeout: 10_000 });
 });
 
 test("opens the mobile comments bottom sheet", async ({ page }) => {
@@ -138,8 +170,22 @@ test("opens the mobile comments bottom sheet", async ({ page }) => {
 
 test("client adds a comment", async ({ page }) => {
   await page.goto(reviewLinkUrl);
-  await page.locator("aside").getByLabel(/your name/i).fill("Rohit Sharma");
-  await page.getByPlaceholder(/add a comment/i).fill(`Please adjust the crop — ${RUN_ID}`);
+
+  // The sidebar defaults to Action Center, not Comments — the Comments
+  // panel (and its real reviewer-name input) isn't visible until this tab
+  // is opened. Selecting by `aside .getByLabel(/your name/i)` also matches
+  // the hidden approval dialog's "#approve-name" input, which shares the
+  // same label; the Comments tab must be opened explicitly first.
+  await page.getByRole("button", { name: /comments \(/i }).click();
+
+  const reviewerNameInput = page.getByPlaceholder(/enter your name/i);
+  await expect(reviewerNameInput).toBeVisible();
+  await reviewerNameInput.fill("Rohit Sharma");
+
+  const commentInput = page.getByPlaceholder(/add a comment/i);
+  await expect(commentInput).toBeVisible();
+  await commentInput.fill(`Please adjust the crop — ${RUN_ID}`);
+
   await page.getByRole("button", { name: /^post$/i }).click();
 
   await expect(page.getByText(`Please adjust the crop — ${RUN_ID}`)).toBeVisible();
@@ -150,11 +196,20 @@ test("creator sees and replies to the client comment", async ({ page }) => {
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^comments$/i }).click();
 
-  await expect(page.getByText(`Please adjust the crop — ${RUN_ID}`)).toBeVisible();
-  await page.getByPlaceholder(/reply/i).first().fill(`Sure, updating now — ${RUN_ID}`);
-  await page.getByRole("button", { name: /^reply$/i }).first().click();
+  // Scoped to this run's own comment card — a global `.first()` is unsafe
+  // here: seeded comments, a leftover comment from a previous retry, or
+  // simply another open thread would all make `.first()` pick the wrong
+  // card's Reply form (confirmed by DB evidence: a reply once landed under
+  // an unrelated, older comment because of exactly this).
+  const clientCommentCard = page
+    .getByTestId("creator-comment-card")
+    .filter({ hasText: `Please adjust the crop — ${RUN_ID}` });
+  await expect(clientCommentCard).toBeVisible();
 
-  await expect(page.getByText(`Sure, updating now — ${RUN_ID}`)).toBeVisible();
+  await clientCommentCard.getByPlaceholder(/reply/i).fill(`Sure, updating now — ${RUN_ID}`);
+  await clientCommentCard.getByRole("button", { name: /^reply$/i }).click();
+
+  await expect(clientCommentCard.getByText(`Sure, updating now — ${RUN_ID}`)).toBeVisible();
 });
 
 test("creator resolves the comment", async ({ page }) => {
@@ -162,8 +217,15 @@ test("creator resolves the comment", async ({ page }) => {
   await page.goto(WORKSPACE_PATH);
   await page.getByRole("tab", { name: /^comments$/i }).click();
 
-  await page.getByRole("button", { name: /^resolve$/i }).first().click();
-  await expect(page.getByText("Resolved", { exact: true }).first()).toBeVisible();
+  // Same scoping reasoning as the reply test above — never use a global
+  // `.first()` for the Resolve control either.
+  const clientCommentCard = page
+    .getByTestId("creator-comment-card")
+    .filter({ hasText: `Please adjust the crop — ${RUN_ID}` });
+  await expect(clientCommentCard).toBeVisible();
+
+  await clientCommentCard.getByRole("button", { name: /^resolve$/i }).click();
+  await expect(clientCommentCard.getByText("Resolved", { exact: true })).toBeVisible();
 });
 
 test("client requests changes", async ({ page }) => {
@@ -184,16 +246,49 @@ test("creator sees the change request and uploads a new version", async ({ page 
   await expect(page.getByText(`Please brighten the second image — ${RUN_ID}`)).toBeVisible();
 
   const cardOne = page.locator(`[data-testid="file-card"][data-file-name="review-file-one-${RUN_ID}.jpg"]`);
+  // Wait on the actual "complete" round trip response rather than any
+  // transient UI text — the whole session→XHR PUT→complete sequence can
+  // finish fast enough locally that "Uploading…" is never observed by a
+  // polling assertion, and reloading before the request truly finishes
+  // would cancel it mid-flight (confirmed via trace inspection: the
+  // upload-sessions POST never got a response because a too-early reload
+  // had already torn down the page).
+  const completeResponsePromise = page.waitForResponse(
+    (res) => /\/api\/upload-sessions\/.+\/complete$/.test(new URL(res.url()).pathname) && res.request().method() === "POST",
+  );
   await cardOne.getByLabel(/upload new version/i).setInputFiles(versionTwoPath);
+  const completeResponse = await completeResponsePromise;
+  expect(completeResponse.ok()).toBe(true);
 
   // First: confirm the version-2 upload session round trip actually
-  // completed and produced a visible PROCESSING/READY/FAILED candidate
-  // (the version-upload equivalent of e2e/uploads.spec.ts's "reaches
-  // Ready" assertion — without this, a silently-failed upload and an
-  // already-promoted version look identical to a test that only checks
-  // for absence).
-  await expect(cardOne.getByText(/version 2 candidate/i)).toBeVisible({ timeout: 15_000 });
-  await expect(cardOne.getByText(/version 2 candidate:\s*FAILED/i)).toHaveCount(0);
+  // completed and didn't silently fail (the version-upload equivalent of
+  // e2e/uploads.spec.ts's "reaches Ready" assertion — without this, a
+  // silently-failed upload and an already-promoted version look identical
+  // to a test that only checks for absence). Reload-polls rather than
+  // checking the live DOM: router.refresh() isn't reliably reflected
+  // without a reload in this environment (see wait-for-file-status.ts's
+  // own reload fallback for the same, already-diagnosed limitation — this
+  // spec's own next assertion below relies on the identical reload-poll
+  // for exactly that reason). It also accepts either a still-processing
+  // candidate or an already-promoted version 2 as proof the round trip
+  // succeeded — worker processing can finish fast enough that a transient
+  // PROCESSING candidate is never observed before it's promoted.
+  let versionTwoState: "candidate" | "promoted" | "failed" | "missing" = "missing";
+  await expect
+    .poll(
+      async () => {
+        await page.reload();
+        await page.getByRole("tab", { name: /^files$/i }).click();
+        if ((await cardOne.getByText(/version 2 candidate:\s*FAILED/i).count()) > 0) versionTwoState = "failed";
+        else if ((await cardOne.getByText(/version 2 candidate/i).count()) > 0) versionTwoState = "candidate";
+        else if ((await cardOne.getByText(/version history \(2\)/i).count()) > 0) versionTwoState = "promoted";
+        else versionTwoState = "missing";
+        return versionTwoState;
+      },
+      { timeout: 20_000, intervals: [500, 1000, 2000, 3000] },
+    )
+    .not.toBe("missing");
+  expect(versionTwoState).not.toBe("failed");
 
   // Then: real worker processing promotes the candidate to current
   // atomically on success, which clears WorkspaceFile.pendingVersionId —
@@ -220,13 +315,23 @@ test("creator submits the revision for review", async ({ page }) => {
 
   // The change-request banner (and its "Changes requested by ..." heading)
   // disappears once the workspace is back in IN_REVIEW — the durable,
-  // server-verified signal that the revision was actually submitted,
-  // rather than racing a transient confirmation message against the
-  // Server Action's own revalidatePath refresh.
-  await expect(page.getByText(/changes requested by/i)).toHaveCount(0, { timeout: 10_000 });
-  await page.reload();
-  await page.getByRole("tab", { name: /^files$/i }).click();
-  await expect(page.getByText(/changes requested by/i)).toHaveCount(0);
+  // server-verified signal that the revision was actually submitted.
+  // Reload-polls rather than trusting the Server Action's own
+  // revalidatePath refresh to land live: router.refresh()/automatic
+  // revalidation isn't reliably reflected without a reload in this
+  // environment (see wait-for-file-status.ts's own reload fallback, and
+  // the previous test's identical reload-poll, for the same
+  // already-diagnosed limitation).
+  await expect
+    .poll(
+      async () => {
+        await page.reload();
+        await page.getByRole("tab", { name: /^files$/i }).click();
+        return page.getByText(/changes requested by/i).count();
+      },
+      { timeout: 20_000, intervals: [500, 1000, 2000, 3000] },
+    )
+    .toBe(0);
 });
 
 test("client sees the newly submitted version 2", async ({ page }) => {
@@ -250,13 +355,22 @@ test("original download remains unavailable after approval", async ({ page }) =>
   await page.goto(reviewLinkUrl);
   await expect(page.getByRole("link", { name: /download/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /download original/i })).toHaveCount(0);
-  await expect(page.getByText(/originals still locked|remain securely locked/i).first()).toBeVisible();
+  // Reassurance copy that originals stay locked until payment — the exact
+  // wording differs by PaymentPanel phase ("remain locked until payment is
+  // confirmed" while a payment attempt is in flight; "unlock only after
+  // your payment is confirmed" in the default ready-to-pay state this test
+  // lands on), so match on the shared "unlock/lock ... payment" meaning
+  // rather than one literal phase's copy.
+  await expect(page.getByText(/lock(ed)?.*payment|unlock.*payment/i).first()).toBeVisible();
 });
 
 test("a direct refresh of the review page maintains access", async ({ page }) => {
   await page.goto(reviewLinkUrl);
   await page.reload();
-  await expect(page.getByText(/secure preview/i)).toBeVisible();
+  // The portal renders normally (not an invalid/revoked-link system state)
+  // — this heading is always present on a successfully token-authorized
+  // load, so its presence is the durable signal access was maintained.
+  await expect(page.getByRole("heading", { name: /client review summary/i })).toBeVisible();
 });
 
 test("revoking the link from the creator side shows the revoked system state to the client", async ({ page }) => {

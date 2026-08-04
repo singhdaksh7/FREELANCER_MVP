@@ -16,7 +16,7 @@ setup("authenticate as the demo creator", async ({ page }) => {
   await page.getByRole("button", { name: /sign in/i }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Welcome back, Arjun Raj");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Good (morning|afternoon|evening), Arjun Raj/);
 
   await page.context().storageState({ path: AUTH_FILE });
 });

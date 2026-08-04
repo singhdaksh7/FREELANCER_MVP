@@ -23,7 +23,17 @@ test("file delete confirmation dialog visual baseline", async ({ page }, testInf
   const card = page.locator(`[data-testid="file-card"][data-file-name="${name}"]`);
   await expect(card).toBeVisible({ timeout: 40_000 });
   await card.getByRole("button", { name: /^remove$/i }).click();
-  await expect(page.getByRole("heading", { name: new RegExp(`remove ${name.replace(".", "\\.")}\\?`, "i") })).toBeVisible();
+  const heading = page.getByRole("heading", { name: new RegExp(`remove ${name.replace(".", "\\.")}\\?`, "i") });
+  await expect(heading).toBeVisible();
 
-  await expect(page).toHaveScreenshot("files-delete-confirmation.png");
+  // This test only opens the dialog (never confirms deletion — see the
+  // known delete-flow reliability issue tracked separately), so the
+  // uploaded file necessarily stays in this shared workspace afterward.
+  // Date.now() was previously used to keep each run's filename unique
+  // (avoiding a duplicate-card locator collision against leftover files
+  // from prior runs), but that same filename renders inside this dialog's
+  // heading — masked here instead so screenshot stability doesn't depend
+  // on either a fixed name (which would collide) or the name matching a
+  // prior baseline capture.
+  await expect(page).toHaveScreenshot("files-delete-confirmation.png", { mask: [heading] });
 });

@@ -116,3 +116,18 @@ export type WorkspaceCreateInput = z.infer<typeof workspaceCreateSchema>;
 /** Same shape as create — every editable field may be resubmitted. Financial-lock enforcement (amount/currency) happens in the data-access layer, where the workspace's current status is known. */
 export const workspaceUpdateSchema = workspaceBaseSchema.superRefine(requireAmountForPaymentRequired);
 export type WorkspaceUpdateInput = z.infer<typeof workspaceUpdateSchema>;
+
+/**
+ * Step 1 of the create-workspace wizard, before delivery mode/amount/
+ * watermark are chosen — validates only what's actually collected on that
+ * step. createWorkspaceDraftAction uses this (not workspaceCreateSchema) so
+ * a draft can be created immediately on "Continue" without forcing later
+ * steps' fields to exist yet.
+ */
+export const workspaceDraftCreateSchema = z.object({
+  title: titleSchema,
+  clientName: clientNameSchema,
+  description: descriptionSchema,
+  dueDate: dueDateSchema,
+});
+export type WorkspaceDraftCreateInput = z.infer<typeof workspaceDraftCreateSchema>;

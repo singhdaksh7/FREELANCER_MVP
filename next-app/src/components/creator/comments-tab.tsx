@@ -1,42 +1,131 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Reply } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MessageSquare } from "lucide-react";
-import { addCreatorCommentAction, resolveCommentAction, type ReviewCommentActionState } from "@/actions/review-comments";
 import { formatDateTime } from "@/lib/format-date";
 import type { ReviewCommentThreadItem } from "@/data-access/review-comments";
 import type { WorkspaceFileListItem } from "@/data-access/files";
 
-const INITIAL_STATE: ReviewCommentActionState = {};
+/**
+ * PHASE 7 Route Handler fallback for creator replies/resolves (see the
+ * review-link and file-delete routes for the same rationale). The
+ * `useActionState`-driven Server Action version left a reply or resolve
+ * correctly committed server-side while the browser never reliably applied
+ * the `revalidatePath` RSC response — CommentsTab now owns local
+ * comment-thread state, seeded once from the `comments` prop (this
+ * component unmounts/remounts on every Comments-tab activation — see
+ * WorkspaceDetailTabs — so that's also when it naturally re-syncs with the
+ * server), and each successful fetch updates that local state directly
+ * rather than waiting on a revalidated render to arrive.
+ */
 
-function ResolveButton({ workspaceId, commentId }: { workspaceId: string; commentId: string }) {
-  const [state, action, pending] = useActionState(resolveCommentAction, INITIAL_STATE);
+function ResolveButton({
+  workspaceId,
+  commentId,
+  onResolveSuccess,
+}: {
+  workspaceId: string;
+  commentId: string;
+  onResolveSuccess: (commentId: string) => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const pendingRef = useRef(false);
+
+  async function handleClick() {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`/api/workspaces/${workspaceId}/comments/${commentId}/resolve`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      onResolveSuccess(commentId);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  }
+
   return (
-    <form action={action} className="inline">
-      <input type="hidden" name="workspaceId" value={workspaceId} />
-      <input type="hidden" name="commentId" value={commentId} />
+    <span className="inline-flex items-center gap-2">
       <button
-        type="submit"
+        type="button"
+        onClick={handleClick}
         disabled={pending}
         className="inline-flex items-center gap-1 text-xs font-semibold text-vault-blue hover:underline disabled:cursor-not-allowed disabled:opacity-60"
       >
         <CheckCircle2 size={12} aria-hidden="true" /> {pending ? "Resolving…" : "Resolve"}
       </button>
-      {state.error && <span className="ml-2 text-xs text-danger">{state.error}</span>}
-    </form>
+      {error && (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }
 
-function ReplyForm({ workspaceId, parentId }: { workspaceId: string; parentId: string }) {
-  const [state, action, pending] = useActionState(addCreatorCommentAction, INITIAL_STATE);
+function ReplyForm({
+  workspaceId,
+  parentId,
+  onReplySuccess,
+}: {
+  workspaceId: string;
+  parentId: string;
+  onReplySuccess: (parentId: string, reply: ReviewCommentThreadItem) => void;
+}) {
+  const [body, setBody] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const pendingRef = useRef(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pendingRef.current) return;
+    const trimmed = body.trim();
+    if (!trimmed) return;
+
+    pendingRef.current = true;
+    setPending(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`/api/workspaces/${workspaceId}/comments/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentId, body: trimmed }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "Something went wrong. Please try again.");
+        return; // keep the entered text so nothing is lost on failure
+      }
+      onReplySuccess(parentId, { ...data.reply, replies: [] });
+      setBody(""); // only clear after confirmed success
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  }
+
   return (
-    <form action={action} className="mt-2 flex gap-2">
-      <input type="hidden" name="workspaceId" value={workspaceId} />
-      <input type="hidden" name="parentId" value={parentId} />
+    <form onSubmit={handleSubmit} className="mt-2 flex gap-2">
       <input
-        name="body"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
         placeholder="Reply…"
         maxLength={2000}
         required
@@ -49,7 +138,11 @@ function ReplyForm({ workspaceId, parentId }: { workspaceId: string; parentId: s
       >
         <Reply size={12} aria-hidden="true" /> {pending ? "Sending…" : "Reply"}
       </button>
-      {state.error && <span className="text-xs text-danger">{state.error}</span>}
+      {error && (
+        <span role="alert" className="text-xs text-danger">
+          {error}
+        </span>
+      )}
     </form>
   );
 }
@@ -58,13 +151,17 @@ function CommentCard({
   comment,
   workspaceId,
   fileLabel,
+  onReplySuccess,
+  onResolveSuccess,
 }: {
   comment: ReviewCommentThreadItem;
   workspaceId: string;
   fileLabel: string | null;
+  onReplySuccess: (parentId: string, reply: ReviewCommentThreadItem) => void;
+  onResolveSuccess: (commentId: string) => void;
 }) {
   return (
-    <li className="rounded-md border border-line p-4">
+    <li data-testid="creator-comment-card" data-comment-id={comment.id} className="rounded-md border border-line p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <span className="text-sm font-semibold text-ink">{comment.authorName}</span>
@@ -74,7 +171,7 @@ function CommentCard({
           {fileLabel && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-ink-muted">{fileLabel}</span>}
         </div>
         {comment.status === "OPEN" ? (
-          <ResolveButton workspaceId={workspaceId} commentId={comment.id} />
+          <ResolveButton workspaceId={workspaceId} commentId={comment.id} onResolveSuccess={onResolveSuccess} />
         ) : (
           <span className="text-xs font-semibold text-success">Resolved</span>
         )}
@@ -95,7 +192,7 @@ function CommentCard({
         </ul>
       )}
 
-      <ReplyForm workspaceId={workspaceId} parentId={comment.id} />
+      <ReplyForm workspaceId={workspaceId} parentId={comment.id} onReplySuccess={onReplySuccess} />
     </li>
   );
 }
@@ -106,16 +203,36 @@ type StatusFilter = "all" | "open" | "resolved";
 
 export function CommentsTab({
   workspaceId,
-  comments,
+  comments: initialComments,
   files,
 }: {
   workspaceId: string;
   comments: ReviewCommentThreadItem[];
   files: WorkspaceFileListItem[];
 }) {
+  const router = useRouter();
+  // Seeded once from the server-rendered prop — this component unmounts on
+  // every tab switch away from Comments (see WorkspaceDetailTabs' `activeTab
+  // === "comments" &&` guard) and remounts fresh on the next activation, so
+  // that's the natural resync point; within a single mount, our own
+  // confirmed mutations are the source of visible truth, not a revalidated
+  // render that may or may not arrive.
+  const [comments, setComments] = useState<ReviewCommentThreadItem[]>(initialComments);
   const [fileFilter, setFileFilter] = useState<string>(ALL_FILES);
   const [versionFilter, setVersionFilter] = useState<string>(ALL_VERSIONS);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  function handleReplySuccess(parentId: string, reply: ReviewCommentThreadItem): void {
+    setComments((prev) => prev.map((c) => (c.id === parentId ? { ...c, replies: [...c.replies, reply] } : c)));
+    router.refresh(); // canonical reconciliation only — visible correctness never depends on this landing
+  }
+
+  function handleResolveSuccess(commentId: string): void {
+    setComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, status: "RESOLVED", resolvedAt: new Date().toISOString() } : c)),
+    );
+    router.refresh();
+  }
 
   const fileById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files]);
   const versionNumberById = useMemo(() => {
@@ -215,7 +332,14 @@ export function CommentsTab({
       ) : (
         <ul className="flex flex-col gap-3">
           {filteredComments.map((comment) => (
-            <CommentCard key={comment.id} comment={comment} workspaceId={workspaceId} fileLabel={fileLabelFor(comment)} />
+            <CommentCard
+              key={comment.id}
+              comment={comment}
+              workspaceId={workspaceId}
+              fileLabel={fileLabelFor(comment)}
+              onReplySuccess={handleReplySuccess}
+              onResolveSuccess={handleResolveSuccess}
+            />
           ))}
         </ul>
       )}
