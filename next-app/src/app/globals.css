@@ -18,6 +18,10 @@
   --color-vault-blue-hover: #2859d9;
   --color-vault-blue-light: #eef4ff;
 
+  --color-inlay-primary: #1C68E7;
+  --color-inlay-primary-hover: #1555C0;
+  --color-inlay-primary-ring: rgba(28, 104, 231, 0.18);
+
   --color-app-bg: #f5f7fa;
   --color-surface: #f5f7fa;
   --color-card: #ffffff;
