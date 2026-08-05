@@ -18,7 +18,7 @@ export function LoginForm() {
   const errorId = useId();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 sm:p-6 md:p-8">
+    <div className="flex min-h-screen items-center justify-center bg-inlay-primary p-4 sm:p-6 md:p-8">
       <div className="w-full max-w-[420px] rounded-2xl bg-white p-6 sm:p-10 shadow-sm border border-slate-200">
         <div className="mb-8 text-center flex flex-col items-center">
           <div className="mb-6">
