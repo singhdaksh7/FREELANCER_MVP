@@ -8,7 +8,7 @@ import { getPaymentGateway } from "@/payments";
 import { decimalAmountToSubunits } from "@/payments/payment-amount";
 import { calculatePaymentBreakdown } from "@/payments/platform-fee";
 import { getPaymentConfig } from "@/payments/payment-config";
-import { PaymentGatewayError } from "@/payments/payment-errors";
+import { PaymentGatewayError, PaymentConfigError } from "@/payments/payment-errors";
 import { PaymentStatus, type Prisma } from "@/generated/prisma/client";
 
 /**
@@ -52,6 +52,13 @@ export class PaymentOrderCreationFailedError extends Error {
   constructor(message = "We could not start a payment for this project. Please try again.") {
     super(message);
     this.name = "PaymentOrderCreationFailedError";
+  }
+}
+
+export class PaymentTemporarilyUnavailableError extends Error {
+  constructor(message = "Online payment is temporarily unavailable. Please contact the freelancer.") {
+    super(message);
+    this.name = "PaymentTemporarilyUnavailableError";
   }
 }
 
@@ -202,6 +209,15 @@ export async function createPaymentOrder(context: ReviewContext): Promise<Checko
     });
     gatewayOrderId = order.id;
   } catch (error) {
+    if (error instanceof PaymentConfigError) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "FAILED", failedAt: new Date(), failureReason: "Configuration error." },
+      });
+      console.error("Payment configuration error:", error);
+      throw new PaymentTemporarilyUnavailableError();
+    }
+    
     await prisma.payment.update({
       where: { id: payment.id },
       data: { status: "FAILED", failedAt: new Date(), failureReason: "Order creation failed." },

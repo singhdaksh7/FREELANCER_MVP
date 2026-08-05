@@ -35,6 +35,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       NoApprovalFoundError: { status: 409 },
       ApprovalSnapshotInvalidError: { status: 409 },
       PaymentOrderCreationFailedError: { status: 502 },
+      PaymentTemporarilyUnavailableError: { status: 503 },
       RateLimitExceededError: { status: 429, message: new RateLimitExceededError().message },
     });
   }
