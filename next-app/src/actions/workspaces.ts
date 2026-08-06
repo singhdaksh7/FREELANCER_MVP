@@ -22,7 +22,7 @@ export interface WorkspaceFormState {
   error?: string;
   fieldErrors?: Partial<
     Record<
-      "title" | "clientName" | "description" | "deliveryMode" | "currency" | "amount" | "dueDate" | "watermarkText",
+      "title" | "clientName" | "description" | "deliveryMode" | "currency" | "amount" | "dueDate",
       string[]
     >
   >;
@@ -43,7 +43,6 @@ function parseWorkspaceFormData(formData: FormData) {
     currency: String(formData.get("currency") ?? "INR"),
     amount: String(formData.get("amount") ?? ""),
     dueDate: String(formData.get("dueDate") ?? ""),
-    watermarkText: String(formData.get("watermarkText") ?? ""),
   };
 }
 
@@ -96,15 +95,11 @@ export async function createWorkspaceDraftAction(
   _prevState: CreateDraftState,
   formData: FormData,
 ): Promise<CreateDraftState> {
-  const raw = {
-    title: String(formData.get("title") ?? ""),
-    clientName: String(formData.get("clientName") ?? ""),
-    description: String(formData.get("description") ?? ""),
-    dueDate: String(formData.get("dueDate") ?? ""),
-  };
+  const raw = parseWorkspaceFormData(formData);
   const parsed = workspaceDraftCreateSchema.safeParse(raw);
 
   if (!parsed.success) {
+    console.error("VALIDATION FAILED:", parsed.error.flatten().fieldErrors);
     return { fieldErrors: parsed.error.flatten().fieldErrors };
   }
 
@@ -172,7 +167,7 @@ export async function finalizeWorkspaceDraftAction(
   // is still DRAFT at this point (finalizeWorkspaceDraft never changes its
   // status), so this is accurate, not just consistent with the pre-draft-
   // first copy.
-  redirect(`/workspaces/${workspaceId}?flash=${encodeURIComponent("Workspace created as a draft.")}`);
+  redirect(`/workspaces/${workspaceId}/success`);
 }
 
 /** Edits a workspace. Financially-locked workspaces (PAID/FILES_UNLOCKED/DELIVERED) keep their amount/currency/client unchanged regardless of what's submitted — see updateOwnedWorkspace. */

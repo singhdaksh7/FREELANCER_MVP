@@ -32,8 +32,7 @@ test("creates an APPROVAL_ONLY workspace and generates a review link", async ({ 
   // off mid-wait even though the underlying operations were still healthy.
   test.setTimeout(120_000);
   await login(page);
-  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY" });
-  await uploadFileAndWaitReady(page, workspaceUrl, filePath);
+  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY", files: [filePath] });
   reviewLinkUrl = await createReviewLink(page);
 });
 

@@ -78,6 +78,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
         });
         const sessionData = await sessionResponse.json();
         if (!sessionResponse.ok) {
+          console.error("Upload session failed:", sessionResponse.status, sessionData);
           updateItem(id, { status: "error", errorMessage: sessionData.error ?? "Could not start this upload." });
           return;
         }
@@ -106,6 +107,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
         });
         const completeData = await completeResponse.json();
         if (!completeResponse.ok) {
+          console.error("Upload complete failed:", completeResponse.status, completeData);
           updateItem(id, { status: "error", errorMessage: completeData.error ?? "This file could not be verified." });
           return;
         }

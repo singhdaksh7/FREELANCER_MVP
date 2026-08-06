@@ -86,8 +86,6 @@ export function WorkspaceDetailTabs({
               <dd><StatusBadge status={workspaceStatusLabel(workspace.status)} /></dd>
               <dt className="text-ink-muted">Due Date</dt>
               <dd className="text-ink">{workspace.dueDate ? formatDateTime(workspace.dueDate) : "Not set"}</dd>
-              <dt className="text-ink-muted">Watermark Text</dt>
-              <dd className="text-ink">{workspace.watermarkText ?? "Not set"}</dd>
               <dt className="text-ink-muted">Created</dt>
               <dd className="text-ink">{formatDateTime(workspace.createdAt)}</dd>
               <dt className="text-ink-muted">Last Updated</dt>

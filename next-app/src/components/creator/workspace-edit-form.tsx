@@ -31,7 +31,6 @@ export function WorkspaceEditForm({ workspace }: WorkspaceEditFormProps) {
     clientName: workspace.clientName,
     description: workspace.description ?? "",
     dueDate: workspace.dueDate ?? "",
-    watermarkText: workspace.watermarkText ?? "",
     currency: workspace.currency,
     amount: workspace.amount === null ? "" : String(workspace.amount),
   };
@@ -40,7 +39,6 @@ export function WorkspaceEditForm({ workspace }: WorkspaceEditFormProps) {
   const clientNameId = useId();
   const descriptionId = useId();
   const dueDateId = useId();
-  const watermarkId = useId();
   const amountId = useId();
 
   return (
@@ -164,19 +162,6 @@ export function WorkspaceEditForm({ workspace }: WorkspaceEditFormProps) {
         {state.fieldErrors?.dueDate && (
           <p className="mt-1 text-xs font-medium text-danger">{state.fieldErrors.dueDate[0]}</p>
         )}
-      </div>
-
-      <div>
-        <label htmlFor={watermarkId} className="mb-1.5 block text-sm font-semibold text-ink">
-          Watermark Text
-        </label>
-        <input
-          id={watermarkId}
-          name="watermarkText"
-          defaultValue={values.watermarkText}
-          maxLength={200}
-          className="w-full rounded-md border border-line px-3.5 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-        />
       </div>
 
       <div className="flex gap-3 pt-1">

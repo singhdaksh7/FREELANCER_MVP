@@ -9,7 +9,6 @@ const VALID = {
   currency: "INR",
   amount: "25000",
   dueDate: "2026-08-15",
-  watermarkText: "PREVIEW",
 };
 
 describe("workspaceCreateSchema", () => {
@@ -73,7 +72,7 @@ describe("workspaceCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("treats due date, description, and watermark text as optional", () => {
+  it("treats due date and description as optional", () => {
     const result = workspaceCreateSchema.safeParse({
       title: "Untitled Project",
       clientName: "Rohit Sharma",
@@ -89,10 +88,7 @@ describe("workspaceCreateSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects watermark text longer than the maximum length", () => {
-    const result = workspaceCreateSchema.safeParse({ ...VALID, watermarkText: "a".repeat(201) });
-    expect(result.success).toBe(false);
-  });
+
 
   it("rejects an unrecognized delivery mode", () => {
     const result = workspaceCreateSchema.safeParse({ ...VALID, deliveryMode: "ESCROW" });

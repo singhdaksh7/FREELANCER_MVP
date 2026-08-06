@@ -1,4 +1,5 @@
 import "server-only";
+import { computeDerivedProgress } from "@/lib/status-labels";
 import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from "./auth";
 import { requireOwnedWorkspace } from "./authorization";
@@ -20,7 +21,9 @@ export interface WorkspaceListItem {
   amount: number | null;
   currency: string;
   status: string;
+  deliveryMode: "PAYMENT_REQUIRED" | "APPROVAL_ONLY" | "PREVIEW_ONLY";
   progress: number;
+  derivedProgress: string;
   /** Whether an ACTIVE, unexpired ReviewLink currently exists — the raw token itself is never retrievable after creation, so this is a boolean indicator only, not a link. */
   hasActiveReviewLink: boolean;
   updatedAt: string;
@@ -43,7 +46,7 @@ export interface WorkspacesResult {
 }
 
 function mapWorkspace(
-  workspace: Prisma.WorkspaceGetPayload<object>,
+  workspace: Prisma.WorkspaceGetPayload<{ include: { files: { select: { status: true } } } }>,
   activeReviewLinkWorkspaceIds: ReadonlySet<string>,
 ): WorkspaceListItem {
   return {
@@ -53,10 +56,12 @@ function mapWorkspace(
     amount: toDisplayNumberOrNull(workspace.amount),
     currency: workspace.currency,
     status: workspace.status,
+    deliveryMode: workspace.deliveryMode,
     progress: workspace.progress,
     hasActiveReviewLink: activeReviewLinkWorkspaceIds.has(workspace.id),
     updatedAt: workspace.updatedAt.toISOString(),
     clientName: workspace.clientName,
+    derivedProgress: computeDerivedProgress(workspace.status, workspace.files),
   };
 }
 
@@ -94,10 +99,14 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
         ? [{ amount: "desc" }, { id: "asc" }]
         : [{ updatedAt: "desc" }, { id: "asc" }];
 
-  const workspaces = await prisma.workspace.findMany({ where, orderBy });
+  const workspaces = await prisma.workspace.findMany({ where, orderBy, include: { files: { select: { status: true } } } });
 
   const activeReviewLinks = await prisma.reviewLink.findMany({
-    where: { workspaceId: { in: workspaces.map((w) => w.id) }, status: "ACTIVE", expiresAt: { gt: new Date() } },
+    where: {
+      workspaceId: { in: workspaces.map((w) => w.id) },
+      status: "ACTIVE",
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
     select: { workspaceId: true },
   });
   const activeReviewLinkWorkspaceIds = new Set(activeReviewLinks.map((link) => link.workspaceId));
@@ -380,7 +389,6 @@ export async function createWorkspace(input: WorkspaceCreateInput): Promise<Muta
         currency: input.currency,
         amount: input.amount === undefined ? null : toDecimal(input.amount),
         deliveryMode: input.deliveryMode,
-        watermarkText: input.watermarkText ?? null,
         dueDate: input.dueDate ? new Date(input.dueDate) : null,
         status: "DRAFT",
         progress: 0,
@@ -439,10 +447,9 @@ export async function createWorkspaceDraft(input: WorkspaceDraftCreateInput): Pr
         clientName: input.clientName,
         title: input.title,
         description: input.description ?? null,
-        currency: "INR",
-        amount: null,
-        deliveryMode: "PAYMENT_REQUIRED",
-        watermarkText: null,
+        currency: input.currency,
+        amount: input.amount === undefined ? null : toDecimal(input.amount),
+        deliveryMode: input.deliveryMode,
         dueDate: input.dueDate ? new Date(input.dueDate) : null,
         status: "DRAFT",
         progress: 0,
@@ -527,7 +534,6 @@ export async function finalizeWorkspaceDraft(
       title: input.title,
       clientName: input.clientName,
       description: input.description ?? null,
-      watermarkText: input.watermarkText ?? null,
       deliveryMode: input.deliveryMode,
       currency: input.currency,
       amount: input.amount === undefined ? null : toDecimal(input.amount),
@@ -581,8 +587,7 @@ export async function updateOwnedWorkspace(
 
   const descriptiveChangedFields: string[] = [];
   if (input.title !== existing.title) descriptiveChangedFields.push("title");
-  if ((input.description ?? null) !== existing.description) descriptiveChangedFields.push("description");
-  if ((input.watermarkText ?? null) !== existing.watermarkText) descriptiveChangedFields.push("watermark text");
+  if (input.description !== existing.description) descriptiveChangedFields.push("description");
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.workspace.update({
@@ -590,7 +595,6 @@ export async function updateOwnedWorkspace(
       data: {
         title: input.title,
         description: input.description ?? null,
-        watermarkText: input.watermarkText ?? null,
         clientName: targetClientName,
         amount: targetAmount,
         currency: targetCurrency,

@@ -34,8 +34,7 @@ test("creator uploads an image and generates a review link", async ({ page }) =>
   // default 30s test timeout.
   test.setTimeout(120_000);
   await login(page);
-  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000" });
-  await uploadFileAndWaitReady(page, workspaceUrl, filePath);
+  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000", files: [filePath] });
   reviewLinkUrl = await createReviewLink(page);
 });
 

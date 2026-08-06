@@ -29,8 +29,7 @@ test.beforeAll(async () => {
 test("creates a workspace with a review link for viewport coverage", async ({ page }) => {
   test.setTimeout(120_000);
   await login(page);
-  const workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY" });
-  await uploadFileAndWaitReady(page, workspaceUrl, filePath);
+  const workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY", files: [filePath] });
   reviewLinkUrl = await createReviewLink(page);
 });
 

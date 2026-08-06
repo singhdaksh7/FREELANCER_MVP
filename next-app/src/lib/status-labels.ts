@@ -20,6 +20,51 @@ const WORKSPACE_STATUS_LABELS: Record<string, string> = {
   CLOSED: "Closed",
 };
 
+export function computeDerivedProgress(workspaceStatus: string, files: { status: string }[]): string {
+  if (files.some((f) => f.status === "FAILED")) {
+    return "File processing issue";
+  }
+
+  if (workspaceStatus === "DRAFT" || workspaceStatus === "PREVIEW_PROCESSING") {
+    const hasUnresolved = files.some(
+      (f) =>
+        f.status === "UPLOAD_PENDING" ||
+        f.status === "UPLOADING" ||
+        f.status === "UPLOADED" ||
+        f.status === "PROCESSING" ||
+        f.status === "VALIDATING",
+    );
+    if (files.length === 0 || hasUnresolved) {
+      return "Preparing files";
+    }
+    return "Ready to share";
+  }
+
+  switch (workspaceStatus) {
+    case "IN_REVIEW":
+      return "Waiting for client";
+    case "CHANGES_REQUESTED":
+      return "Changes requested";
+    case "APPROVED":
+      return "Client approved";
+    case "PAYMENT_PENDING":
+      return "Waiting for payment";
+    case "AWAITING_CREATOR_RELEASE":
+      return "Ready for release";
+    case "FILES_UNLOCKED":
+      return "Files available to client";
+    case "PAID":
+    case "DELIVERED":
+      return "Completed";
+    case "CANCELLED":
+      return "Cancelled";
+    case "CLOSED":
+      return "Closed";
+    default:
+      return workspaceStatusLabel(workspaceStatus);
+  }
+}
+
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   CREATED: "Created",
   PENDING: "Pending",

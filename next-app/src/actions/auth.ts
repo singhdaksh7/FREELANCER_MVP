@@ -1,6 +1,8 @@
 "use server";
 
 import { AuthError } from "next-auth";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/auth";
 import { loginSchema, registerSchema } from "@/lib/validation/auth";
 import { createUser, DuplicateEmailError, isUniqueConstraintError } from "@/data-access/users";
@@ -104,5 +106,14 @@ export async function loginAction(
 }
 
 export async function logoutAction(): Promise<void> {
-  await signOut({ redirectTo: "/" });
+  await signOut({ redirect: false, redirectTo: "/" });
+
+  const cookieStore = await cookies();
+  for (const cookie of cookieStore.getAll()) {
+    if (cookie.name.includes("authjs") || cookie.name.includes("next-auth") || cookie.name.includes("session-token")) {
+      cookieStore.delete(cookie.name);
+    }
+  }
+
+  redirect("/");
 }

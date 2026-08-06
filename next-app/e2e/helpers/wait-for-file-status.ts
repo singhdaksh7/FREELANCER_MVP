@@ -103,8 +103,8 @@ export async function waitForFileStatus(
     await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
     if (reselectFilesTab) {
       const filesTab = page.getByRole("tab", { name: /^files$/i });
-      await filesTab.waitFor({ state: "visible" }).catch(() => {});
-      await filesTab.click().catch(() => {});
+      await filesTab.waitFor({ state: "visible", timeout: CARD_VISIBLE_TIMEOUT_MS });
+      await filesTab.click();
     }
     // Never read status immediately after initiating reload/tab click —
     // wait for the matching card to actually be visible again first, so

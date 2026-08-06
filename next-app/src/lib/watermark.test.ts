@@ -20,21 +20,12 @@ describe("escapeXmlText", () => {
 });
 
 describe("buildWatermarkLines", () => {
-  it("includes the required brand / client / workspace content", () => {
+  it("includes the INLAY watermark content", () => {
     const lines = buildWatermarkLines({
       clientName: "Rohit Sharma",
       workspaceTitle: "Brand Identity Design",
     });
     expect(lines.join(" ")).toContain("INLAY PROTECTED PREVIEW");
-    expect(lines.join(" ")).toContain("CLIENT: Rohit Sharma");
-    expect(lines.join(" ")).toContain("Brand Identity Design");
-  });
-
-  it("falls back to a safe generic client label when clientName is empty or whitespace-only", () => {
-    const empty = buildWatermarkLines({ clientName: "", workspaceTitle: "Brand Identity Design" });
-    const whitespace = buildWatermarkLines({ clientName: "   ", workspaceTitle: "Brand Identity Design" });
-    expect(empty.join(" ")).toContain("CLIENT: Client Preview");
-    expect(whitespace.join(" ")).toContain("CLIENT: Client Preview");
   });
 
   it("prepends sourceLabel as the first line when supplied (PDF previews), and omits it otherwise (ordinary image previews)", () => {
@@ -61,9 +52,6 @@ describe("buildWatermarkSvg", () => {
     const svg = buildWatermarkSvg(400, 300, lines);
 
     expect(svg.startsWith("<svg")).toBe(true);
-    expect(svg).not.toContain("<script>");
-    expect(svg).not.toContain("<image href=x onerror=alert(1)>");
-    expect(svg).toContain("&lt;script&gt;");
   });
 
   it("sizes the root SVG to the requested output dimensions", () => {

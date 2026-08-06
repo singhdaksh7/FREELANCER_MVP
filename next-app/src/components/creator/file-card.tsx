@@ -144,10 +144,14 @@ export function FileCard({ file, workspaceId, deliveryMode, onMutationPendingCha
   // auto-load behavior instead of requiring a manual click here too.
   useEffect(() => {
     autoRefreshedRef.current = false;
-    if (canPreview) void loadPreview();
+    if (canPreview) {
+      setTimeout(() => { void loadPreview(); }, 0);
+    }
     else {
-      setPreviewUrl(null);
-      setPreviewError(null);
+      setTimeout(() => {
+        setPreviewUrl(null);
+        setPreviewError(null);
+      }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- loadPreview already depends on file.id
   }, [canPreview, file.currentVersionNumber]);

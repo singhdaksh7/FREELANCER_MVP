@@ -34,8 +34,7 @@ test.beforeAll(async () => {
 test("creator uploads a PDF and a ZIP into an APPROVAL_ONLY workspace", async ({ page }) => {
   test.setTimeout(120_000);
   await login(page);
-  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY" });
-  await uploadFileAndWaitReady(page, workspaceUrl, pdfPath);
+  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, deliveryMode: "APPROVAL_ONLY", files: [pdfPath] });
   await uploadFileAndWaitReady(page, workspaceUrl, zipPath);
   reviewLinkUrl = await createReviewLink(page);
 });

@@ -1,7 +1,8 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export const DEMO_EMAIL = "arjun@example.com";
 export const DEMO_PASSWORD = "Demo@12345";
+export const WORKSPACE_SUCCESS_URL_PATTERN = /\/workspaces\/(?!new(?:\/|$))[a-z0-9-]+\/success$/;
 
 export async function login(page: Page, email = DEMO_EMAIL, password = DEMO_PASSWORD): Promise<void> {
   await page.goto("/login");
@@ -21,6 +22,46 @@ export async function login(page: Page, email = DEMO_EMAIL, password = DEMO_PASS
  * fully succeeded. `waitForURL` is the real completion signal.
  */
 export async function clickAndWaitForURL(page: Page, locator: Locator, urlPattern: RegExp): Promise<void> {
-  void locator.click().catch(() => {});
-  await page.waitForURL(urlPattern);
+  await Promise.all([
+    page.waitForURL(urlPattern),
+    locator.click(),
+  ]);
+}
+
+export async function submitWorkspaceCreation(
+  page: Page,
+  options: { assertionTimeout?: number; navigationTimeout?: number } = {},
+): Promise<string> {
+  const expectedUrl = WORKSPACE_SUCCESS_URL_PATTERN;
+  const assertionTimeout = options.assertionTimeout ?? 10_000;
+  const navigationTimeout = options.navigationTimeout ?? 120_000;
+  const createButton = page.getByRole("button", { name: /create workspace/i });
+  const form = createButton.locator("xpath=ancestor::form[1]");
+
+  await expect(form).toBeVisible({ timeout: assertionTimeout });
+  await expect(createButton).toBeVisible({ timeout: assertionTimeout });
+  await expect(createButton).toBeEnabled({ timeout: assertionTimeout });
+
+  await form.evaluate((node) => {
+    if (!(node instanceof HTMLFormElement)) {
+      throw new Error("Expected workspace creation form.");
+    }
+    if (!node.checkValidity()) {
+      throw new Error("Expected workspace creation form to be valid before submission.");
+    }
+  });
+
+  const navigationPromise = page.waitForURL(expectedUrl, {
+    timeout: navigationTimeout,
+  });
+
+  await form.evaluate((node) => {
+    if (!(node instanceof HTMLFormElement)) {
+      throw new Error("Expected workspace creation form.");
+    }
+    node.requestSubmit();
+  });
+
+  await navigationPromise;
+  return page.url();
 }

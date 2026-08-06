@@ -58,6 +58,13 @@ test("logout ends the session and returns to the public/login experience", async
   // the next step re-requests a protected page.
   await page.waitForURL("/");
 
+  await expect
+    .poll(async () => {
+      const cookies = await page.context().cookies();
+      return cookies.some((cookie) => cookie.name.includes("session-token"));
+    })
+    .toBe(false);
+
   // The session is really gone server-side, not just a client-side redirect.
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login/);

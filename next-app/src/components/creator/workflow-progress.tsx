@@ -6,54 +6,74 @@ export interface WorkflowProgressProps {
   deliveryMode: string;
 }
 
-const STAGES = [
-  { id: "setup", label: "Setup", icon: Shield },
-  { id: "files", label: "Files", icon: Clock },
-  { id: "review", label: "Client Review", icon: Clock },
-  { id: "approval", label: "Approval", icon: Check },
-  { id: "payment", label: "Payment", icon: CreditCard },
-  { id: "delivery", label: "Delivery", icon: PackageCheck },
+const STAGES_PAYMENT = [
+  { id: "setup", label: "Created" },
+  { id: "files", label: "Files Ready" },
+  { id: "shared", label: "Shared" },
+  { id: "approval", label: "Approved" },
+  { id: "payment", label: "Payment" },
+  { id: "delivery", label: "Completed" },
 ];
 
-export function WorkflowProgress({ status, deliveryMode }: WorkflowProgressProps) {
-  // Map current status to step index (0-5)
+const STAGES_APPROVAL = [
+  { id: "setup", label: "Created" },
+  { id: "files", label: "Files Ready" },
+  { id: "shared", label: "Shared" },
+  { id: "approval", label: "Approved" },
+  { id: "release", label: "Released" },
+  { id: "delivery", label: "Completed" },
+];
+
+export function WorkflowProgress({ status, deliveryMode, hasActiveReviewLink = false }: WorkflowProgressProps & { hasActiveReviewLink?: boolean }) {
+  const stages = deliveryMode === "PAYMENT_REQUIRED" ? STAGES_PAYMENT : STAGES_APPROVAL;
+
   let activeIndex = 0;
-  if (status === "DRAFT") activeIndex = 0;
-  else if (status === "FILES_PROCESSING" || status === "READY_FOR_REVIEW") activeIndex = 1;
-  else if (status === "IN_REVIEW" || status === "CHANGES_REQUESTED") activeIndex = 2;
-  else if (status === "APPROVED") activeIndex = 3;
-  else if (status === "PAYMENT_PENDING") activeIndex = 4;
-  else if (status === "PAID" || status === "FILES_UNLOCKED" || status === "DELIVERED") activeIndex = 5;
+  if (status === "DRAFT" || status === "PREVIEW_PROCESSING") {
+    activeIndex = 0;
+  } else if (status === "IN_REVIEW" || status === "CHANGES_REQUESTED") {
+    activeIndex = hasActiveReviewLink ? 2 : 1;
+  } else if (status === "APPROVED") {
+    activeIndex = 3;
+  } else if (status === "PAYMENT_PENDING") {
+    activeIndex = 4; // Payment
+  } else if (status === "AWAITING_CREATOR_RELEASE") {
+    activeIndex = 4; // Released step
+  } else if (status === "PAID" || status === "FILES_UNLOCKED" || status === "DELIVERED" || status === "CLOSED") {
+    activeIndex = 5;
+  } else if (status === "CANCELLED") {
+    activeIndex = -1;
+  }
+
+  if (activeIndex === -1) {
+    return <div className="text-xs font-bold text-danger">Cancelled</div>;
+  }
 
   return (
-    <div className="rounded-xl border border-line bg-card p-4 shadow-sm overflow-x-auto">
-      <ol className="flex items-center justify-between min-w-[600px] gap-2 text-xs font-bold">
-        {STAGES.map((stage, idx) => {
-          const isCompleted = idx < activeIndex;
-          const isCurrent = idx === activeIndex;
-          const isUpcoming = idx > activeIndex;
+    <div className="flex w-full items-center gap-1.5 overflow-x-auto text-[10px] font-bold sm:text-xs">
+      {stages.map((stage, idx) => {
+        const isCompleted = idx < activeIndex;
+        const isCurrent = idx === activeIndex;
 
-          return (
-            <li key={stage.id} className="flex flex-1 items-center gap-2">
-              <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border font-extrabold ${
-                  isCompleted
-                    ? "border-success bg-success-bg text-success"
-                    : isCurrent
-                      ? "border-primary-blue bg-primary-blue text-white"
-                      : "border-line bg-app-bg text-muted-text"
-                }`}
-              >
-                {isCompleted ? "✓" : idx + 1}
-              </span>
-              <span className={`whitespace-nowrap ${isCurrent ? "text-primary-text font-black" : "text-secondary-text"}`}>
-                {stage.label}
-              </span>
-              {idx < STAGES.length - 1 && <div className="h-0.5 flex-1 bg-line ml-2" />}
-            </li>
-          );
-        })}
-      </ol>
+        return (
+          <div key={stage.id} className="flex items-center gap-1.5 shrink-0">
+            <span
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] sm:h-5 sm:w-5 sm:text-[10px] ${
+                isCompleted
+                  ? "border-success bg-success-bg text-success"
+                  : isCurrent
+                    ? "border-primary-blue bg-primary-blue text-white"
+                    : "border-line bg-app-bg text-muted-text"
+              }`}
+            >
+              {isCompleted ? "✓" : idx + 1}
+            </span>
+            <span className={`whitespace-nowrap ${isCurrent ? "text-primary-text" : "text-secondary-text"}`}>
+              {stage.label}
+            </span>
+            {idx < stages.length - 1 && <div className="h-px w-2 sm:w-4 bg-line" />}
+          </div>
+        );
+      })}
     </div>
   );
 }

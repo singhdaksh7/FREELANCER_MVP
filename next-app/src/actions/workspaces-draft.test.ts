@@ -57,7 +57,7 @@ describe("createWorkspaceDraftAction", () => {
   it("returns field errors for a missing title/client name without calling createWorkspaceDraft", async () => {
     const { createWorkspaceDraftAction } = await import("./workspaces");
 
-    const result = await createWorkspaceDraftAction({}, formData({ title: "", clientName: "" }));
+    const result = await createWorkspaceDraftAction({}, formData({ title: "", clientName: "", deliveryMode: "PAYMENT_REQUIRED", currency: "INR", amount: "15000" }));
 
     expect(result.fieldErrors?.title).toBeDefined();
     expect(result.fieldErrors?.clientName).toBeDefined();
@@ -70,7 +70,7 @@ describe("createWorkspaceDraftAction", () => {
 
     const result = await createWorkspaceDraftAction(
       {},
-      formData({ title: "Brand Refresh", clientName: "Acme Co" }),
+      formData({ title: "Brand Refresh", clientName: "Acme Co", deliveryMode: "PAYMENT_REQUIRED", currency: "INR", amount: "15000" }),
     );
 
     expect(result.workspaceId).toBe("ws_new_draft");
@@ -83,7 +83,7 @@ describe("createWorkspaceDraftAction", () => {
 
     const result = await createWorkspaceDraftAction(
       {},
-      formData({ title: "Brand Refresh", clientName: "Acme Co" }),
+      formData({ title: "Brand Refresh", clientName: "Acme Co", deliveryMode: "PAYMENT_REQUIRED", currency: "INR", amount: "15000" }),
     );
 
     expect(result.error).toBe("Something went wrong. Please try again.");

@@ -1,4 +1,5 @@
 import "server-only";
+import { computeDerivedProgress } from "@/lib/status-labels";
 import { prisma } from "@/lib/prisma";
 import { requireAuthenticatedUser } from "./auth";
 import { toDisplayNumber, toDisplayNumberOrNull } from "@/lib/decimal";
@@ -11,14 +12,6 @@ export type { DashboardSummary };
 /** Reuses the same shape as the /workspaces list so WorkspaceTable/WorkspaceCard need no dashboard-specific variant. */
 export type DashboardWorkspace = WorkspaceListItem;
 
-export interface DashboardActivityEntry {
-  id: string;
-  action: string;
-  actorName: string;
-  createdAt: string;
-  workspaceId: string;
-  workspaceTitle: string;
-}
 
 export interface DashboardPaymentEntry {
   id: string;
@@ -32,13 +25,9 @@ export interface DashboardPaymentEntry {
 export interface DashboardData {
   summary: DashboardSummary;
   recentWorkspaces: DashboardWorkspace[];
-  recentActivity: DashboardActivityEntry[];
-  recentPayments: DashboardPaymentEntry[];
 }
 
 const RECENT_WORKSPACE_COUNT = 4;
-const RECENT_ACTIVITY_COUNT = 5;
-const RECENT_PAYMENT_COUNT = 3;
 
 /**
  * Every figure here is computed (via computeDashboardSummaryFromWorkspaces,
@@ -50,27 +39,23 @@ export async function getDashboardData(): Promise<DashboardData> {
   const creator = await requireAuthenticatedUser();
   const creatorId = creator.id;
 
-  const [allWorkspaces, recentWorkspaces, recentActivity, recentPayments] = await Promise.all([
+  const [allWorkspaces, recentWorkspaces] = await Promise.all([
     prisma.workspace.findMany({ where: { creatorId }, select: { amount: true, status: true } }),
     prisma.workspace.findMany({
       where: { creatorId },
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: RECENT_WORKSPACE_COUNT,
       include: {
-        reviewLinks: { where: { status: "ACTIVE", expiresAt: { gt: new Date() } }, select: { id: true }, take: 1 },
+        reviewLinks: {
+          where: {
+            status: "ACTIVE",
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
+          select: { id: true },
+          take: 1,
+        },
+        files: { select: { status: true } },
       },
-    }),
-    prisma.activityLog.findMany({
-      where: { workspace: { creatorId } },
-      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      take: RECENT_ACTIVITY_COUNT,
-      include: { workspace: { select: { id: true, title: true } } },
-    }),
-    prisma.payment.findMany({
-      where: { workspace: { creatorId } },
-      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      take: RECENT_PAYMENT_COUNT,
-      include: { workspace: { select: { title: true, clientName: true } } },
     }),
   ]);
 
@@ -87,26 +72,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       hasActiveReviewLink: w.reviewLinks.length > 0,
       updatedAt: w.updatedAt.toISOString(),
       clientName: w.clientName,
-    })),
-    recentActivity: recentActivity.map((entry) => ({
-      id: entry.id,
-      action: formatActivityLabel(entry.action, entry.metadata),
-      actorName: entry.actorName,
-      createdAt: entry.createdAt.toISOString(),
-      // The query below filters `where: { workspace: { creatorId } }`,
-      // which excludes rows with a null workspaceId (client-level activity
-      // added in Phase 4) — so `workspace` is always present here, even
-      // though the relation itself is optional on the model now.
-      workspaceId: entry.workspace!.id,
-      workspaceTitle: entry.workspace!.title,
-    })),
-    recentPayments: recentPayments.map((payment) => ({
-      id: payment.id,
-      workspaceTitle: payment.workspace.title,
-      clientName: payment.workspace.clientName,
-      amount: toDisplayNumber(payment.amount),
-      status: payment.status,
-      createdAt: payment.createdAt.toISOString(),
+      deliveryMode: w.deliveryMode,
+      derivedProgress: computeDerivedProgress(w.status, w.files),
     })),
   };
 }

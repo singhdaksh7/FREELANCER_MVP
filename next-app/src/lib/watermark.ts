@@ -57,27 +57,14 @@ export function escapeXmlText(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/**
- * Safe fallback client-line label — used whenever `clientName` is empty,
- * whitespace-only, or (after XML-escaping) reduces to nothing legible, so
- * the watermark's second line is never a blank tile. `escapeXmlText` alone
- * only protects the SVG document from being malformed; it doesn't
- * guarantee the *escaped* result is non-empty (e.g. a client name of only
- * control characters, or an empty string).
- */
-const UNSUPPORTED_CLIENT_NAME_FALLBACK = "Client Preview";
 
-/** The exact lines rendered in every tile of the watermark, escaped for safe SVG interpolation by buildWatermarkSvg. */
+
 export function buildWatermarkLines(input: WatermarkTextInput): string[] {
-  const trimmedName = input.clientName.trim();
-  const safeClientName = trimmedName.length > 0 ? trimmedName : UNSUPPORTED_CLIENT_NAME_FALLBACK;
   const trimmedSourceLabel = input.sourceLabel?.trim();
 
   return [
     ...(trimmedSourceLabel ? [trimmedSourceLabel] : []),
     BRAND.watermarkText,
-    `CLIENT: ${safeClientName}`,
-    `Workspace: ${input.workspaceTitle}`,
   ];
 }
 

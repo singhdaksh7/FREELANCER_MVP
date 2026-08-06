@@ -32,12 +32,7 @@ const descriptionSchema = z
   .optional()
   .transform((value) => (value ? value : undefined));
 
-const watermarkTextSchema = z
-  .string()
-  .trim()
-  .max(200, "Watermark text must be 200 characters or fewer.")
-  .optional()
-  .transform((value) => (value ? value : undefined));
+
 
 /**
  * Phase 7.5 — a workspace's amount is conditionally required depending on
@@ -92,7 +87,6 @@ const workspaceBaseSchema = z.object({
   currency: currencySchema,
   amount: amountSchema,
   dueDate: dueDateSchema,
-  watermarkText: watermarkTextSchema,
 });
 
 /**
@@ -118,16 +112,7 @@ export const workspaceUpdateSchema = workspaceBaseSchema.superRefine(requireAmou
 export type WorkspaceUpdateInput = z.infer<typeof workspaceUpdateSchema>;
 
 /**
- * Step 1 of the create-workspace wizard, before delivery mode/amount/
- * watermark are chosen — validates only what's actually collected on that
- * step. createWorkspaceDraftAction uses this (not workspaceCreateSchema) so
- * a draft can be created immediately on "Continue" without forcing later
- * steps' fields to exist yet.
+ * Step 1 of the create-workspace wizard. Now collects all details (title, clientName, description, dueDate, deliveryMode, currency, amount) before moving to the Confirm step.
  */
-export const workspaceDraftCreateSchema = z.object({
-  title: titleSchema,
-  clientName: clientNameSchema,
-  description: descriptionSchema,
-  dueDate: dueDateSchema,
-});
+export const workspaceDraftCreateSchema = workspaceBaseSchema.superRefine(requireAmountForPaymentRequired);
 export type WorkspaceDraftCreateInput = z.infer<typeof workspaceDraftCreateSchema>;

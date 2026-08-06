@@ -4,7 +4,6 @@ import { getDashboardData } from "@/data-access/dashboard";
 import { requireAuthenticatedUser } from "@/data-access/auth";
 import { LinkButton } from "@/components/ui/link-button";
 import { WorkspaceCard } from "@/components/creator/workspace-card";
-import { ActivityItem } from "@/components/creator/activity-item";
 import { formatINR } from "@/lib/format-currency";
 import { formatDateTime } from "@/lib/format-date";
 
@@ -13,16 +12,16 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardPage() {
-  const [creator, { summary, recentWorkspaces, recentActivity }] = await Promise.all([
+  const [creator, { summary, recentWorkspaces }] = await Promise.all([
     requireAuthenticatedUser(),
     getDashboardData(),
   ]);
 
   // Derived counts for attention cards
-  const processingCount = recentWorkspaces.filter(w => w.status === "FILES_PROCESSING" || w.status === "DRAFT").length;
+  const processingCount = recentWorkspaces.filter(w => w.status === "PREVIEW_PROCESSING" || w.status === "DRAFT").length;
   const awaitingResponseCount = summary.changesRequestedCount;
   const approvedWaitingPaymentCount = summary.paymentPendingCount;
-  const readyToReleaseCount = recentWorkspaces.filter(w => w.status === "READY_TO_DELIVER" || w.status === "PAID").length;
+  const readyToReleaseCount = recentWorkspaces.filter(w => w.status === "AWAITING_CREATOR_RELEASE" || w.status === "FILES_UNLOCKED" || w.status === "PAID").length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -136,48 +135,27 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      {/* Active Workspaces & Recent Activity */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <section className="flex flex-col gap-4 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-primary-text">Active Workspaces</h2>
-            <LinkButton href="/workspaces" variant="ghost" size="md" className="!px-0 !py-0 text-primary-blue font-semibold">
-              View All Workspaces →
-            </LinkButton>
+      {/* Active Workspaces */}
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-primary-text">Active Workspaces</h2>
+          <LinkButton href="/workspaces" variant="ghost" size="md" className="!px-0 !py-0 text-primary-blue font-semibold">
+            View All Workspaces →
+          </LinkButton>
+        </div>
+
+        {recentWorkspaces.length === 0 ? (
+          <div className="rounded-xl border border-line bg-card p-6 text-center text-sm text-secondary-text">
+            No workspaces yet. Click &quot;New Workspace&quot; above to get started.
           </div>
-
-          {recentWorkspaces.length === 0 ? (
-            <div className="rounded-xl border border-line bg-card p-6 text-center text-sm text-secondary-text">
-              No workspaces yet. Click &quot;New Workspace&quot; above to get started.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {recentWorkspaces.map((workspace) => (
-                <WorkspaceCard key={workspace.id} workspace={workspace} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="flex flex-col gap-4 rounded-xl border border-line bg-card p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-primary-text">Recent Activity</h2>
-          {recentActivity.length === 0 ? (
-            <p className="text-sm text-secondary-text">No activity recorded yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-3 divide-y divide-line">
-              {recentActivity.map((entry) => (
-                <ActivityItem
-                  key={entry.id}
-                  action={entry.action}
-                  user={entry.actorName}
-                  timestamp={formatDateTime(entry.createdAt)}
-                  workspaceTitle={entry.workspaceTitle}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recentWorkspaces.map((workspace) => (
+              <WorkspaceCard key={workspace.id} workspace={workspace} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

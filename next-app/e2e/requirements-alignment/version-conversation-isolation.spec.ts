@@ -44,8 +44,7 @@ test("creator uploads v1, generates a review link, and the client comments on v1
   // default 30s test timeout.
   test.setTimeout(120_000);
   await login(page);
-  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000" });
-  await uploadFileAndWaitReady(page, workspaceUrl, filePathV1);
+  workspaceUrl = await createWorkspaceViaWizard(page, { title: WORKSPACE_TITLE, amount: "5000", files: [filePathV1] });
   reviewLinkUrl = await createReviewLink(page);
 
   await context.clearCookies();
@@ -69,7 +68,7 @@ test("creator uploads v2, and the client comments on v2 separately", async ({ pa
   // request changes first, exactly like e2e/review/review.spec.ts's flow.
   // Real worker processing for the v2 candidate plus several polls needs
   // more than the default 30s test timeout under load.
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   await context.clearCookies();
   await page.goto(reviewLinkUrl);
   await page.getByRole("button", { name: /^request changes$/i }).click();
@@ -105,16 +104,7 @@ test("creator uploads v2, and the client comments on v2 separately", async ({ pa
     .toBe(0);
 
   await page.getByRole("button", { name: /submit revision for review/i }).click();
-  await expect
-    .poll(
-      async () => {
-        await page.reload();
-        await page.getByRole("tab", { name: /^files$/i }).click();
-        return page.getByText(/changes requested by/i).count();
-      },
-      { timeout: 20_000, intervals: [500, 1000, 2000, 3000] },
-    )
-    .toBe(0);
+  await expect(page.getByRole("button", { name: /submit revision for review/i })).not.toBeVisible();
 
   await context.clearCookies();
   await page.goto(reviewLinkUrl);

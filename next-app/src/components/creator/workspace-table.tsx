@@ -48,7 +48,7 @@ export function WorkspaceTable({ workspaces, caption }: WorkspaceTableProps) {
               <td className="px-6 py-4">
                 <StatusBadge status={workspaceStatusLabel(workspace.status)} />
               </td>
-              <td className="px-6 py-4 text-xs text-ink-muted">{workspace.progress}%</td>
+              <td className="px-6 py-4 text-xs text-ink-muted">{workspace.derivedProgress}</td>
               <td className="px-6 py-4 text-xs text-ink-muted">{formatDate(workspace.updatedAt)}</td>
               <td className="px-6 py-4">
                 <div className="flex justify-end gap-2">

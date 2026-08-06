@@ -22,6 +22,22 @@ const { signIn, signOut } = vi.hoisted(() => ({
 }));
 vi.mock("@/auth", () => ({ signIn, signOut }));
 
+const { cookieStore, redirect } = vi.hoisted(() => ({
+  cookieStore: {
+    getAll: vi.fn(() => [
+      { name: "authjs.session-token" },
+      { name: "authjs.callback-url" },
+      { name: "next-auth.session-token" },
+      { name: "__Secure-authjs.session-token.0" },
+      { name: "unrelated" },
+    ]),
+    delete: vi.fn(),
+  },
+  redirect: vi.fn(),
+}));
+vi.mock("next/headers", () => ({ cookies: vi.fn(async () => cookieStore) }));
+vi.mock("next/navigation", () => ({ redirect }));
+
 const { createUser, DuplicateEmailError, isUniqueConstraintError } = vi.hoisted(() => {
   class DuplicateEmailError extends Error {}
   return {
@@ -124,6 +140,12 @@ describe("logoutAction", () => {
     const { logoutAction } = await import("./auth");
     await logoutAction();
 
-    expect(signOut).toHaveBeenCalledWith({ redirectTo: "/" });
+    expect(signOut).toHaveBeenCalledWith({ redirect: false, redirectTo: "/" });
+    expect(cookieStore.delete).toHaveBeenCalledWith("authjs.session-token");
+    expect(cookieStore.delete).toHaveBeenCalledWith("authjs.callback-url");
+    expect(cookieStore.delete).toHaveBeenCalledWith("next-auth.session-token");
+    expect(cookieStore.delete).toHaveBeenCalledWith("__Secure-authjs.session-token.0");
+    expect(cookieStore.delete).not.toHaveBeenCalledWith("unrelated");
+    expect(redirect).toHaveBeenCalledWith("/");
   });
 });
