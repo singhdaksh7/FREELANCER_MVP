@@ -19,6 +19,7 @@ import { isPreviewableFileKind } from "../lib/file-kind";
 import { numberToStorageBigInt } from "../lib/bytes";
 import { ActivityAction } from "../lib/activity-log";
 import { getWorkerConfig } from "../storage/storage-config";
+import { logUploadTiming } from "../lib/upload-timing";
 
 const WORKER_ACTOR_NAME = "File Processing Worker";
 const STALE_PROCESSING_MESSAGE = "Processing did not complete — the worker may have restarted. Retry to try again.";
@@ -239,6 +240,7 @@ async function processPreviewableJob(
 
   const downloadStart = Date.now();
   const originalBuffer = await s3StorageProvider.getObjectBuffer(version.originalStorageKey);
+  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "original_downloaded", fileId: file.id });
   const downloadMs = Date.now() - downloadStart;
   console.log(
     `[file-worker] original downloaded job=${jobTag} sizeBytes=${originalBuffer.byteLength} durationMs=${downloadMs}`,
@@ -246,6 +248,7 @@ async function processPreviewableJob(
 
   const previewStart = Date.now();
   const preview = await generate(originalBuffer, workspace);
+  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "preview_generated", fileId: file.id });
   const previewGenMs = Date.now() - previewStart;
   console.log(
     `[file-worker] preview generated job=${jobTag} width=${preview.width} height=${preview.height} durationMs=${previewGenMs}`,
@@ -254,6 +257,7 @@ async function processPreviewableJob(
   const previewKey = generateStorageKey(STORAGE_PREFIXES.previews, "jpg");
   const uploadStart = Date.now();
   await s3StorageProvider.putObjectBuffer(previewKey, preview.buffer, preview.mimeType);
+  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "preview_uploaded", fileId: file.id });
   const uploadMs = Date.now() - uploadStart;
   console.log(`[file-worker] preview uploaded job=${jobTag} sizeBytes=${preview.buffer.byteLength} durationMs=${uploadMs}`);
 
@@ -283,6 +287,7 @@ async function processPreviewableJob(
       : prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "READY" } }),
   ]);
   const dbMs = Date.now() - dbStart;
+  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "db_marked_ready", fileId: file.id });
   console.log(`[file-worker] database updated job=${jobTag} durationMs=${dbMs}`);
 
   await recordWorkerActivity(prisma, {
@@ -330,6 +335,7 @@ export async function processJob(prisma: PrismaLike, job: NonNullable<ClaimedJob
   );
 
   const totalStart = Date.now();
+  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "worker_claimed", fileId: file.id });
   try {
     if (!isPreviewableFileKind(file.fileKind)) {
       await markNonPreviewableReady(prisma, job);

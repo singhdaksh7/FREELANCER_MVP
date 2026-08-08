@@ -578,6 +578,7 @@ model FileVersion {
 
 model FileProcessingJob {
   id            String              @id @default(cuid())
+  timingCorrelationId String?
   fileVersionId String
   fileVersion   FileVersion         @relation(fields: [fileVersionId], references: [id], onDelete: Cascade)
   status        ProcessingJobStatus @default(PENDING)
@@ -601,6 +602,7 @@ model FileProcessingJob {
 /// generated on demand and returned once).
 model UploadSession {
   id          String    @id @default(cuid())
+  timingCorrelationId String @unique
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   creatorId   String

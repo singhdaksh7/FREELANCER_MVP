@@ -1,4 +1,5 @@
 import "server-only";
+import { logUploadTiming } from "./upload-timing";
 
 /**
  * Best-effort "wake up and poll now" ping to the combined demo worker's
@@ -27,10 +28,11 @@ const WAKE_TIMEOUT_MS = 45_000;
 const WAKE_RETRY_DELAY_MS = 5_000;
 const WAKE_MAX_ATTEMPTS = 2;
 
-export function wakeWorker(kind: "file" | "delivery"): void {
+export function wakeWorker(kind: "file" | "delivery", timingCorrelationId?: string): void {
   const url = process.env.WORKER_WAKE_URL;
   const secret = process.env.WORKER_WAKE_SECRET;
   if (!url || !secret) return;
+  if (timingCorrelationId) logUploadTiming({ correlationId: timingCorrelationId, stage: "wake_request_sent" });
 
   void attemptWake(url, secret, kind, WAKE_MAX_ATTEMPTS);
 }

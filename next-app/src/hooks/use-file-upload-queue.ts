@@ -20,6 +20,9 @@ export interface QueueItem {
   progress: number;
   status: QueueItemStatus;
   errorMessage?: string;
+  sessionId?: string;
+  timingCorrelationId?: string;
+  fileId?: string;
 }
 
 let idCounter = 0;
@@ -100,6 +103,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
           xhr.onerror = () => reject(new Error("Upload failed. Please check your connection and try again."));
           xhr.send(file);
         });
+        void fetch(`/api/upload-sessions/${sessionData.sessionId}/timing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "browser_upload_finished" }) }).catch(() => {});
 
         updateItem(id, { status: "verifying", progress: 100 });
         const completeResponse = await fetch(`/api/upload-sessions/${sessionData.sessionId}/complete`, {
@@ -115,7 +119,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
         // Completion only means the original is durable and the protected
         // preview job was committed.  The file card will immediately show
         // the honest processing state while its adaptive poll observes READY.
-        updateItem(id, { status: "done" });
+        updateItem(id, { status: "done", sessionId: sessionData.sessionId, timingCorrelationId: completeData.timingCorrelationId, fileId: completeData.fileId });
         // Use a transition to prevent Next.js from aborting the RSC fetch if
         // other state updates happen concurrently.
         import("react").then(({ startTransition }) => {

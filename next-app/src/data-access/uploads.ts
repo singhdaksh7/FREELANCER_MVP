@@ -15,6 +15,8 @@ import { sanitizeDisplayFileName, extensionHintFromFileName } from "@/lib/filena
 import { bigIntToDisplayNumber, numberToStorageBigInt } from "@/lib/bytes";
 import { sha256Hex } from "@/lib/checksum";
 import { wakeWorker } from "@/lib/worker-wake";
+import { randomUUID } from "node:crypto";
+import { logUploadTiming } from "@/lib/upload-timing";
 
 export class UploadValidationError extends Error {
   constructor(message: string) {
@@ -68,6 +70,7 @@ export interface CreateUploadSessionInput {
 
 export interface CreateUploadSessionResult {
   sessionId: string;
+  timingCorrelationId: string;
   uploadUrl: string;
   expiresAt: string;
 }
@@ -111,6 +114,7 @@ export async function createUploadSession(
         workspaceId,
         creatorId: creator.id,
         storageKey,
+        timingCorrelationId: randomUUID(),
         declaredFileName: sanitizedName,
         expectedMimeType: input.mimeType,
         expectedSizeBytes: numberToStorageBigInt(input.sizeBytes),
@@ -128,8 +132,9 @@ export async function createUploadSession(
     });
     return created;
   });
+  logUploadTiming({ correlationId: session.timingCorrelationId, stage: "upload_session_created" });
 
-  return { sessionId: session.id, uploadUrl: url, expiresAt: expiresAt.toISOString() };
+  return { sessionId: session.id, timingCorrelationId: session.timingCorrelationId, uploadUrl: url, expiresAt: expiresAt.toISOString() };
 }
 
 export class FileVersionNotAllowedError extends Error {
@@ -193,6 +198,7 @@ export async function createFileVersionUploadSession(
         creatorId: creator.id,
         targetFileId: fileId,
         storageKey,
+        timingCorrelationId: randomUUID(),
         declaredFileName: sanitizedName,
         expectedMimeType: input.mimeType,
         expectedSizeBytes: numberToStorageBigInt(input.sizeBytes),
@@ -211,12 +217,14 @@ export async function createFileVersionUploadSession(
     return created;
   });
 
-  return { sessionId: session.id, uploadUrl: url, expiresAt: expiresAt.toISOString() };
+  logUploadTiming({ correlationId: session.timingCorrelationId, stage: "upload_session_created" });
+  return { sessionId: session.id, timingCorrelationId: session.timingCorrelationId, uploadUrl: url, expiresAt: expiresAt.toISOString() };
 }
 
 export interface CompleteUploadResult {
   fileId: string;
   workspaceId: string;
+  timingCorrelationId: string;
 }
 
 /**
@@ -295,7 +303,8 @@ export async function completeUploadSession(sessionId: string): Promise<Complete
     ? await completeVersionUpload(session, { originalKey, originalChecksum, sniffedMimeType, objectMeta, creator })
     : await completeNewFileUpload(session, { originalKey, originalChecksum, fileKind, sniffedMimeType, objectMeta, creator });
 
-  return { fileId, workspaceId };
+  logUploadTiming({ correlationId: session.timingCorrelationId, stage: "complete_upload_finished", fileId });
+  return { fileId, workspaceId, timingCorrelationId: session.timingCorrelationId };
 }
 
 interface CompleteUploadCommon {
@@ -307,9 +316,9 @@ interface CompleteUploadCommon {
 }
 
 async function completeNewFileUpload(
-  session: { id: string; workspaceId: string; declaredFileName: string },
+  session: { id: string; workspaceId: string; declaredFileName: string; timingCorrelationId: string },
   { originalKey, originalChecksum, fileKind, sniffedMimeType, objectMeta, creator }: CompleteUploadCommon & { fileKind: FileKind },
-): Promise<CompleteUploadResult> {
+): Promise<Pick<CompleteUploadResult, "fileId" | "workspaceId">> {
   return prisma.$transaction(async (tx) => {
     const file = await tx.workspaceFile.create({
       data: {
@@ -335,7 +344,7 @@ async function completeNewFileUpload(
       where: { id: file.id },
       data: { currentVersionId: version.id, status: "PROCESSING" },
     });
-    await tx.fileProcessingJob.create({ data: { fileVersionId: version.id, status: "PENDING", attempts: 1 } });
+    await tx.fileProcessingJob.create({ data: { fileVersionId: version.id, status: "PENDING", attempts: 1, timingCorrelationId: session.timingCorrelationId } });
     await tx.uploadSession.update({ where: { id: session.id }, data: { status: "COMPLETED", completedAt: new Date() } });
     await recordActivity(tx, {
       action: ActivityAction.FILE_UPLOADED,
@@ -345,9 +354,10 @@ async function completeNewFileUpload(
       workspaceId: session.workspaceId,
       metadata: { fileName: session.declaredFileName },
     });
+    logUploadTiming({ correlationId: session.timingCorrelationId, stage: "processing_job_created", fileId: file.id });
     return { fileId: file.id, workspaceId: session.workspaceId };
   }).then((result) => {
-    wakeWorker("file");
+    wakeWorker("file", session.timingCorrelationId);
     return result;
   });
 }
@@ -362,9 +372,9 @@ async function completeNewFileUpload(
  * than silently producing two versions with the same number.
  */
 async function completeVersionUpload(
-  session: { id: string; workspaceId: string; declaredFileName: string; targetFileId: string | null },
+  session: { id: string; workspaceId: string; declaredFileName: string; targetFileId: string | null; timingCorrelationId: string },
   { originalKey, originalChecksum, sniffedMimeType, objectMeta, creator }: CompleteUploadCommon,
-): Promise<CompleteUploadResult> {
+): Promise<Pick<CompleteUploadResult, "fileId" | "workspaceId">> {
   const targetFileId = session.targetFileId!;
 
   return prisma.$transaction(async (tx) => {
@@ -389,7 +399,7 @@ async function completeVersionUpload(
       where: { id: targetFileId },
       data: { pendingVersionId: version.id },
     });
-    await tx.fileProcessingJob.create({ data: { fileVersionId: version.id, status: "PENDING", attempts: 1 } });
+    await tx.fileProcessingJob.create({ data: { fileVersionId: version.id, status: "PENDING", attempts: 1, timingCorrelationId: session.timingCorrelationId } });
     await tx.uploadSession.update({ where: { id: session.id }, data: { status: "COMPLETED", completedAt: new Date() } });
     await recordActivity(tx, {
       action: ActivityAction.FILE_VERSION_UPLOADED,
@@ -399,9 +409,10 @@ async function completeVersionUpload(
       workspaceId: session.workspaceId,
       metadata: { fileName: session.declaredFileName, versionNumber: nextVersionNumber },
     });
+    logUploadTiming({ correlationId: session.timingCorrelationId, stage: "processing_job_created", fileId: targetFileId });
     return { fileId: targetFileId, workspaceId: session.workspaceId };
   }).then((result) => {
-    wakeWorker("file");
+    wakeWorker("file", session.timingCorrelationId);
     return result;
   });
 }
