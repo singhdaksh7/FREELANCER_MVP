@@ -59,7 +59,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
       }
       const sessionResponse = await fetch(`/api/workspaces/${workspaceId}/files/${file.id}/versions/upload-sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-INLAY-Upload-Correlation": sessionData.timingCorrelationId },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileName: selected.name, mimeType: selected.type, sizeBytes: selected.size }),
       });
       const sessionData = await sessionResponse.json();
@@ -77,7 +77,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
 
       void fetch(`/api/upload-sessions/${sessionData.sessionId}/timing`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-INLAY-Upload-Correlation": sessionData.timingCorrelationId },
         body: JSON.stringify({ stage: "browser_upload_finished" }),
       }).catch(() => {});
 

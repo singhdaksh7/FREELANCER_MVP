@@ -26,7 +26,9 @@ describe("no old Project Vault branding renders on public screens", () => {
   it("marketing footer shows INLAY, not the old name", () => {
     render(<PublicFooter />);
     expect(screen.queryByText(/project vault/i)).not.toBeInTheDocument();
-    expect(screen.getByText(new RegExp(BRAND.productName, "i"))).toBeInTheDocument();
+    // The footer now renders the brand name in multiple places (logo + copyright);
+    // assert at least one instance is present.
+    expect(screen.queryAllByText(new RegExp(BRAND.productName, "i")).length).toBeGreaterThan(0);
   });
 
   it("admin shell shows INLAY Administration, not the old name", () => {
@@ -43,7 +45,9 @@ describe("no old Project Vault branding renders on public screens", () => {
     loginAction.mockResolvedValue({});
     render(<LoginForm />);
     expect(screen.queryByText(/project vault/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
-    expect(screen.getByAltText("INLAY")).toBeInTheDocument();
+    // 'Welcome back' may appear in multiple elements (h1 + AuthShell tagline);
+    // assert at least one is present.
+    expect(screen.queryAllByText(/welcome back/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText("INLAY")[0]).toBeInTheDocument();
   });
 });

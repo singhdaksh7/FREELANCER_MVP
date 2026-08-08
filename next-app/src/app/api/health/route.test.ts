@@ -28,6 +28,7 @@ describe("GET /api/health", () => {
       database: "reachable",
       storage: "configured",
       demoWorkers: "not_configured",
+      revision: "unknown",
     });
   });
 

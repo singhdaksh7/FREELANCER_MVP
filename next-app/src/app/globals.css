@@ -22,6 +22,20 @@
   --color-inlay-primary-hover: #1555C0;
   --color-inlay-primary-ring: rgba(28, 104, 231, 0.18);
 
+  /* Stitch "INLAY Brand Experience System" — light theme surface tokens.
+   * Used by marketing pages (/, /login, /register) only.
+   * Authenticated app pages remain on the vault-navy dark theme. */
+  --color-mkt-bg: #f8f9ff;
+  --color-mkt-surface: #f8f9ff;
+  --color-mkt-surface-lowest: #ffffff;
+  --color-mkt-surface-low: #eff4ff;
+  --color-mkt-surface-container: #e5eeff;
+  --color-mkt-on-surface: #0b1c30;
+  --color-mkt-on-surface-variant: #424654;
+  --color-mkt-secondary: #5c5f61;
+  --color-mkt-outline-variant: #c2c6d7;
+  --color-mkt-primary-text: #0050be;
+
   --color-app-bg: #f5f7fa;
   --color-surface: #f5f7fa;
   --color-card: #ffffff;

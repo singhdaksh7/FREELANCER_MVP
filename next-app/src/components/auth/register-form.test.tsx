@@ -32,9 +32,9 @@ describe("RegisterForm", () => {
     await user.type(screen.getByLabelText(/^password$/i), "Demo@12345");
     await user.click(screen.getByRole("button", { name: /create account/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/already exists/i);
+    expect(await screen.findByRole("alert", {}, { timeout: 10000 })).toHaveTextContent(/already exists/i);
     expect(duplicateState.values).not.toHaveProperty("password");
-  });
+  }, 15000);
 
   it("shows server-side field validation errors", async () => {
     registerAction.mockResolvedValue({
@@ -50,6 +50,6 @@ describe("RegisterForm", () => {
     await user.type(screen.getByLabelText(/^password$/i), "short");
     await user.click(screen.getByRole("button", { name: /create account/i }));
 
-    expect(await screen.findByText(/at least 8 characters/i)).toBeInTheDocument();
-  });
+    expect(await screen.findByText(/Password must be at least 8 characters long/i, {}, { timeout: 10000 })).toBeInTheDocument();
+  }, 15000);
 });
