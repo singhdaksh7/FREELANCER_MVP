@@ -13,14 +13,12 @@ export function HeroSection() {
 
       {/* Headline */}
       <h1 className="mb-5 max-w-[800px] text-[40px] font-bold leading-[1.15] tracking-[-0.02em] text-[#0b1c30] sm:text-[52px] lg:text-[60px]">
-        The simplest way to{" "}
-        <span className="text-[#1C68E7]">review and deliver</span> client work.
+        Secure file delivery. <span className="text-[#1C68E7]">Guaranteed payments.</span>
       </h1>
 
       {/* Sub-copy */}
       <p className="mb-9 max-w-[620px] text-[16px] leading-relaxed text-[#424654]">
-        Upload your work, share protected previews, collect feedback and approvals,
-        and securely release original files — all in one place.
+        Upload work, collect feedback, and release final files only when payment clears.
       </p>
 
       {/* CTAs */}
