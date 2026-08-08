@@ -25,7 +25,6 @@ export function MarketingNavbar() {
         {/* Brand */}
         <Link href="/" aria-label="INLAY" className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inlay-primary">
           <InlayLogo size="sm" priority />
-          <span className="text-[17px] font-bold tracking-tight text-[#0b1c30]" aria-hidden="true">INLAY</span>
         </Link>
 
         {/* Desktop nav links */}
