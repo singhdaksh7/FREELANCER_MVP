@@ -37,7 +37,7 @@ interface StatusResponse {
 
 function phaseFromStatus(status: StatusResponse): Phase {
   if (status.workspaceStatus === "FILES_UNLOCKED" || status.workspaceStatus === "DELIVERED") return "unlocked";
-  if (status.workspaceStatus === "PAID") return status.deliveryFailed ? "preparation_failed" : "preparing";
+  if (status.workspaceStatus === "AWAITING_CREATOR_RELEASE") return status.deliveryFailed ? "preparation_failed" : "preparing";
   if (status.status === "FAILED") return "failed";
   if (status.status === "PENDING") return "verifying";
   return "ready";
@@ -126,7 +126,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
       if (cancelled) return;
       if (status) {
         applyStatus(status);
-        if (status.status === "PENDING" || status.workspaceStatus === "PAID") startPolling();
+        if (status.status === "PENDING" || status.workspaceStatus === "AWAITING_CREATOR_RELEASE") startPolling();
       } else {
         setPhase("ready");
       }
@@ -157,11 +157,11 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
         key: order.keyId,
         amount: order.amountSubunits,
         currency: order.currency,
-        name: order.creatorName,
-        description: order.workspaceTitle,
+        name: "INLAY",
+        description: `Payment for ${order.workspaceTitle}`,
         order_id: order.orderId,
         prefill: { name: order.clientName },
-        theme: { color: "#3B82F6" },
+        theme: { color: "#1C68E7" },
         modal: { ondismiss: () => setPhase((p) => (p === "checkout_open" ? "checkout_dismissed" : p)) },
         handler: async (response) => {
           setPhase("verifying");
@@ -250,7 +250,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
       <>
         <Loader2 size={22} className="animate-spin text-vault-blue" aria-hidden="true" />
         <p className="text-sm font-semibold text-white">
-          {phase === "creating_order" ? "Starting secure payment…" : phase === "checkout_open" ? "Waiting for Checkout…" : "Payment received. Confirming settlement…"}
+          {phase === "creating_order" ? "Starting payment…" : phase === "checkout_open" ? "Waiting for Checkout…" : "Payment received. Confirming settlement…"}
         </p>
         <p className="text-xs text-slate-400">Original files remain locked until payment is confirmed server-side.</p>
       </>,
@@ -323,7 +323,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
         onClick={handlePay}
         className="mt-1 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md bg-success px-5 py-2.5 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
       >
-        <Lock size={14} aria-hidden="true" /> Pay and Unlock Files
+        <Lock size={14} aria-hidden="true" /> Pay {formatINR(amount)}
       </button>
       <p className="text-[11px] text-slate-500">
         {creatorName} · {workspaceTitle} · {clientName}

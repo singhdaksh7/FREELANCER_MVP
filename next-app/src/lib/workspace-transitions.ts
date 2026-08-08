@@ -41,16 +41,16 @@ const PAYMENT_REQUIRED_TRANSITIONS: TransitionTable = {
   // and PAYMENT_PENDING are not locked, only PAID/FILES_UNLOCKED/DELIVERED
   // are, so a creator can still cancel an approved-but-unpaid project.
   APPROVED: ["CANCELLED", "PAYMENT_PENDING"],
-  PAYMENT_PENDING: ["CANCELLED", "PAID"],
+  PAYMENT_PENDING: ["CANCELLED", "AWAITING_CREATOR_RELEASE"],
   // Financially locked from here on — no CANCELLED transition. A failed
   // payment never leaves PAYMENT_PENDING (the Payment row is simply marked
   // FAILED; the workspace stays PAYMENT_PENDING so the client can retry
   // with a new order — see PAYMENT_ARCHITECTURE.md "Failure behavior").
-  PAID: ["FILES_UNLOCKED"],
+  PAID: [],
   FILES_UNLOCKED: ["DELIVERED"],
   DELIVERED: [],
   CANCELLED: [],
-  AWAITING_CREATOR_RELEASE: [],
+  AWAITING_CREATOR_RELEASE: ["FILES_UNLOCKED"],
   CLOSED: [],
 };
 

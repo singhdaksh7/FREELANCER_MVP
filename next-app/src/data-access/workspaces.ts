@@ -118,7 +118,7 @@ export async function getWorkspaces(rawParams: RawSearchParams): Promise<Workspa
 }
 
 /** Statuses past which the workspace can no longer be cancelled, and (for the client field) can no longer be reassigned. */
-export const FINANCIAL_LOCK_STATUSES = ["PAID", "FILES_UNLOCKED", "DELIVERED"] as const;
+export const FINANCIAL_LOCK_STATUSES = ["PAID", "AWAITING_CREATOR_RELEASE", "FILES_UNLOCKED", "DELIVERED"] as const;
 
 /**
  * Statuses past which amount/currency must never change. Once a workspace
@@ -259,7 +259,7 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
     cancelledAt: workspace.cancelledAt ? workspace.cancelledAt.toISOString() : null,
     financiallyLocked: locked,
     canReleaseFiles:
-      workspace.deliveryMode === "APPROVAL_ONLY" &&
+      (workspace.deliveryMode === "APPROVAL_ONLY" || workspace.deliveryMode === "PAYMENT_REQUIRED") &&
       workspace.status === "AWAITING_CREATOR_RELEASE" &&
       workspace.deliveryBundles.length === 0,
     canCloseForReview:

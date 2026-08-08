@@ -5,7 +5,6 @@ import { ActivityAction } from "@/lib/activity-log";
 import { assertWorkspaceTransition } from "@/lib/workspace-transitions";
 import { AmountMismatchError, CurrencyMismatchError, UnknownOrderError } from "@/payments/payment-errors";
 import { getPayoutConfig } from "@/payouts/payout-config";
-import { wakeWorker } from "@/lib/worker-wake";
 
 /**
  * The ONE idempotent payment-finalization service — see
@@ -41,8 +40,9 @@ const POST_PAYMENT_STATUSES = ["PAID", "FILES_UNLOCKED", "DELIVERED"] as const;
 
 /**
  * Marks a captured, signature/webhook-verified payment PAID, moves its
- * workspace to PAID, and kicks off delivery preparation (one
- * DeliveryBundle + one DeliveryBundleJob) — all in a single transaction.
+ * workspace to AWAITING_CREATOR_RELEASE — all in a single transaction.
+ * Delivery preparation remains an explicit creator action; payment alone
+ * never releases an original or creates a download grant.
  * Safe to call repeatedly with the same gatewayOrderId/gatewayPaymentId
  * (webhook retries, or a webhook arriving after reconciliation already
  * finalized the same payment): returns `alreadyFinalized: true` without
@@ -83,8 +83,8 @@ export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInpu
       });
 
       if (workspace.status === "PAYMENT_PENDING") {
-        assertWorkspaceTransition("PAYMENT_PENDING", "PAID", workspace.deliveryMode);
-        await tx.workspace.update({ where: { id: workspace.id }, data: { status: "PAID", paidAt: capturedAt } });
+        assertWorkspaceTransition("PAYMENT_PENDING", "AWAITING_CREATOR_RELEASE", workspace.deliveryMode);
+        await tx.workspace.update({ where: { id: workspace.id }, data: { status: "AWAITING_CREATOR_RELEASE", paidAt: capturedAt } });
       }
 
       await recordActivity(tx, {
@@ -93,22 +93,6 @@ export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInpu
         actorName: "Razorpay",
         workspaceId: workspace.id,
         metadata: { amount: Number(updatedPayment.amount), currency: updatedPayment.currency, gatewayPaymentId: input.gatewayPaymentId },
-      });
-
-      // Exactly one DeliveryBundle + one DeliveryBundleJob per payment —
-      // DeliveryBundle.paymentId is @unique, so a genuine race with a
-      // second finalization attempt fails this insert with P2002 (caught
-      // below) rather than ever producing two bundles.
-      const bundle = await tx.deliveryBundle.create({
-        data: { workspaceId: workspace.id, paymentId: payment.id, approvalId: payment.approvalId, status: "PENDING" },
-      });
-      await tx.deliveryBundleJob.create({ data: { deliveryBundleId: bundle.id, status: "PENDING" } });
-
-      await recordActivity(tx, {
-        action: ActivityAction.DELIVERY_PREPARATION_STARTED,
-        actorType: "SYSTEM",
-        actorName: "System",
-        workspaceId: workspace.id,
       });
 
       // Freelancer payable ledger credit — see
@@ -180,7 +164,6 @@ export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInpu
       return { paymentId: updatedPayment.id, workspaceId: workspace.id, alreadyFinalized: false };
     });
 
-    if (!result.alreadyFinalized) wakeWorker("delivery");
     return result;
   } catch (error) {
     if ((error as { code?: string }).code === "P2002") {

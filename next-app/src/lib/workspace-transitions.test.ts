@@ -8,8 +8,8 @@ describe("PAYMENT_REQUIRED transitions — permitted", () => {
     ["CHANGES_REQUESTED", "IN_REVIEW"],
     ["IN_REVIEW", "APPROVED"],
     ["APPROVED", "PAYMENT_PENDING"],
-    ["PAYMENT_PENDING", "PAID"],
-    ["PAID", "FILES_UNLOCKED"],
+    ["PAYMENT_PENDING", "AWAITING_CREATOR_RELEASE"],
+    ["AWAITING_CREATOR_RELEASE", "FILES_UNLOCKED"],
     ["FILES_UNLOCKED", "DELIVERED"],
   ] as const)("allows %s -> %s", (from, to) => {
     expect(canTransitionWorkspace(from, to, "PAYMENT_REQUIRED")).toBe(true);
@@ -31,7 +31,6 @@ describe("PAYMENT_REQUIRED transitions — forbidden", () => {
     ["PAID", "DELIVERED"],
     ["IN_REVIEW", "PAID"],
     // Approval-only / preview-only-only states never reachable here.
-    ["APPROVED", "AWAITING_CREATOR_RELEASE"],
     ["IN_REVIEW", "CLOSED"],
   ] as const)("forbids %s -> %s", (from, to) => {
     expect(canTransitionWorkspace(from, to, "PAYMENT_REQUIRED")).toBe(false);
@@ -47,7 +46,7 @@ describe("PAYMENT_REQUIRED — cancellation reachable except when financially lo
     },
   );
 
-  it.each(["PAID", "FILES_UNLOCKED", "DELIVERED", "CANCELLED"] as const)(
+  it.each(["PAID", "AWAITING_CREATOR_RELEASE", "FILES_UNLOCKED", "DELIVERED", "CANCELLED"] as const)(
     "forbids %s -> CANCELLED (financially locked — never rolled back)",
     (from) => {
       expect(canTransitionWorkspace(from, "CANCELLED", "PAYMENT_REQUIRED")).toBe(false);

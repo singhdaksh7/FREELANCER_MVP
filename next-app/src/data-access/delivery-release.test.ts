@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const prismaMock = {
   workspaceApproval: { findFirst: vi.fn() },
+  payment: { findFirst: vi.fn() },
   deliveryBundle: { findFirst: vi.fn(), create: vi.fn() },
   deliveryBundleJob: { create: vi.fn() },
   activityLog: { create: vi.fn() },
@@ -42,8 +43,10 @@ async function mockOwnedWorkspace(overrides: Partial<Record<string, unknown>> = 
 }
 
 describe("releaseApprovedFiles — eligibility guards", () => {
-  it("refuses a PAYMENT_REQUIRED workspace", async () => {
+  it("refuses a PAYMENT_REQUIRED workspace before a captured payment exists", async () => {
     await mockOwnedWorkspace({ deliveryMode: "PAYMENT_REQUIRED" });
+    prismaMock.workspaceApproval.findFirst.mockResolvedValue({ id: "appr_1" });
+    prismaMock.payment.findFirst.mockResolvedValue(null);
     const { releaseApprovedFiles, WorkspaceNotReleasableError } = await import("./delivery-release");
     await expect(releaseApprovedFiles("ws_1")).rejects.toBeInstanceOf(WorkspaceNotReleasableError);
   });
@@ -92,5 +95,17 @@ describe("releaseApprovedFiles — success and idempotency", () => {
 
     expect(prismaMock.deliveryBundle.create).not.toHaveBeenCalled();
     expect(prismaMock.activityLog.create).not.toHaveBeenCalled();
+  });
+
+  it("creates the delivery bundle only after a captured PAYMENT_REQUIRED payment", async () => {
+    await mockOwnedWorkspace({ deliveryMode: "PAYMENT_REQUIRED" });
+    prismaMock.workspaceApproval.findFirst.mockResolvedValue({ id: "appr_1" });
+    prismaMock.payment.findFirst.mockResolvedValue({ id: "pay_1" });
+    prismaMock.deliveryBundle.findFirst.mockResolvedValue(null);
+
+    const { releaseApprovedFiles } = await import("./delivery-release");
+    await releaseApprovedFiles("ws_1");
+
+    expect(prismaMock.deliveryBundle.create.mock.calls[0][0].data.paymentId).toBe("pay_1");
   });
 });

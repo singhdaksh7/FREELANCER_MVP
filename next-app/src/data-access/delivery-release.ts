@@ -33,7 +33,7 @@ export class NoApprovalFoundError extends Error {
 export async function releaseApprovedFiles(workspaceId: string): Promise<void> {
   const { creator, workspace } = await requireOwnedWorkspace(workspaceId);
 
-  if (workspace.deliveryMode !== "APPROVAL_ONLY" || workspace.status !== "AWAITING_CREATOR_RELEASE") {
+  if (workspace.status !== "AWAITING_CREATOR_RELEASE") {
     throw new WorkspaceNotReleasableError();
   }
 
@@ -44,12 +44,16 @@ export async function releaseApprovedFiles(workspaceId: string): Promise<void> {
   });
   if (!approval) throw new NoApprovalFoundError();
 
+  const payment = workspace.deliveryMode === "PAYMENT_REQUIRED"
+    ? await prisma.payment.findFirst({ where: { workspaceId, approvalId: approval.id, status: "PAID" }, select: { id: true } })
+    : null;
+  if (workspace.deliveryMode === "PAYMENT_REQUIRED" && !payment) throw new WorkspaceNotReleasableError();
   const existingBundle = await prisma.deliveryBundle.findFirst({ where: { approvalId: approval.id }, select: { id: true } });
   if (existingBundle) return; // already released (or releasing) — idempotent no-op, never a second bundle
 
   await prisma.$transaction(async (tx) => {
     const bundle = await tx.deliveryBundle.create({
-      data: { workspaceId, paymentId: null, approvalId: approval.id, status: "PENDING" },
+      data: { workspaceId, paymentId: payment?.id ?? null, approvalId: approval.id, status: "PENDING" },
     });
     await tx.deliveryBundleJob.create({ data: { deliveryBundleId: bundle.id, status: "PENDING" } });
 

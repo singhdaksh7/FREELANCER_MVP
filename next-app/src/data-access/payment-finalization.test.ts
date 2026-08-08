@@ -95,7 +95,7 @@ describe("finalizeCapturedPayment", () => {
     ).rejects.toBeInstanceOf(WorkspaceNotPayableError);
   });
 
-  it("on success: marks Payment PAID, Workspace PAID, and creates exactly one DeliveryBundle + one DeliveryBundleJob", async () => {
+  it("on success: marks Payment PAID, makes the workspace await creator release, and creates no delivery work", async () => {
     const { finalizeCapturedPayment } = await import("./payment-finalization");
     prismaMock.payment.findUnique.mockResolvedValue({ ...BASE_PAYMENT });
     prismaMock.payment.update.mockResolvedValue({ ...BASE_PAYMENT, status: "PAID" });
@@ -109,9 +109,9 @@ describe("finalizeCapturedPayment", () => {
 
     expect(result.alreadyFinalized).toBe(false);
     expect(prismaMock.workspace.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "ws_1" }, data: expect.objectContaining({ status: "PAID" }) }),
+      expect.objectContaining({ where: { id: "ws_1" }, data: expect.objectContaining({ status: "AWAITING_CREATOR_RELEASE" }) }),
     );
-    expect(prismaMock.deliveryBundle.create).toHaveBeenCalledTimes(1);
-    expect(prismaMock.deliveryBundleJob.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.deliveryBundle.create).not.toHaveBeenCalled();
+    expect(prismaMock.deliveryBundleJob.create).not.toHaveBeenCalled();
   });
 });

@@ -76,7 +76,11 @@ export function ReviewPortal({
 
   const activeFile = files.find((f) => f.id === activeFileId) ?? null;
   const isReadOnly = workspace.status === "DELIVERED" || workspace.status === "CLOSED" || readOnlyPreview;
-  const isPaid = workspace.status === "PAID" || workspace.status === "FILES_UNLOCKED" || workspace.status === "DELIVERED";
+  const isPaid =
+    workspace.status === "PAID" ||
+    workspace.status === "AWAITING_CREATOR_RELEASE" ||
+    workspace.status === "FILES_UNLOCKED" ||
+    workspace.status === "DELIVERED";
   const previewUrlBase = readOnlyPreview ? `/api/workspaces/${workspaceId}/files` : `/api/review/${token}/files`;
   const canPin = activeFile?.fileKind === "IMAGE" && !isReadOnly;
   const visiblePins = comments.filter(
@@ -155,7 +159,7 @@ export function ReviewPortal({
           </div>
           <p className="mt-2 text-[11px] text-[#9CA3AF]">
             {workspace.deliveryMode === "PAYMENT_REQUIRED"
-              ? "🔒 Original files unlock automatically upon payment"
+              ? "🔒 Original files unlock after payment and freelancer release"
               : "🔒 Original files unlock once the freelancer releases this approved version"}
           </p>
         </div>

@@ -227,10 +227,9 @@ export async function cancelWorkspaceAction(
 }
 
 /**
- * The creator's "Release Approved Files" action for an APPROVAL_ONLY
- * workspace — see DELIVERY_MODES.md. Never redirects; the workspace detail
- * page polls/reloads to reflect delivery-worker progress like the
- * PAYMENT_REQUIRED "Retry"/"Refresh Status" actions already do.
+ * The creator's "Release Approved Files" action for an approved workspace
+ * that is awaiting release. Never redirects; the workspace detail page
+ * reloads to reflect delivery-worker progress.
  */
 export async function releaseFilesAction(
   _prevState: WorkspaceLifecycleState,

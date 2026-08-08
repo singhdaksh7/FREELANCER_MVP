@@ -60,10 +60,10 @@ export function WorkspaceActions({
 
       {canReleaseFiles && (
         <ConfirmDialog
-          triggerLabel="Approve & Release Files"
+          triggerLabel="Release Approved Files"
           triggerClassName="rounded-md bg-success min-h-[44px] px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
           title="Release the approved files to your client?"
-          description={`This unlocks the exact files/versions approved for "${workspaceTitle}" for your client to download. No online payment is collected for approval-only projects.`}
+          description={`This unlocks the exact files/versions approved for "${workspaceTitle}" for your client to download.`}
           confirmLabel="Yes, Release Files"
           pendingLabel="Releasing Files…"
           action={releaseFilesAction}
