@@ -44,10 +44,17 @@ async function razorpayFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    // Never surface the raw Razorpay error body (may contain account
-    // details) — log server-side only, return a safe generic error.
-    const body = await response.text().catch(() => "");
-    console.error(`Razorpay API error ${response.status}:`, body);
+    // Never log or surface Razorpay's raw error body: it can contain
+    // account-specific details. Preserve only a bounded, non-sensitive
+    // classification for production diagnosis.
+    const category = response.status === 401 || response.status === 403
+      ? "authentication_rejected"
+      : response.status === 408 || response.status === 504
+        ? "timeout"
+        : response.status >= 500
+          ? "provider_unavailable"
+          : "request_rejected";
+    console.error("Razorpay API request failed", { status: response.status, category });
     throw new PaymentGatewayError();
   }
 
