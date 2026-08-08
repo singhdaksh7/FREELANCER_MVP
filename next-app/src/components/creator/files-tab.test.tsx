@@ -72,10 +72,10 @@ describe("FilesTab polling", () => {
   it("never has more than one router.refresh() scheduled at a time while a file is transient", async () => {
     render(<FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />);
 
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(refresh).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
@@ -83,7 +83,7 @@ describe("FilesTab polling", () => {
     const { rerender } = render(
       <FilesTab workspaceId="ws_1" files={[transientFile()]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />,
     );
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(refresh).toHaveBeenCalledTimes(1);
 
     rerender(<FilesTab workspaceId="ws_1" files={[transientFile({ status: "READY" })]} uploadLimits={uploadLimits} canUpload deliveryMode="APPROVAL_ONLY" />);
@@ -138,7 +138,7 @@ describe("FilesTab polling", () => {
     // resolves (PHASE 7 explicit reconciliation) — independent of polling.
     expect(refresh).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 });

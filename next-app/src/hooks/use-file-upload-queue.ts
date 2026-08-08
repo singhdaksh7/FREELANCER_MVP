@@ -112,6 +112,9 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
           return;
         }
 
+        // Completion only means the original is durable and the protected
+        // preview job was committed.  The file card will immediately show
+        // the honest processing state while its adaptive poll observes READY.
         updateItem(id, { status: "done" });
         // Use a transition to prevent Next.js from aborting the RSC fetch if
         // other state updates happen concurrently.

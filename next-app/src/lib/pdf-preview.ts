@@ -16,7 +16,6 @@
 // resize/watermark/re-encode/metadata-stripping treatment a photo does.
 import { createRequire } from "node:module";
 import path from "node:path";
-import { createCanvas } from "@napi-rs/canvas";
 import { getPdfPreviewLimits } from "@/storage/storage-config";
 
 export class UnsupportedPdfError extends Error {
@@ -87,7 +86,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export async function renderPdfFirstPage(pdfBuffer: Buffer): Promise<RenderedPdfPage> {
   const limits = getPdfPreviewLimits();
 
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // Both dependencies are deliberately lazy: normal image jobs import this
+  // worker module too, but must never initialize PDF parsing or a native
+  // canvas binding.
+  const [pdfjsLib, { createCanvas }] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("@napi-rs/canvas"),
+  ]);
 
   let pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>["promise"]> | null = null;
   try {

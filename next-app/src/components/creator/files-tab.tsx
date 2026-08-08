@@ -19,7 +19,9 @@ export interface FilesTabProps {
 }
 
 const TRANSIENT_STATUSES = new Set(["UPLOAD_PENDING", "UPLOADING", "UPLOADED", "PROCESSING"]);
-const POLL_INTERVAL_MS = 2500;
+const POLL_FAST_INTERVAL_MS = 1000;
+const POLL_FAST_WINDOW_MS = 15_000;
+const POLL_SLOW_INTERVAL_MS = 2500;
 
 /**
  * Replaces the Phase 4 Files-tab placeholder. Orchestrates real uploads
@@ -46,6 +48,7 @@ export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUploa
   const { queue, enqueueFiles, removeItem } = useFileUploadQueue(workspaceId, uploadLimits);
   const router = useRouter();
   const refreshInFlight = useRef(false);
+  const pollStartedAtRef = useRef<number | null>(null);
   // Files with a retry/delete Server Action currently pending. While
   // non-empty, the poll below skips its own router.refresh(): that mutation
   // already revalidates and updates the tree itself, and a concurrent
@@ -84,12 +87,18 @@ export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUploa
   const shouldPoll = hasTransientFiles || hasUnsyncedUploads;
 
   useEffect(() => {
-    if (!shouldPoll) return;
+    if (!shouldPoll) {
+      pollStartedAtRef.current = null;
+      return;
+    }
+    if (pollStartedAtRef.current === null) pollStartedAtRef.current = Date.now();
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
 
     function scheduleNext() {
+      const elapsed = Date.now() - (pollStartedAtRef.current ?? Date.now());
+      const delay = elapsed < POLL_FAST_WINDOW_MS ? POLL_FAST_INTERVAL_MS : POLL_SLOW_INTERVAL_MS;
       timer = setTimeout(() => {
         if (cancelled) return;
         if (refreshInFlight.current || pendingMutations.current.size > 0) {
@@ -105,7 +114,7 @@ export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUploa
           refreshInFlight.current = false;
         }
         if (!cancelled) scheduleNext();
-      }, POLL_INTERVAL_MS);
+      }, delay);
     }
     scheduleNext();
 

@@ -3,7 +3,6 @@
 import sharp from "sharp";
 import { getPreviewLimits, getSharpConcurrency } from "@/storage/storage-config";
 import { buildWatermarkLines, buildWatermarkSvg, type WatermarkTextInput } from "./watermark";
-import { renderPdfFirstPage } from "./pdf-preview";
 
 // Only overrides Sharp's own CPU-count-based default when SHARP_CONCURRENCY
 // is explicitly set (e.g. on a resource-constrained demo instance).
@@ -128,6 +127,11 @@ export async function generatePdfWatermarkedPreview(
   originalPdfBuffer: Buffer,
   watermarkInput: WatermarkTextInput,
 ): Promise<GeneratedPdfPreview> {
+  // Keep pdf.js and the native canvas binding out of the overwhelmingly more
+  // common image path.  This module is imported by the worker for every job,
+  // so a static import here made JPEG/PNG/WebP jobs pay the PDF module-load
+  // cost before their first Sharp operation.
+  const { renderPdfFirstPage } = await import("./pdf-preview");
   const page = await renderPdfFirstPage(originalPdfBuffer);
   const preview = await generateWatermarkedPreview(page.buffer, {
     ...watermarkInput,

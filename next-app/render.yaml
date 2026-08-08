@@ -119,6 +119,10 @@ services:
         value: "true"
       - key: FILE_WORKER_CONCURRENCY
         value: "1"
+      # Wake interrupts idle waits; this is only the bounded fallback when
+      # a wake request is unavailable.
+      - key: FILE_WORKER_POLL_INTERVAL_MS
+        value: "1000"
       - key: DELIVERY_WORKER_CONCURRENCY
         value: "1"
       - key: SHARP_CONCURRENCY

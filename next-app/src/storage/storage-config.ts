@@ -182,7 +182,10 @@ export interface WorkerConfig {
 
 export function getWorkerConfig(): WorkerConfig {
   return {
-    pollIntervalMs: intEnv("FILE_WORKER_POLL_INTERVAL_MS", 2000),
+    // POST /wake normally interrupts this wait.  1s is the warm-worker
+    // fallback when that request is unavailable or lost, without creating
+    // a high-frequency database polling load.
+    pollIntervalMs: intEnv("FILE_WORKER_POLL_INTERVAL_MS", 1000),
     maxAttempts: intEnv("FILE_WORKER_MAX_ATTEMPTS", 3),
     concurrency: intEnv("FILE_WORKER_CONCURRENCY", 1),
     processingLeaseMs: intEnv("FILE_WORKER_PROCESSING_LEASE_MS", 5 * 60_000),
