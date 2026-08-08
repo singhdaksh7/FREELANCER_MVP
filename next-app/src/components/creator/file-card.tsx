@@ -31,7 +31,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [completedUpload, setCompletedUpload] = useState<{ sessionId: string; fileId: string; timingCorrelationId: string } | null>(null);
+  const [completedUpload, setCompletedUpload] = useState<{ sessionId: string; fileId: string; timingCorrelationId: string; revision: string } | null>(null);
   const readyTimingSent = useRef(false);
   const replacementProcessingObserved = useRef(false);
 
@@ -86,7 +86,7 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
       if (!completeResponse.ok) throw new Error(completeData.error ?? "This file could not be verified.");
       readyTimingSent.current = false;
       replacementProcessingObserved.current = false;
-      setCompletedUpload({ sessionId: sessionData.sessionId, fileId: completeData.fileId, timingCorrelationId: sessionData.timingCorrelationId });
+      setCompletedUpload({ sessionId: sessionData.sessionId, fileId: completeData.fileId, timingCorrelationId: sessionData.timingCorrelationId, revision: sessionResponse.headers.get("X-INLAY-Revision") ?? "unknown" });
 
       // Wrapped in startTransition — same pattern as FilesTab's polling
       // effect and useFileUploadQueue's own post-upload refresh, so a
@@ -120,6 +120,12 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
       {error && (
         <p role="alert" className="text-xs font-medium text-danger">
           {error}
+        </p>
+      )}
+      {completedUpload && (
+        <p className="text-[11px] text-ink-muted">
+          Diagnostic ID: {completedUpload.timingCorrelationId} · Revision: {completedUpload.revision}{" "}
+          <button type="button" onClick={() => void navigator.clipboard?.writeText(completedUpload.timingCorrelationId)} className="font-semibold text-ink underline">Copy ID</button>
         </p>
       )}
     </div>

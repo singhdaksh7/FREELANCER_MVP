@@ -22,6 +22,7 @@ export interface QueueItem {
   errorMessage?: string;
   sessionId?: string;
   timingCorrelationId?: string;
+  revision?: string;
   fileId?: string;
 }
 
@@ -85,7 +86,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
           updateItem(id, { status: "error", errorMessage: sessionData.error ?? "Could not start this upload." });
           return;
         }
-        updateItem(id, { timingCorrelationId: sessionData.timingCorrelationId });
+        updateItem(id, { timingCorrelationId: sessionData.timingCorrelationId, revision: sessionResponse.headers.get("X-INLAY-Revision") ?? "unknown" });
         console.info("[upload-client] session_created", sessionData.timingCorrelationId);
 
         updateItem(id, { status: "uploading" });

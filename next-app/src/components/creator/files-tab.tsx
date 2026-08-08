@@ -171,6 +171,12 @@ export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUploa
                 {item.status === "done" && "Uploaded"}
                 {item.status === "error" && "Failed"}
               </span>
+              {item.timingCorrelationId && (
+                <div className="basis-full text-[11px] text-ink-muted">
+                  Diagnostic ID: {item.timingCorrelationId} · Revision: {item.revision ?? "unknown"}{" "}
+                  <button type="button" onClick={() => void navigator.clipboard?.writeText(item.timingCorrelationId!)} className="font-semibold text-ink underline">Copy ID</button>
+                </div>
+              )}
               {item.status === "error" && (
                 <button
                   type="button"
