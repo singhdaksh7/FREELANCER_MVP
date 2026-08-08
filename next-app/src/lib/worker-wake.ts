@@ -32,7 +32,7 @@ export function wakeWorker(kind: "file" | "delivery", timingCorrelationId?: stri
   const url = process.env.WORKER_WAKE_URL;
   const secret = process.env.WORKER_WAKE_SECRET;
   if (!url || !secret) return;
-  if (timingCorrelationId) logUploadTiming({ correlationId: timingCorrelationId, stage: "wake_request_sent" });
+  if (timingCorrelationId) logUploadTiming({ correlationId: timingCorrelationId, stage: "wake_sent" });
 
   void attemptWake(url, secret, kind, WAKE_MAX_ATTEMPTS);
 }

@@ -31,6 +31,18 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [completedUpload, setCompletedUpload] = useState<{ sessionId: string; fileId: string } | null>(null);
+  const readyTimingSent = useRef(false);
+
+  useEffect(() => {
+    if (!completedUpload || file.status !== "READY" || readyTimingSent.current) return;
+    readyTimingSent.current = true;
+    void fetch(`/api/upload-sessions/${completedUpload.sessionId}/timing`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: "ui_ready_observed", fileId: completedUpload.fileId }),
+    }).catch(() => {});
+  }, [completedUpload, file.status]);
 
   async function handleFile(selected: File) {
     setUploading(true);
@@ -56,9 +68,17 @@ function UploadNewVersionControl({ file, workspaceId }: { file: WorkspaceFileLis
         xhr.send(selected);
       });
 
+      void fetch(`/api/upload-sessions/${sessionData.sessionId}/timing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: "browser_upload_finished" }),
+      }).catch(() => {});
+
       const completeResponse = await fetch(`/api/upload-sessions/${sessionData.sessionId}/complete`, { method: "POST" });
       const completeData = await completeResponse.json();
       if (!completeResponse.ok) throw new Error(completeData.error ?? "This file could not be verified.");
+      readyTimingSent.current = false;
+      setCompletedUpload({ sessionId: sessionData.sessionId, fileId: completeData.fileId });
 
       // Wrapped in startTransition — same pattern as FilesTab's polling
       // effect and useFileUploadQueue's own post-upload refresh, so a

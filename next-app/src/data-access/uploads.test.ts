@@ -24,6 +24,8 @@ const prismaMock = {
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/data-access/auth", () => ({ requireAuthenticatedUser: vi.fn().mockResolvedValue(FAKE_CREATOR) }));
+const { logUploadTimingMock } = vi.hoisted(() => ({ logUploadTimingMock: vi.fn() }));
+vi.mock("@/lib/upload-timing", () => ({ logUploadTiming: logUploadTimingMock }));
 
 const {
   createPresignedUploadUrlMock,
@@ -77,7 +79,7 @@ beforeEach(() => {
   putObjectBufferMock.mockResolvedValue(undefined);
   prismaMock.workspaceFile.count.mockResolvedValue(0);
   prismaMock.workspaceFile.aggregate.mockResolvedValue({ _sum: { sizeBytes: BigInt(0) } });
-  prismaMock.uploadSession.create.mockResolvedValue({ id: "session_1" });
+  prismaMock.uploadSession.create.mockResolvedValue({ id: "session_1", timingCorrelationId: "corr_1" });
 });
 
 describe("createUploadSession — declared file validation", () => {
@@ -132,6 +134,12 @@ describe("createUploadSession — declared file validation", () => {
     expect(result.uploadUrl).toBe("https://minio.local/signed");
     expect(prismaMock.activityLog.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.activityLog.create.mock.calls[0][0].data.action).toBe("FILE_UPLOAD_STARTED");
+    expect(logUploadTimingMock).toHaveBeenCalledWith({
+      correlationId: "corr_1",
+      stage: "session_created",
+      sessionId: "session_1",
+      uploadKind: "new-file",
+    });
   });
 });
 
@@ -147,6 +155,7 @@ describe("completeUploadSession — server-side verification", () => {
       expectedSizeBytes: BigInt(1000),
       status: "PENDING",
       expiresAt: new Date(Date.now() + 60_000),
+      timingCorrelationId: "corr_1",
       ...overrides,
     });
   }
@@ -210,6 +219,10 @@ describe("completeUploadSession — server-side verification", () => {
 
     expect(result.fileId).toBe("file_1");
     expect(prismaMock.fileProcessingJob.create.mock.calls[0][0].data.attempts).toBe(1);
+    expect(prismaMock.fileProcessingJob.create.mock.calls[0][0].data.timingCorrelationId).toBe("corr_1");
+    expect(logUploadTimingMock).toHaveBeenCalledWith(expect.objectContaining({ stage: "completion_started", correlationId: "corr_1" }));
+    expect(logUploadTimingMock).toHaveBeenCalledWith(expect.objectContaining({ stage: "job_created", correlationId: "corr_1" }));
+    expect(logUploadTimingMock).toHaveBeenCalledWith(expect.objectContaining({ stage: "completion_finished", correlationId: "corr_1" }));
     expect(prismaMock.activityLog.create.mock.calls[0][0].data.action).toBe("FILE_UPLOADED");
   });
 

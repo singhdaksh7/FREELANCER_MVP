@@ -132,7 +132,12 @@ export async function createUploadSession(
     });
     return created;
   });
-  logUploadTiming({ correlationId: session.timingCorrelationId, stage: "upload_session_created" });
+  logUploadTiming({
+    correlationId: session.timingCorrelationId,
+    stage: "session_created",
+    sessionId: session.id,
+    uploadKind: "new-file",
+  });
 
   return { sessionId: session.id, timingCorrelationId: session.timingCorrelationId, uploadUrl: url, expiresAt: expiresAt.toISOString() };
 }
@@ -217,7 +222,12 @@ export async function createFileVersionUploadSession(
     return created;
   });
 
-  logUploadTiming({ correlationId: session.timingCorrelationId, stage: "upload_session_created" });
+  logUploadTiming({
+    correlationId: session.timingCorrelationId,
+    stage: "session_created",
+    sessionId: session.id,
+    uploadKind: "replacement-version",
+  });
   return { sessionId: session.id, timingCorrelationId: session.timingCorrelationId, uploadUrl: url, expiresAt: expiresAt.toISOString() };
 }
 
@@ -254,6 +264,14 @@ export async function completeUploadSession(sessionId: string): Promise<Complete
     await prisma.uploadSession.update({ where: { id: session.id }, data: { status: "EXPIRED" } });
     throw new UploadSessionInvalidError("This upload session has expired — please try uploading again.");
   }
+
+  const uploadKind = session.targetFileId ? "replacement-version" : "new-file";
+  logUploadTiming({
+    correlationId: session.timingCorrelationId,
+    stage: "completion_started",
+    sessionId: session.id,
+    uploadKind,
+  });
 
   const objectMeta = await s3StorageProvider.headObject(session.storageKey);
   if (!objectMeta) {
@@ -303,7 +321,13 @@ export async function completeUploadSession(sessionId: string): Promise<Complete
     ? await completeVersionUpload(session, { originalKey, originalChecksum, sniffedMimeType, objectMeta, creator })
     : await completeNewFileUpload(session, { originalKey, originalChecksum, fileKind, sniffedMimeType, objectMeta, creator });
 
-  logUploadTiming({ correlationId: session.timingCorrelationId, stage: "complete_upload_finished", fileId });
+  logUploadTiming({
+    correlationId: session.timingCorrelationId,
+    stage: "completion_finished",
+    fileId,
+    sessionId: session.id,
+    uploadKind,
+  });
   return { fileId, workspaceId, timingCorrelationId: session.timingCorrelationId };
 }
 
@@ -354,7 +378,13 @@ async function completeNewFileUpload(
       workspaceId: session.workspaceId,
       metadata: { fileName: session.declaredFileName },
     });
-    logUploadTiming({ correlationId: session.timingCorrelationId, stage: "processing_job_created", fileId: file.id });
+    logUploadTiming({
+      correlationId: session.timingCorrelationId,
+      stage: "job_created",
+      fileId: file.id,
+      sessionId: session.id,
+      uploadKind: "new-file",
+    });
     return { fileId: file.id, workspaceId: session.workspaceId };
   }).then((result) => {
     wakeWorker("file", session.timingCorrelationId);
@@ -409,7 +439,13 @@ async function completeVersionUpload(
       workspaceId: session.workspaceId,
       metadata: { fileName: session.declaredFileName, versionNumber: nextVersionNumber },
     });
-    logUploadTiming({ correlationId: session.timingCorrelationId, stage: "processing_job_created", fileId: targetFileId });
+    logUploadTiming({
+      correlationId: session.timingCorrelationId,
+      stage: "job_created",
+      fileId: targetFileId,
+      sessionId: session.id,
+      uploadKind: "replacement-version",
+    });
     return { fileId: targetFileId, workspaceId: session.workspaceId };
   }).then((result) => {
     wakeWorker("file", session.timingCorrelationId);

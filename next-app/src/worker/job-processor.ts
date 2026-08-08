@@ -287,7 +287,7 @@ async function processPreviewableJob(
       : prisma.workspaceFile.update({ where: { id: file.id }, data: { status: "READY" } }),
   ]);
   const dbMs = Date.now() - dbStart;
-  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "db_marked_ready", fileId: file.id });
+  if (job.timingCorrelationId) logUploadTiming({ correlationId: job.timingCorrelationId, stage: "db_ready", fileId: file.id });
   console.log(`[file-worker] database updated job=${jobTag} durationMs=${dbMs}`);
 
   await recordWorkerActivity(prisma, {
