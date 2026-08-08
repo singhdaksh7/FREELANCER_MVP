@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createUploadSession } from "@/data-access/uploads";
 import { apiErrorResponse } from "@/lib/api-errors";
+import { getDeploymentRevision } from "@/lib/deployment-revision";
 
 const bodySchema = z.object({
   fileName: z.string().trim().min(1).max(255),
@@ -32,7 +33,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const result = await createUploadSession(workspaceId, parsed.data);
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json(result, {
+      status: 201,
+      headers: {
+        "Cache-Control": "no-store",
+        "X-INLAY-Revision": getDeploymentRevision(),
+        "X-INLAY-Upload-Correlation": result.timingCorrelationId,
+      },
+    });
   } catch (error) {
     return apiErrorResponse(error, {
       OwnershipError: { status: 404, message: "Workspace not found." },

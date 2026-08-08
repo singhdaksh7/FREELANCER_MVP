@@ -91,7 +91,7 @@ export function FilesTab({ workspaceId, files: filesProp, uploadLimits, canUploa
       if (!item.sessionId || !item.fileId || readyTimingSent.current.has(item.sessionId)) continue;
       if (!files.some((file) => file.id === item.fileId && file.status === "READY")) continue;
       readyTimingSent.current.add(item.sessionId);
-      void fetch(`/api/upload-sessions/${item.sessionId}/timing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "ui_ready_observed", fileId: item.fileId }) }).catch(() => {});
+      void fetch(`/api/upload-sessions/${item.sessionId}/timing`, { method: "POST", headers: { "Content-Type": "application/json", ...(item.timingCorrelationId ? { "X-INLAY-Upload-Correlation": item.timingCorrelationId } : {}) }, body: JSON.stringify({ stage: "ui_ready_observed", fileId: item.fileId }) }).catch(() => {});
     }
   }, [files, queue]);
 

@@ -85,6 +85,8 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
           updateItem(id, { status: "error", errorMessage: sessionData.error ?? "Could not start this upload." });
           return;
         }
+        updateItem(id, { timingCorrelationId: sessionData.timingCorrelationId });
+        console.info("[upload-client] session_created", sessionData.timingCorrelationId);
 
         updateItem(id, { status: "uploading" });
         await new Promise<void>((resolve, reject) => {
@@ -103,7 +105,7 @@ export function useFileUploadQueue(workspaceId: string, limits: UploadLimits) {
           xhr.onerror = () => reject(new Error("Upload failed. Please check your connection and try again."));
           xhr.send(file);
         });
-        void fetch(`/api/upload-sessions/${sessionData.sessionId}/timing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "browser_upload_finished" }) }).catch(() => {});
+        void fetch(`/api/upload-sessions/${sessionData.sessionId}/timing`, { method: "POST", headers: { "Content-Type": "application/json", "X-INLAY-Upload-Correlation": sessionData.timingCorrelationId }, body: JSON.stringify({ stage: "browser_upload_finished" }) }).catch(() => {});
 
         updateItem(id, { status: "verifying", progress: 100 });
         const completeResponse = await fetch(`/api/upload-sessions/${sessionData.sessionId}/complete`, {

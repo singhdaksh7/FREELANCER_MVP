@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStorageConfig } from "@/storage/storage-config";
+import { getDeploymentRevision } from "@/lib/deployment-revision";
 
 /**
  * Render's health check target (see render.yaml). Reports only coarse
@@ -38,6 +39,7 @@ export async function GET() {
       database: databaseReachable ? "reachable" : "unreachable",
       storage: storageConfigured ? "configured" : "misconfigured",
       demoWorkers: combinedWorkersConfigured ? "configured" : "not_configured",
+      revision: getDeploymentRevision(),
     },
     {
       status: healthy ? 200 : 503,
