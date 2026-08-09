@@ -20,7 +20,7 @@ const STAGES_APPROVAL = [
   { id: "files", label: "Files Ready" },
   { id: "shared", label: "Shared" },
   { id: "approval", label: "Approved" },
-  { id: "release", label: "Released" },
+  { id: "preparing", label: "Preparing" },
   { id: "delivery", label: "Completed" },
 ];
 
@@ -37,7 +37,7 @@ export function WorkflowProgress({ status, deliveryMode, hasActiveReviewLink = f
   } else if (status === "PAYMENT_PENDING") {
     activeIndex = 4; // Payment
   } else if (status === "AWAITING_CREATOR_RELEASE") {
-    activeIndex = 4; // Released step
+    activeIndex = 4; // Delivery preparing automatically — transient, internal-only status
   } else if (status === "PAID" || status === "FILES_UNLOCKED" || status === "DELIVERED" || status === "CLOSED") {
     activeIndex = 5;
   } else if (status === "CANCELLED") {

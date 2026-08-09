@@ -13,7 +13,7 @@ const STEPS = [
     icon: Eye,
     title: "Share Protected Previews",
     description:
-      "Send clients a unique review link. They see watermarked previews only — no access to original files until you choose to release.",
+      "Send clients a unique review link. They see watermarked previews only — no access to original files until approval and payment clear.",
   },
   {
     number: "03",
@@ -25,9 +25,9 @@ const STEPS = [
   {
     number: "04",
     icon: Send,
-    title: "Release on Your Terms",
+    title: "Delivered Automatically",
     description:
-      "Once payment is confirmed and you give the go-ahead, original high-res files are unlocked and delivered instantly.",
+      "Once payment is confirmed, original high-res files are unlocked and delivered instantly — no manual step required.",
   },
 ] as const;
 

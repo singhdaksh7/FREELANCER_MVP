@@ -18,11 +18,15 @@ const prismaMock = {
 };
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+const ensureApprovedDeliveryEnqueued = vi.fn();
+vi.mock("./delivery-release", () => ({ ensureApprovedDeliveryEnqueued }));
+
 const CONTEXT = { workspaceId: "ws_1" } as unknown as import("./review-auth").ReviewContext;
 
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.payment.findFirst.mockResolvedValue(null);
+  ensureApprovedDeliveryEnqueued.mockResolvedValue(undefined);
 });
 
 describe("getClientPaymentStatus — approval-only (no Payment row)", () => {
@@ -49,6 +53,27 @@ describe("getClientPaymentStatus — approval-only (no Payment row)", () => {
 
     expect(status.downloadReady).toBe(false);
     expect(prismaMock.downloadGrant.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("PHASE 8 recovery — no bundle exists yet while AWAITING_CREATOR_RELEASE, so it opportunistically re-attempts the idempotent auto-delivery trigger", async () => {
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "AWAITING_CREATOR_RELEASE" });
+    prismaMock.deliveryBundle.findFirst.mockResolvedValue(null);
+
+    const { getClientPaymentStatus } = await import("./payment-orders");
+    await getClientPaymentStatus(CONTEXT);
+
+    expect(ensureApprovedDeliveryEnqueued).toHaveBeenCalledWith("ws_1");
+  });
+
+  it("PHASE 8 recovery — never lets a retry failure bubble up to the client status response", async () => {
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "AWAITING_CREATOR_RELEASE" });
+    prismaMock.deliveryBundle.findFirst.mockResolvedValue(null);
+    ensureApprovedDeliveryEnqueued.mockRejectedValue(new Error("transient DB error"));
+
+    const { getClientPaymentStatus } = await import("./payment-orders");
+    await expect(getClientPaymentStatus(CONTEXT)).resolves.toEqual(
+      expect.objectContaining({ workspaceStatus: "AWAITING_CREATOR_RELEASE" }),
+    );
   });
 
   it("reports deliveryFailed:true when the approval-only delivery bundle failed, looked up by workspaceId", async () => {

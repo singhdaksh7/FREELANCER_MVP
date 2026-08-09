@@ -10,6 +10,7 @@ import { calculatePaymentBreakdown } from "@/payments/platform-fee";
 import { getPaymentConfig } from "@/payments/payment-config";
 import { PaymentGatewayError, PaymentConfigError } from "@/payments/payment-errors";
 import { PaymentStatus, type Prisma } from "@/generated/prisma/client";
+import { ensureApprovedDeliveryEnqueued } from "./delivery-release";
 
 /**
  * Server-authorized payment-order creation for the client review portal —
@@ -354,13 +355,36 @@ export async function getClientPaymentStatus(context: ReviewContext): Promise<Cl
         });
     downloadReady = grant !== null;
   } else if (workspace.status === "PAID" || workspace.status === "AWAITING_CREATOR_RELEASE") {
-    const bundle = payment
+    let bundle = payment
       ? await prisma.deliveryBundle.findUnique({ where: { paymentId: payment.id }, select: { status: true } })
       : await prisma.deliveryBundle.findFirst({
           where: { workspaceId: context.workspaceId },
           orderBy: { createdAt: "desc" },
           select: { status: true },
         });
+
+    // Recovery safety net (PHASE 8) — no bundle exists yet even though this
+    // workspace's condition (approval, plus captured payment for
+    // PAYMENT_REQUIRED) was already met, which only happens if the
+    // automatic trigger threw right after payment/approval finalization.
+    // Opportunistically re-attempt the same idempotent call on every client
+    // poll so a transient failure self-heals without any creator/admin
+    // action — never required, always safe to call speculatively.
+    if (!bundle) {
+      try {
+        await ensureApprovedDeliveryEnqueued(context.workspaceId);
+      } catch (error) {
+        console.error(`[auto-delivery] Recovery retry failed for workspace ${context.workspaceId}:`, error);
+      }
+      bundle = payment
+        ? await prisma.deliveryBundle.findUnique({ where: { paymentId: payment.id }, select: { status: true } })
+        : await prisma.deliveryBundle.findFirst({
+            where: { workspaceId: context.workspaceId },
+            orderBy: { createdAt: "desc" },
+            select: { status: true },
+          });
+    }
+
     deliveryFailed = bundle?.status === "FAILED";
   }
 

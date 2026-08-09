@@ -35,7 +35,7 @@ const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string; descrip
   {
     value: "APPROVAL_ONLY",
     label: "Approval Only",
-    description: "Client reviews and approves. You decide when to release the files.",
+    description: "Client reviews and approves, and the files are unlocked for them automatically.",
   },
 ];
 

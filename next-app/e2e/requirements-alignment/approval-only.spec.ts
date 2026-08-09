@@ -7,8 +7,9 @@ import { login, createWorkspaceViaWizard, uploadFileAndWaitReady, createReviewLi
 
 /**
  * APPROVAL_ONLY: client approves with no payment CTA ever rendered, and
- * only an explicit creator "Approve & Release Files" action unlocks
- * delivery — see DELIVERY_MODES.md.
+ * approval alone automatically enqueues delivery server-side — there is no
+ * manual creator release step. See DELIVERY_MODES.md and
+ * ensureApprovedDeliveryEnqueued in src/data-access/delivery-release.ts.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -41,31 +42,28 @@ test("client approves and never sees a payment CTA", async ({ page, context }) =
   await page.goto(reviewLinkUrl);
   await approveAsClient(page);
 
-  await expect(page.getByRole("button", { name: /pay and unlock files/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^pay ₹/i })).toHaveCount(0);
   await expect(page.getByText(/approved/i).first()).toBeVisible();
-  // APPROVAL_ONLY's dedicated "waiting for creator" reassurance copy — see
-  // ApprovalOnlyDeliveryPanel.
-  await expect(page.getByText(/waiting for the freelancer to release the final files/i)).toBeVisible();
+  // APPROVAL_ONLY's automatic-delivery reassurance copy — see
+  // ApprovalOnlyDeliveryPanel. No "release" button exists anywhere.
+  await expect(page.getByText(/preparing your final files/i)).toBeVisible();
 });
 
-test("creator releases the approved files, unlocking delivery", async ({ page }) => {
+test("no manual release action exists anywhere on the creator dashboard — delivery completes automatically", async ({ page }) => {
   await login(page);
   await page.goto(workspaceUrl);
 
-  await page.getByRole("button", { name: /approve & release files/i }).click();
-  await expect(page.getByRole("heading", { name: /release the approved files to your client/i })).toBeVisible();
-  await page.getByRole("button", { name: /yes, release files/i }).click();
+  await expect(page.getByRole("button", { name: /release approved files/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /approve & release files/i })).toHaveCount(0);
+  await expect(page.getByText(/awaiting your release/i)).toHaveCount(0);
 
-  // The workspace stays AWAITING_CREATOR_RELEASE (so "Release Approved
-  // Files" keeps rendering) until the delivery worker actually finishes and
-  // flips it to FILES_UNLOCKED — see delivery-release.ts's doc comment.
-  // Poll for that real, worker-driven completion rather than the button's
-  // (unchanged) presence.
+  // Approval alone already enqueued delivery — poll for the real,
+  // worker-driven completion with no creator action taken in between.
   await expect
     .poll(
       async () => {
         await page.reload();
-        return page.getByText("Files Unlocked", { exact: true }).count();
+        return page.getByText("Files available to client", { exact: true }).count();
       },
       { timeout: 30_000, intervals: [1000, 2000, 3000, 5000] },
     )

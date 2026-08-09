@@ -100,8 +100,8 @@ async function createInReviewWorkspaceFixture(opts: { title: string; deliveryMod
   return { workspace, client, file, version, reviewLink, reviewToken: rawToken };
 }
 
-describe("APPROVAL_ONLY delivery mode", () => {
-  it("approve -> AWAITING_CREATOR_RELEASE -> creator release -> worker -> FILES_UNLOCKED -> download, with no Payment ever created", async () => {
+describe("APPROVAL_ONLY delivery mode — automatic delivery, no manual creator release step", () => {
+  it("approve -> auto-delivery enqueued immediately -> worker -> FILES_UNLOCKED -> download, with no Payment and no creator action ever taken", async () => {
     const fixture = await createInReviewWorkspaceFixture({ title: "IT Approval-Only Workspace", deliveryMode: "APPROVAL_ONLY" });
 
     const { authorizeReviewToken } = await import("./review-auth");
@@ -109,23 +109,25 @@ describe("APPROVAL_ONLY delivery mode", () => {
     const { approveWorkspace } = await import("./approvals");
     await approveWorkspace(context, { reviewerName: "Test Reviewer", termsAccepted: true });
 
+    // AWAITING_CREATOR_RELEASE is a transient, internal-only status here —
+    // no human action is required or expected while a workspace sits in
+    // it; approveWorkspace already enqueued delivery automatically.
     const approvedWorkspace = await prisma.workspace.findUniqueOrThrow({ where: { id: fixture.workspace.id } });
     expect(approvedWorkspace.status).toBe("AWAITING_CREATOR_RELEASE");
 
     const paymentCount = await prisma.payment.count({ where: { workspaceId: fixture.workspace.id } });
     expect(paymentCount).toBe(0);
 
-    signInAsArjun();
-    const { releaseApprovedFiles } = await import("./delivery-release");
-    await releaseApprovedFiles(fixture.workspace.id);
-
     const bundleCount = await prisma.deliveryBundle.count({ where: { workspaceId: fixture.workspace.id } });
     expect(bundleCount).toBe(1);
     const bundle = await prisma.deliveryBundle.findFirstOrThrow({ where: { workspaceId: fixture.workspace.id } });
     expect(bundle.paymentId).toBeNull();
 
-    // Idempotent — a second release call must not create a second bundle.
-    await releaseApprovedFiles(fixture.workspace.id);
+    // Idempotent — calling the auto-delivery trigger again (as
+    // getClientPaymentStatus's recovery path or a duplicate approval
+    // finalization would) must never create a second bundle.
+    const { ensureApprovedDeliveryEnqueued } = await import("./delivery-release");
+    await ensureApprovedDeliveryEnqueued(fixture.workspace.id);
     expect(await prisma.deliveryBundle.count({ where: { workspaceId: fixture.workspace.id } })).toBe(1);
 
     const job = await claimNextDeliveryJob(prisma);
@@ -157,38 +159,24 @@ describe("APPROVAL_ONLY delivery mode", () => {
     expect(deliveredWorkspace.status).toBe("DELIVERED");
   });
 
-  it("refuses release for a workspace not yet AWAITING_CREATOR_RELEASE", async () => {
+  it("the legacy releaseApprovedFiles fallback still refuses a workspace not yet AWAITING_CREATOR_RELEASE (backward compatibility only — unreachable from any UI)", async () => {
     const fixture = await createInReviewWorkspaceFixture({ title: "IT Approval-Only Not Yet Approved", deliveryMode: "APPROVAL_ONLY" });
     signInAsArjun();
     const { releaseApprovedFiles, WorkspaceNotReleasableError } = await import("./delivery-release");
     await expect(releaseApprovedFiles(fixture.workspace.id)).rejects.toBeInstanceOf(WorkspaceNotReleasableError);
   });
 
-  it("the creator UI's canReleaseFiles guard flips off as soon as a DeliveryBundle exists, independent of the worker having run yet", async () => {
-    const fixture = await createInReviewWorkspaceFixture({ title: "IT Approval-Only Release Guard", deliveryMode: "APPROVAL_ONLY" });
+  it("a DeliveryBundle exists immediately after approval, before the worker has run — no window where a creator action is expected", async () => {
+    const fixture = await createInReviewWorkspaceFixture({ title: "IT Approval-Only Immediate Enqueue", deliveryMode: "APPROVAL_ONLY" });
 
     const { authorizeReviewToken } = await import("./review-auth");
     const context = await authorizeReviewToken(fixture.reviewToken);
     const { approveWorkspace } = await import("./approvals");
     await approveWorkspace(context, { reviewerName: "Test Reviewer", termsAccepted: true });
 
-    signInAsArjun();
-    const { getOwnedWorkspaceDetail } = await import("./workspaces");
-    const beforeRelease = await getOwnedWorkspaceDetail(fixture.workspace.id);
-    expect(beforeRelease?.canReleaseFiles).toBe(true);
-
-    const { releaseApprovedFiles } = await import("./delivery-release");
-    await releaseApprovedFiles(fixture.workspace.id);
-
-    // Status is still AWAITING_CREATOR_RELEASE at this point (the worker
-    // hasn't claimed the job yet) — canReleaseFiles must already be false
-    // purely because a DeliveryBundle now exists, so the button can never
-    // be double-clicked into a second release while preparation is in
-    // flight.
     const stillAwaiting = await prisma.workspace.findUniqueOrThrow({ where: { id: fixture.workspace.id } });
     expect(stillAwaiting.status).toBe("AWAITING_CREATOR_RELEASE");
-    const afterRelease = await getOwnedWorkspaceDetail(fixture.workspace.id);
-    expect(afterRelease?.canReleaseFiles).toBe(false);
+    expect(await prisma.deliveryBundle.count({ where: { workspaceId: fixture.workspace.id } })).toBe(1);
 
     // Drain this workspace's own delivery job so it can't be claimed by a
     // later test's claimNextDeliveryJob() call (the queue is a shared,
@@ -213,9 +201,7 @@ describe("APPROVAL_ONLY delivery mode", () => {
     const postApprovalContext = await authorizeReviewToken(fixture.reviewToken);
     await expect(claimDownloadSession(postApprovalContext)).rejects.toBeInstanceOf(DownloadNotReadyError);
 
-    signInAsArjun();
-    const { releaseApprovedFiles } = await import("./delivery-release");
-    await releaseApprovedFiles(fixture.workspace.id);
+    // No creator action here — approval alone already enqueued delivery.
     const job = await claimNextDeliveryJob(prisma);
     await processDeliveryJob(prisma, job!);
 

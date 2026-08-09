@@ -80,8 +80,9 @@ export async function authorizeDownloadGrant(rawToken: string): Promise<Download
       workspace: { select: { title: true, creator: { select: { name: true } } } },
       payment: { select: { id: true, gatewayPaymentId: true } },
       // DeliveryBundle is keyed off the approval, not the payment, so this
-      // resolves for APPROVAL_ONLY grants (no Payment row) too.
-      approval: { select: { deliveryBundles: { select: { status: true }, take: 1 } } },
+      // resolves for APPROVAL_ONLY grants (no Payment row) too. One-to-one
+      // — DeliveryBundle.approvalId is @unique.
+      approval: { select: { deliveryBundle: { select: { status: true } } } },
       files: true,
     },
   });
@@ -105,7 +106,7 @@ export async function authorizeDownloadGrant(rawToken: string): Promise<Download
       displayName: f.displayName,
       sizeBytes: Number(f.sizeBytes),
     })),
-    bundleReady: grant.approval.deliveryBundles[0]?.status === "READY",
+    bundleReady: grant.approval.deliveryBundle?.status === "READY",
     workspace: { title: grant.workspace.title, creatorName: grant.workspace.creator.name },
     paymentReference: grant.payment ? (grant.payment.gatewayPaymentId ?? grant.payment.id) : null,
   };

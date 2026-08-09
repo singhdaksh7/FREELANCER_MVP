@@ -5,6 +5,7 @@ import { ActivityAction } from "@/lib/activity-log";
 import { assertWorkspaceTransition } from "@/lib/workspace-transitions";
 import { AmountMismatchError, CurrencyMismatchError, UnknownOrderError } from "@/payments/payment-errors";
 import { getPayoutConfig } from "@/payouts/payout-config";
+import { ensureApprovedDeliveryEnqueued } from "./delivery-release";
 
 /**
  * The ONE idempotent payment-finalization service — see
@@ -39,14 +40,38 @@ const PAYABLE_WORKSPACE_STATUSES = ["PAYMENT_PENDING"] as const;
 const POST_PAYMENT_STATUSES = ["PAID", "FILES_UNLOCKED", "DELIVERED"] as const;
 
 /**
+ * Never lets an auto-delivery failure surface as a payment failure — see
+ * PHASE 8 "Failure behavior." The payment is already durably PAID by the
+ * time this runs; if enqueueing delivery throws (e.g. a transient DB
+ * error), the client sees "Payment Received — preparing your files" and
+ * the next webhook retry/reconciliation/status-poll safely retries the
+ * exact same idempotent call.
+ */
+async function triggerAutoDeliverySafely(workspaceId: string): Promise<void> {
+  try {
+    await ensureApprovedDeliveryEnqueued(workspaceId);
+  } catch (error) {
+    console.error(`[auto-delivery] Failed to enqueue delivery for workspace ${workspaceId}:`, error);
+  }
+}
+
+/**
  * Marks a captured, signature/webhook-verified payment PAID, moves its
- * workspace to AWAITING_CREATOR_RELEASE — all in a single transaction.
- * Delivery preparation remains an explicit creator action; payment alone
- * never releases an original or creates a download grant.
+ * workspace to AWAITING_CREATOR_RELEASE (a transient, internal-only status —
+ * no human action is required or expected while a workspace sits in it) —
+ * all in a single transaction. Once that transaction commits, it always
+ * calls ensureApprovedDeliveryEnqueued (src/data-access/delivery-release.ts)
+ * — the ONE idempotent auto-delivery trigger — so delivery starts
+ * automatically the moment payment is confirmed server-side. No manual
+ * creator release step exists anymore. A delivery-enqueue failure never
+ * fails this function or the underlying payment: the payment stays PAID
+ * and the next webhook retry, reconciliation call, or client status poll
+ * (see getClientPaymentStatus) safely re-attempts the same idempotent call.
  * Safe to call repeatedly with the same gatewayOrderId/gatewayPaymentId
  * (webhook retries, or a webhook arriving after reconciliation already
  * finalized the same payment): returns `alreadyFinalized: true` without
- * making any further change.
+ * making any further payment/workspace-status change, but still re-attempts
+ * the auto-delivery trigger as a recovery path.
  */
 export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInput): Promise<FinalizeCapturedPaymentResult> {
   try {
@@ -164,13 +189,17 @@ export async function finalizeCapturedPayment(input: FinalizeCapturedPaymentInpu
       return { paymentId: updatedPayment.id, workspaceId: workspace.id, alreadyFinalized: false };
     });
 
+    await triggerAutoDeliverySafely(result.workspaceId);
     return result;
   } catch (error) {
     if ((error as { code?: string }).code === "P2002") {
       // Lost a genuine concurrent-finalization race — the winner already
       // committed everything; report success idempotently.
       const payment = await prisma.payment.findUnique({ where: { gatewayOrderId: input.gatewayOrderId } });
-      if (payment) return { paymentId: payment.id, workspaceId: payment.workspaceId, alreadyFinalized: true };
+      if (payment) {
+        await triggerAutoDeliverySafely(payment.workspaceId);
+        return { paymentId: payment.id, workspaceId: payment.workspaceId, alreadyFinalized: true };
+      }
     }
     throw error;
   }

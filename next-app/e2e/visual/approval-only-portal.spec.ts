@@ -27,7 +27,7 @@ test("approval-only client portal visual baseline", async ({ page, context }, te
   await context.clearCookies();
   await gotoAndStabilize(page, reviewPath);
   await expect(page.getByRole("button", { name: /^approve project$/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /pay and unlock files/i })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^pay ₹/i })).toHaveCount(0);
 
   await expect(page).toHaveScreenshot("approval-only-portal.png");
 });

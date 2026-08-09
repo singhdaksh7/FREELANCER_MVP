@@ -83,8 +83,8 @@ export function ApproveProjectModal({ token, amount, deliveryMode, files, review
           ) : (
             <div className="rounded-md bg-slate-50 p-3 text-sm">
               <p className="text-xs text-ink-muted">
-                Your client reviews and approves the work. You decide when to release the original files. No online
-                payment is collected.
+                Your client reviews and approves the work, and the original files are unlocked for them
+                automatically. No online payment is collected.
               </p>
             </div>
           )}

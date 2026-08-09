@@ -132,7 +132,7 @@ test("opening the review link directly shows the protected portal, no creator ac
     page.getByRole("img", { name: new RegExp(`protected preview of review-file-one-${RUN_ID}\\.jpg`, "i") }),
   ).toBeVisible({ timeout: 10_000 });
 
-  await expect(page.getByText(/original files unlock automatically upon payment/i).first()).toBeVisible();
+  await expect(page.getByText(/original files unlock automatically once payment is confirmed/i).first()).toBeVisible();
 
   await expect(page.getByText(/escrow/i)).toHaveCount(0);
 });

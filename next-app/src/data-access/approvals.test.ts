@@ -18,10 +18,14 @@ const prismaMock = {
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+const ensureApprovedDeliveryEnqueued = vi.fn();
+vi.mock("./delivery-release", () => ({ ensureApprovedDeliveryEnqueued }));
+
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(prismaMock));
   prismaMock.workspaceApproval.create.mockResolvedValue({ id: "appr_1" });
+  ensureApprovedDeliveryEnqueued.mockResolvedValue(undefined);
 });
 
 const CONTEXT = {
@@ -160,6 +164,35 @@ describe("approveWorkspace — snapshot generation and unlock guarantees", () =>
     expect(updateData.status).not.toBe("PAID");
     expect(updateData.status).not.toBe("FILES_UNLOCKED");
     expect(prismaMock.activityLog.create.mock.calls[0][0].data.action).toBe("PROJECT_APPROVED");
+    // PAYMENT_REQUIRED still needs a captured payment before delivery — approval alone must not trigger it.
+    expect(ensureApprovedDeliveryEnqueued).not.toHaveBeenCalled();
+  });
+
+  it("APPROVAL_ONLY: moves straight to AWAITING_CREATOR_RELEASE and automatically triggers delivery — no manual creator action", async () => {
+    const { approveWorkspace } = await import("./approvals");
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "APPROVAL_ONLY", amount: null, currency: "INR" });
+    prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
+    prismaMock.changeRequest.findFirst.mockResolvedValue(null);
+    prismaMock.workspaceFile.findMany.mockResolvedValue([readyFile()]);
+
+    await approveWorkspace(CONTEXT, { reviewerName: "Rohit", termsAccepted: true });
+
+    const updateData = prismaMock.workspace.update.mock.calls[0][0].data;
+    expect(updateData.status).toBe("AWAITING_CREATOR_RELEASE");
+    expect(ensureApprovedDeliveryEnqueued).toHaveBeenCalledWith("ws_1");
+  });
+
+  it("APPROVAL_ONLY: a delivery-enqueue failure never fails the approval itself", async () => {
+    const { approveWorkspace } = await import("./approvals");
+    prismaMock.workspace.findUniqueOrThrow.mockResolvedValue({ status: "IN_REVIEW", deliveryMode: "APPROVAL_ONLY", amount: null, currency: "INR" });
+    prismaMock.workspaceApproval.findFirst.mockResolvedValue(null);
+    prismaMock.changeRequest.findFirst.mockResolvedValue(null);
+    prismaMock.workspaceFile.findMany.mockResolvedValue([readyFile()]);
+    ensureApprovedDeliveryEnqueued.mockRejectedValue(new Error("transient DB error"));
+
+    const result = await approveWorkspace(CONTEXT, { reviewerName: "Rohit", termsAccepted: true });
+
+    expect(result.id).toBe("appr_1");
   });
 
   it("blocks approval when there is nothing submitted for review yet", async () => {

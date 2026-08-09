@@ -18,7 +18,7 @@ export function HeroSection() {
 
       {/* Sub-copy */}
       <p className="mb-9 max-w-[620px] text-[16px] leading-relaxed text-[#424654]">
-        Upload work, collect feedback, and release final files only when payment clears.
+        Upload work, collect feedback, and unlock final files automatically the moment payment clears.
       </p>
 
       {/* CTAs */}

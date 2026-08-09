@@ -51,7 +51,7 @@ const STATUS_STYLES = {
   Expired: { background: "#F1F5F9", color: "#475569" },
 
   // Support & misc
-  "Awaiting Release": { background: "#FFF8E7", color: "#E8A020" },
+  "Preparing Delivery": { background: "#FFF8E7", color: "#E8A020" },
   Closed: { background: "#F1F5F9", color: "#475569" },
   Open: { background: "#EEF4FF", color: "#356DF3" },
   "Under Review": { background: "#FFF8E7", color: "#E8A020" },

@@ -5,7 +5,7 @@ const TRUST_ITEMS = [
     icon: Lock,
     title: "Original files are never exposed",
     description:
-      "Clients receive only watermarked preview links. Original assets never leave secure storage until you explicitly release them.",
+      "Clients receive only watermarked preview links. Original assets never leave secure storage until approval (and payment, where required) is confirmed.",
   },
   {
     icon: Eye,

@@ -55,7 +55,7 @@ test("client approves and sees the Pay CTA, which fails safely (no fake/test-mod
 
   await approveAsClient(page);
 
-  const payButton = page.getByRole("button", { name: /pay and unlock files/i });
+  const payButton = page.getByRole("button", { name: /^pay ₹/i });
   await expect(payButton).toBeVisible();
 
   const orderResponse = page.waitForResponse((response) => response.url().includes("/payments/orders") && response.request().method() === "POST");

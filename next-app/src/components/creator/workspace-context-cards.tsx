@@ -17,8 +17,8 @@ export function ApprovalCard({ status }: ApprovalCardProps) {
     description = "Your client submitted feedback or requested revisions on V1.";
     bgClass = "bg-danger-bg/40 border-danger/30";
   } else if (status === "AWAITING_CREATOR_RELEASE") {
-    title = "Client Approved — Awaiting Your Release";
-    description = 'Your client approved this version. Click "Approve & Release Files" to prepare their secure download.';
+    title = "Client Approved";
+    description = "Your client approved this version. Their secure download is being prepared automatically — no action needed from you.";
     bgClass = "bg-success-bg/40 border-success/30";
   } else if (status === "APPROVED" || status === "PAID" || status === "FILES_UNLOCKED" || status === "DELIVERED") {
     title = "Approved";
@@ -63,23 +63,35 @@ export function PaymentCardDetail({ amount, currency, status }: PaymentCardDetai
 
 export interface DeliveryCardProps {
   status: string;
+  deliveryMode: string;
 }
 
-export function DeliveryCard({ status }: DeliveryCardProps) {
+/**
+ * Delivery is fully automatic — there is no creator release action. Copy
+ * here only ever describes the automatic pipeline's current stage; see the
+ * "NEW PRODUCT RULE" removing the manual freelancer-release step.
+ */
+export function DeliveryCard({ status, deliveryMode }: DeliveryCardProps) {
   let title = "Locked";
-  let explanation = "Original files remain locked until client approval and payment.";
+  let explanation =
+    deliveryMode === "PAYMENT_REQUIRED"
+      ? "Original files remain locked until client approval and payment."
+      : "Original files remain locked until client approval.";
   let isUnlocked = false;
 
   if (status === "PAID" || status === "FILES_UNLOCKED" || status === "DELIVERED") {
-    title = "Delivered & Unlocked";
+    title = "Files available to client";
     explanation = "Client has unlocked and downloaded clean original files.";
     isUnlocked = true;
-  } else if (status === "APPROVED") {
-    title = "Preparing Delivery";
-    explanation = "Client approved work. Files will unlock immediately upon payment.";
+  } else if (status === "APPROVED" && deliveryMode === "PAYMENT_REQUIRED") {
+    title = "Waiting for payment";
+    explanation = "Client approved work. Delivery starts automatically the moment payment is confirmed.";
+  } else if (status === "PAYMENT_PENDING") {
+    title = "Waiting for payment";
+    explanation = "Client started checkout. Delivery starts automatically the moment payment is confirmed.";
   } else if (status === "AWAITING_CREATOR_RELEASE") {
-    title = "Ready to Release";
-    explanation = "Client approved the files. Release them to generate a secure download — no payment required for approval-only projects.";
+    title = "Preparing client download";
+    explanation = "Client approved the files and delivery is being prepared automatically — no action needed from you.";
   }
 
   return (

@@ -84,7 +84,6 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
             canCancel={workspace.canCancel}
             canDelete={workspace.canDelete}
             financiallyLocked={workspace.financiallyLocked}
-            canReleaseFiles={workspace.canReleaseFiles}
             canCloseForReview={workspace.canCloseForReview}
           />
         </div>
@@ -117,7 +116,7 @@ export default async function WorkspaceDetailsPage({ params }: { params: Promise
 
           <PaymentCardDetail amount={workspace.amount} currency={workspace.currency} status={workspace.status} />
 
-          <DeliveryCard status={workspace.status} />
+          <DeliveryCard status={workspace.status} deliveryMode={workspace.deliveryMode} />
         </div>
       </div>
 

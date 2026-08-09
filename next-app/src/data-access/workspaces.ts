@@ -196,8 +196,6 @@ export interface WorkspaceDetail {
   financiallyLocked: boolean;
   canCancel: boolean;
   canDelete: boolean;
-  /** APPROVAL_ONLY only — workspace is AWAITING_CREATOR_RELEASE and no release has been triggered yet. */
-  canReleaseFiles: boolean;
   /** PREVIEW_ONLY only — workspace is still open (IN_REVIEW/CHANGES_REQUESTED) and can be closed. */
   canCloseForReview: boolean;
   clientName: string;
@@ -233,7 +231,6 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
       },
       activityLogs: { orderBy: [{ createdAt: "desc" }, { id: "asc" }] },
       reviewLinks: { orderBy: [{ createdAt: "desc" }], take: 1 },
-      deliveryBundles: { select: { id: true }, take: 1 },
     },
   });
   if (!workspace) return null;
@@ -258,10 +255,6 @@ export async function getOwnedWorkspaceDetail(workspaceId: string): Promise<Work
     deliveredAt: workspace.deliveredAt ? workspace.deliveredAt.toISOString() : null,
     cancelledAt: workspace.cancelledAt ? workspace.cancelledAt.toISOString() : null,
     financiallyLocked: locked,
-    canReleaseFiles:
-      (workspace.deliveryMode === "APPROVAL_ONLY" || workspace.deliveryMode === "PAYMENT_REQUIRED") &&
-      workspace.status === "AWAITING_CREATOR_RELEASE" &&
-      workspace.deliveryBundles.length === 0,
     canCloseForReview:
       workspace.deliveryMode === "PREVIEW_ONLY" &&
       (workspace.status === "IN_REVIEW" || workspace.status === "CHANGES_REQUESTED"),

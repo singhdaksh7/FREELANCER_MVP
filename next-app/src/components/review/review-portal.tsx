@@ -159,8 +159,8 @@ export function ReviewPortal({
           </div>
           <p className="mt-2 text-[11px] text-[#9CA3AF]">
             {workspace.deliveryMode === "PAYMENT_REQUIRED"
-              ? "🔒 Original files unlock after payment and freelancer release"
-              : "🔒 Original files unlock once the freelancer releases this approved version"}
+              ? "🔒 Original files unlock automatically once payment is confirmed"
+              : "🔒 Original files unlock automatically once this version is approved"}
           </p>
         </div>
       </div>
@@ -481,7 +481,7 @@ export function ReviewPortal({
         </div>
       )}
 
-      {/* Mobile Actions Sheet — approve / pay / release / download, otherwise only reachable via the desktop-only aside above */}
+      {/* Mobile Actions Sheet — approve / pay / download, otherwise only reachable via the desktop-only aside above */}
       {mobileActionsOpen && (
         <div className="fixed inset-0 z-30 flex flex-col justify-end lg:hidden" role="dialog" aria-modal="true" aria-label="Actions">
           <button

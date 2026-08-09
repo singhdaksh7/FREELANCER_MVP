@@ -16,7 +16,7 @@ const WORKSPACE_STATUS_LABELS: Record<string, string> = {
   FILES_UNLOCKED: "Files Unlocked",
   DELIVERED: "Delivered",
   CANCELLED: "Cancelled",
-  AWAITING_CREATOR_RELEASE: "Awaiting Release",
+  AWAITING_CREATOR_RELEASE: "Preparing Delivery",
   CLOSED: "Closed",
 };
 
@@ -50,7 +50,7 @@ export function computeDerivedProgress(workspaceStatus: string, files: { status:
     case "PAYMENT_PENDING":
       return "Waiting for payment";
     case "AWAITING_CREATOR_RELEASE":
-      return "Ready for release";
+      return "Preparing client download";
     case "FILES_UNLOCKED":
       return "Files available to client";
     case "PAID":

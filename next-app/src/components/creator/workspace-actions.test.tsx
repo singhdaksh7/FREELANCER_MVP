@@ -9,10 +9,9 @@ const { useRouter, refresh } = vi.hoisted(() => {
 vi.mock("next/navigation", () => ({ useRouter }));
 
 // Avoids pulling the real Server Actions (next-auth/next/server import
-// chain) into this component test — delete/release/close aren't exercised.
+// chain) into this component test — delete/close aren't exercised.
 vi.mock("@/actions/workspaces", () => ({
   deleteWorkspaceAction: vi.fn(),
-  releaseFilesAction: vi.fn(),
   closeWorkspaceAction: vi.fn(),
 }));
 

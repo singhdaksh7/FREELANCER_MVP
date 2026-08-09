@@ -5,7 +5,7 @@ describe("unpreviewableFileLockedMessage", () => {
   it("APPROVAL_ONLY copy never mentions payment", () => {
     const message = unpreviewableFileLockedMessage("APPROVAL_ONLY");
     expect(message).toBe(
-      "Preview is not available for this file type. The original remains protected until approval and freelancer release.",
+      "Preview is not available for this file type. The original remains protected until approval is confirmed.",
     );
     expect(message.toLowerCase()).not.toContain("payment");
   });
@@ -13,7 +13,7 @@ describe("unpreviewableFileLockedMessage", () => {
   it("PAYMENT_REQUIRED copy explicitly mentions payment", () => {
     const message = unpreviewableFileLockedMessage("PAYMENT_REQUIRED");
     expect(message).toBe(
-      "Preview is not available for this file type. The original remains protected until approval, payment, and freelancer release.",
+      "Preview is not available for this file type. The original remains protected until approval and payment are confirmed.",
     );
     expect(message.toLowerCase()).toContain("payment");
   });

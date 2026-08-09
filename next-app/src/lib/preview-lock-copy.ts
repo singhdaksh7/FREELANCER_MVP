@@ -7,7 +7,7 @@
  */
 export function unpreviewableFileLockedMessage(deliveryMode: string): string {
   if (deliveryMode === "PAYMENT_REQUIRED") {
-    return "Preview is not available for this file type. The original remains protected until approval, payment, and freelancer release.";
+    return "Preview is not available for this file type. The original remains protected until approval and payment are confirmed.";
   }
-  return "Preview is not available for this file type. The original remains protected until approval and freelancer release.";
+  return "Preview is not available for this file type. The original remains protected until approval is confirmed.";
 }

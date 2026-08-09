@@ -68,7 +68,7 @@ describe("public review-token preview-url route (GET /api/review/[token]/files/[
     expect(response.status).toBe(200);
     expect(body.locked).toBe(true);
     expect(body.message).toBe(
-      "Preview is not available for this file type. The original remains protected until approval and freelancer release.",
+      "Preview is not available for this file type. The original remains protected until approval is confirmed.",
     );
     expect(body.message.toLowerCase()).not.toContain("payment");
     expect(createPreviewPresignedUrl).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe("public review-token preview-url route (GET /api/review/[token]/files/[
     const body = await response.json();
 
     expect(body.message).toBe(
-      "Preview is not available for this file type. The original remains protected until approval, payment, and freelancer release.",
+      "Preview is not available for this file type. The original remains protected until approval and payment are confirmed.",
     );
   });
 

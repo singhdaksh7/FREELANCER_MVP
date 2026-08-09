@@ -22,7 +22,7 @@ const BASE_GRANT = {
   downloadCount: 0,
   workspace: { title: "Brand Identity Design", creator: { name: "Arjun Raj" } },
   payment: { id: "pay_1", gatewayPaymentId: "pay_gw_1" },
-  approval: { deliveryBundles: [{ status: "READY" }] },
+  approval: { deliveryBundle: { status: "READY" } },
   files: [],
 };
 

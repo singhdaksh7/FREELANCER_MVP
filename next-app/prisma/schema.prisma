@@ -811,9 +811,12 @@ model WorkspaceApproval {
   revokedAt     DateTime?
   userAgent     String?
 
-  payments        Payment[]
-  downloadGrants  DownloadGrant[]
-  deliveryBundles DeliveryBundle[]
+  payments       Payment[]
+  downloadGrants DownloadGrant[]
+  /// One-to-one now that DeliveryBundle.approvalId is @unique (see
+  /// ensureApprovedDeliveryEnqueued in src/data-access/delivery-release.ts)
+  /// — at most one bundle can ever exist per approval.
+  deliveryBundle DeliveryBundle?
 
   @@index([workspaceId])
   @@map("workspace_approvals")
@@ -936,8 +939,10 @@ model DownloadLog {
 
 /// One private ZIP bundle per captured payment (`paymentId` is unique) for
 /// PAYMENT_REQUIRED workspaces; Phase 7.5 — nullable, since an
-/// APPROVAL_ONLY creator release builds a bundle with no Payment at all
-/// (see DELIVERY_MODES.md). Built by the standalone delivery worker
+/// APPROVAL_ONLY approval automatically enqueues a bundle with no Payment
+/// at all (see DELIVERY_MODES.md and ensureApprovedDeliveryEnqueued in
+/// src/data-access/delivery-release.ts — no manual creator action is
+/// involved in either mode). Built by the standalone delivery worker
 /// (src/worker/process-deliveries.ts) from the frozen approved
 /// file-version snapshot. Never built inside ordinary page rendering.
 model DeliveryBundle {
@@ -949,7 +954,14 @@ model DeliveryBundle {
   paymentId String?  @unique
   payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
-  approvalId String
+  /// Unique — this is the DB-level guarantee that auto-delivery is
+  /// idempotent under concurrent triggers (webhook + reconciliation racing
+  /// for PAYMENT_REQUIRED, or any repeated call for APPROVAL_ONLY): at most
+  /// one DeliveryBundle can ever exist per approval, so a second concurrent
+  /// caller loses the insert race with a P2002 rather than creating a
+  /// duplicate bundle. See ensureApprovedDeliveryEnqueued in
+  /// src/data-access/delivery-release.ts.
+  approvalId String            @unique
   approval   WorkspaceApproval @relation(fields: [approvalId], references: [id], onDelete: Restrict)
 
   status          DeliveryBundleStatus @default(PENDING)

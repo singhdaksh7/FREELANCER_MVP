@@ -52,7 +52,7 @@ test("creator file card: PDF gets a real protected preview, ZIP gets a mode-awar
   const zipName = zipPath.split(/[\\/]/).pop()!;
   const zipCard = page.locator(`[data-testid="file-card"][data-file-name="${zipName}"]`);
   await expect(
-    zipCard.getByText(/preview is not available for this file type\. the original remains protected until approval and freelancer release\./i),
+    zipCard.getByText(/preview is not available for this file type\. the original remains protected until approval is confirmed./i),
   ).toBeVisible();
   await expect(zipCard.getByText(/payment/i)).toHaveCount(0);
 });
@@ -70,7 +70,7 @@ test("creator Preview Client View: PDF preview renders with its label, ZIP shows
   const zipName = zipPath.split(/[\\/]/).pop()!;
   await page.getByTestId("file-switcher").getByText(zipName).click();
   await expect(
-    page.getByText(/preview is not available for this file type\. the original remains protected until approval and freelancer release\./i),
+    page.getByText(/preview is not available for this file type\. the original remains protected until approval is confirmed./i),
   ).toBeVisible();
 });
 
@@ -91,7 +91,7 @@ test("public secure review link (logged out): identical PDF preview and ZIP lock
   // legitimately mention payment for other reasons unrelated to this
   // file's locked-card copy.
   await expect(
-    page.getByText(/preview is not available for this file type\. the original remains protected until approval and freelancer release\./i),
+    page.getByText(/preview is not available for this file type\. the original remains protected until approval is confirmed./i),
   ).toBeVisible();
 });
 

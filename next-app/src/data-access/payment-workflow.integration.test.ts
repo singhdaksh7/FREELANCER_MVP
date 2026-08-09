@@ -255,24 +255,29 @@ describe("webhook capture -> finalization -> delivery -> download (full happy pa
     // real capture flow never sets it at all (see PLATFORM_FEE_AND_PAYOUT_LEDGER.md).
     expect(paidPayment.feeAmount === null || Number(paidPayment.feeAmount) === 0).toBe(true);
     const paidWorkspace = await prisma.workspace.findUniqueOrThrow({ where: { id: fixture.workspace.id } });
+    // AWAITING_CREATOR_RELEASE is a transient, internal-only status — no
+    // human action is required or expected here. Captured payment alone
+    // (via finalizeCapturedPayment's automatic call to
+    // ensureApprovedDeliveryEnqueued) already enqueued delivery — no
+    // separate creator action exists anymore.
     expect(paidWorkspace.status).toBe("AWAITING_CREATOR_RELEASE");
 
     let bundleCount = await prisma.deliveryBundle.count({ where: { paymentId: checkout.paymentId } });
-    expect(bundleCount).toBe(0);
+    expect(bundleCount).toBe(1);
     const jobCount = await prisma.deliveryBundleJob.count({ where: { deliveryBundle: { paymentId: checkout.paymentId } } });
-    expect(jobCount).toBe(0);
+    expect(jobCount).toBe(1);
 
-    // Duplicate webhook delivery — must not create a delivery job or re-increment anything.
+    // Duplicate webhook delivery — must not create a second delivery bundle/job.
     const duplicateOutcome = await processRazorpayWebhookDelivery(capturedEvent);
     expect(duplicateOutcome).toBe("duplicate");
     bundleCount = await prisma.deliveryBundle.count({ where: { paymentId: checkout.paymentId } });
-    expect(bundleCount).toBe(0);
+    expect(bundleCount).toBe(1);
 
-    // Captured payment does not unlock or enqueue delivery. Only the
-    // authenticated creator can release this immutable approved snapshot.
-    signInAsArjun();
-    const { releaseApprovedFiles } = await import("./delivery-release");
-    await releaseApprovedFiles(fixture.workspace.id);
+    // A recovery re-attempt (e.g. getClientPaymentStatus's safety net)
+    // hitting the same already-enqueued approval must also never create a
+    // second bundle — the idempotent core is safe under repeated calls.
+    const { ensureApprovedDeliveryEnqueued } = await import("./delivery-release");
+    await ensureApprovedDeliveryEnqueued(fixture.workspace.id);
     bundleCount = await prisma.deliveryBundle.count({ where: { paymentId: checkout.paymentId } });
     expect(bundleCount).toBe(1);
 
@@ -382,7 +387,7 @@ describe("webhook capture -> finalization -> delivery -> download (full happy pa
 });
 
 describe("delivery-bundle worker failure and retry", () => {
-  it("a failed delivery leaves the workspace awaiting creator release (never FILES_UNLOCKED) and preserves payment truth", async () => {
+  it("a failed delivery leaves the workspace in the transient AWAITING_CREATOR_RELEASE status (never FILES_UNLOCKED) and preserves payment truth", async () => {
     const { authorizeReviewToken } = await import("./review-auth");
     const { createPaymentOrder } = await import("./payment-orders");
     const { verifyCheckoutCallback } = await import("./payment-verification");
@@ -403,10 +408,9 @@ describe("delivery-bundle worker failure and retry", () => {
       currency: checkout.currency,
     });
 
-    signInAsArjun();
-    const { releaseApprovedFiles } = await import("./delivery-release");
-    await releaseApprovedFiles(fixture.workspace.id);
-
+    // No creator action here — captured payment alone already auto-enqueued
+    // delivery via finalizeCapturedPayment's call to
+    // ensureApprovedDeliveryEnqueued.
     const job = await claimNextDeliveryJob(prisma);
     expect(job).not.toBeNull();
     await processDeliveryJob(prisma, job!);
@@ -433,7 +437,7 @@ describe("delivery-bundle worker failure and retry", () => {
 });
 
 describe("reconciliation fallback", () => {
-  it("finalizes a captured payment via reconciliation when no webhook has arrived", async () => {
+  it("finalizes a captured payment via reconciliation when no webhook has arrived, and auto-enqueues delivery with no creator action", async () => {
     const { authorizeReviewToken } = await import("./review-auth");
     const { createPaymentOrder } = await import("./payment-orders");
     const { verifyCheckoutCallback } = await import("./payment-verification");
@@ -453,8 +457,11 @@ describe("reconciliation fallback", () => {
     const payment = await prisma.payment.findUniqueOrThrow({ where: { id: checkout.paymentId } });
     expect(payment.status).toBe("PAID");
 
+    // Reconciliation converges on the same ensureApprovedDeliveryEnqueued
+    // call the webhook uses — captured payment alone auto-enqueues
+    // delivery, no creator release action exists.
     const bundleCount = await prisma.deliveryBundle.count({ where: { paymentId: checkout.paymentId } });
-    expect(bundleCount).toBe(0); // payment never creates delivery before explicit creator release
+    expect(bundleCount).toBe(1);
 
     // A late-arriving webhook for the same payment must not duplicate anything.
     const { processRazorpayWebhookDelivery } = await import("./webhook-processing");
@@ -463,7 +470,7 @@ describe("reconciliation fallback", () => {
     await processRazorpayWebhookDelivery(lateEvent);
 
     const bundleCountAfterLateWebhook = await prisma.deliveryBundle.count({ where: { paymentId: checkout.paymentId } });
-    expect(bundleCountAfterLateWebhook).toBe(0);
+    expect(bundleCountAfterLateWebhook).toBe(1);
   });
 });
 

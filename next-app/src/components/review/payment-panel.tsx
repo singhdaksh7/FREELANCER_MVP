@@ -239,7 +239,7 @@ export function PaymentPanel({ token, amount, currency, workspaceTitle, creatorN
       <>
         <Loader2 size={22} className="animate-spin text-vault-blue" aria-hidden="true" />
         <p className="text-sm font-semibold text-success">Payment Received</p>
-        <p className="text-sm font-semibold text-white">Waiting for the freelancer to release the final files.</p>
+        <p className="text-sm font-semibold text-white">Preparing your final files…</p>
         <p className="text-xs text-slate-400">Your originals are being securely packaged for download. This usually takes a moment.</p>
       </>,
     );

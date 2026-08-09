@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, PackageCheck, AlertTriangle, Clock } from "lucide-react";
+import { Loader2, PackageCheck, AlertTriangle } from "lucide-react";
 
 export interface ApprovalOnlyDeliveryPanelProps {
   token: string;
 }
 
-type Phase = "loading" | "awaiting_release" | "preparing" | "preparation_failed" | "claiming" | "unlocked" | "claim_failed";
+type Phase = "loading" | "preparing" | "preparation_failed" | "claiming" | "unlocked" | "claim_failed";
 
 interface StatusResponse {
   workspaceStatus: string;
@@ -17,15 +17,16 @@ interface StatusResponse {
 
 function phaseFromStatus(status: StatusResponse): Phase {
   if (status.workspaceStatus === "FILES_UNLOCKED" || status.workspaceStatus === "DELIVERED") return "unlocked";
-  if (status.workspaceStatus === "AWAITING_CREATOR_RELEASE") return status.deliveryFailed ? "preparation_failed" : "awaiting_release";
-  return "awaiting_release";
+  if (status.workspaceStatus === "AWAITING_CREATOR_RELEASE") return status.deliveryFailed ? "preparation_failed" : "preparing";
+  return "preparing";
 }
 
 /**
  * The APPROVAL_ONLY equivalent of `PaymentPanel`'s post-approval delivery
- * surface — no payment/checkout step at all (see PART 5: "Client approval
- * → freelancer final release → downloads unlock," never a payment gate for
- * this delivery mode). Polls the same generalized delivery-status endpoint
+ * surface — no payment/checkout step at all, and no manual freelancer
+ * release step either: approval alone automatically enqueues delivery
+ * server-side (see approveWorkspace calling ensureApprovedDeliveryEnqueued
+ * in src/data-access/approvals.ts). Polls the same generalized delivery-status endpoint
  * PaymentPanel uses (its "payments" path name predates this reuse, but
  * `getClientPaymentStatus` has been mode-agnostic since the Part 5 fix —
  * see src/data-access/payment-orders.ts) and, once a DownloadGrant exists,
@@ -102,7 +103,7 @@ export function ApprovalOnlyDeliveryPanel({ token }: ApprovalOnlyDeliveryPanelPr
           }, 3000);
         }
       } else {
-        setPhase("awaiting_release");
+        setPhase("preparing");
       }
     })();
     return () => {
@@ -126,15 +127,13 @@ export function ApprovalOnlyDeliveryPanel({ token }: ApprovalOnlyDeliveryPanelPr
     return wrap(<p className="text-sm text-slate-400">Loading delivery status…</p>);
   }
 
-  if (phase === "awaiting_release") {
+  if (phase === "preparing") {
     return wrap(
       <>
-        <Clock size={22} className="text-warning" aria-hidden="true" />
+        <Loader2 size={22} className="animate-spin text-vault-blue" aria-hidden="true" />
         <p className="text-sm font-semibold text-success">Files Approved</p>
-        <p className="text-sm font-semibold text-white">Waiting for the freelancer to release the final files.</p>
-        <p className="text-xs text-slate-400">
-          Original files remain locked until the freelancer explicitly releases this approved version.
-        </p>
+        <p className="text-sm font-semibold text-white">Preparing your final files…</p>
+        <p className="text-xs text-slate-400">Your approved originals are being securely packaged for download. This usually takes a moment.</p>
       </>,
     );
   }

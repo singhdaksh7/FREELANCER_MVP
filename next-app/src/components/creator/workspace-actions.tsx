@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ConfirmFetchDialog } from "@/components/ui/confirm-fetch-dialog";
-import { deleteWorkspaceAction, releaseFilesAction, closeWorkspaceAction } from "@/actions/workspaces";
+import { deleteWorkspaceAction, closeWorkspaceAction } from "@/actions/workspaces";
 
 export interface WorkspaceActionsProps {
   workspaceId: string;
@@ -14,20 +14,17 @@ export interface WorkspaceActionsProps {
   canCancel: boolean;
   canDelete: boolean;
   financiallyLocked: boolean;
-  /** APPROVAL_ONLY only — workspace is AWAITING_CREATOR_RELEASE. */
-  canReleaseFiles?: boolean;
   /** PREVIEW_ONLY only — workspace is still IN_REVIEW/CHANGES_REQUESTED. */
   canCloseForReview?: boolean;
 }
 
-/** Edit / Cancel / Delete / Release / Close / Share actions for the workspace details header. */
+/** Edit / Cancel / Delete / Close / Share actions for the workspace details header. Delivery is fully automatic — no creator release action exists. */
 export function WorkspaceActions({
   workspaceId,
   workspaceTitle,
   canCancel,
   canDelete,
   financiallyLocked,
-  canReleaseFiles = false,
   canCloseForReview = false,
 }: WorkspaceActionsProps) {
   const router = useRouter();
@@ -57,21 +54,6 @@ export function WorkspaceActions({
       >
         <Pencil size={14} aria-hidden="true" /> Edit Workspace
       </Link>
-
-      {canReleaseFiles && (
-        <ConfirmDialog
-          triggerLabel="Release Approved Files"
-          triggerClassName="rounded-md bg-success min-h-[44px] px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vault-blue"
-          title="Release the approved files to your client?"
-          description={`This unlocks the exact files/versions approved for "${workspaceTitle}" for your client to download.`}
-          confirmLabel="Yes, Release Files"
-          pendingLabel="Releasing Files…"
-          action={releaseFilesAction}
-          initialState={{}}
-          hiddenFields={{ workspaceId }}
-          onSuccess={() => router.refresh()}
-        />
-      )}
 
       {canCloseForReview && (
         <ConfirmDialog

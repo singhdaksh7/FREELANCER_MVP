@@ -5,6 +5,7 @@ import { ActivityAction } from "@/lib/activity-log";
 import { assertWorkspaceTransition } from "@/lib/workspace-transitions";
 import type { ReviewContext } from "./review-auth";
 import type { Prisma } from "@/generated/prisma/client";
+import { ensureApprovedDeliveryEnqueued } from "./delivery-release";
 
 export class ApprovalValidationError extends Error {
   constructor(message: string) {
@@ -141,6 +142,21 @@ export async function approveWorkspace(context: ReviewContext, input: ApproveWor
     });
     return created;
   });
+
+  // APPROVAL_ONLY has no payment gate at all — approval alone is the
+  // required condition, so auto-delivery is triggered the moment the
+  // approval transaction above commits. A failure here never fails the
+  // approval itself or loses the snapshot; getClientPaymentStatus
+  // (src/data-access/payment-orders.ts) opportunistically retries the same
+  // idempotent call on every client status poll. See the "NEW PRODUCT
+  // RULE" removing the manual freelancer-release step.
+  if (workspace.deliveryMode === "APPROVAL_ONLY") {
+    try {
+      await ensureApprovedDeliveryEnqueued(context.workspaceId);
+    } catch (error) {
+      console.error(`[auto-delivery] Failed to enqueue delivery for workspace ${context.workspaceId}:`, error);
+    }
+  }
 
   return { id: approval.id };
 }

@@ -227,9 +227,13 @@ export async function cancelWorkspaceAction(
 }
 
 /**
- * The creator's "Release Approved Files" action for an approved workspace
- * that is awaiting release. Never redirects; the workspace detail page
- * reloads to reflect delivery-worker progress.
+ * LEGACY / internal only — delivery is now fully automatic (see the "NEW
+ * PRODUCT RULE" removing the manual freelancer-release step), so no UI
+ * anywhere calls this anymore. Retained only for backward compatibility
+ * with any workspace that predates auto-delivery and is still sitting in
+ * AWAITING_CREATOR_RELEASE, or as a manually-triggerable fallback (support
+ * tooling) — see releaseApprovedFiles in @/data-access/delivery-release.
+ * Never redirects.
  */
 export async function releaseFilesAction(
   _prevState: WorkspaceLifecycleState,
