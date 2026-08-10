@@ -12,36 +12,49 @@ import { networkScopedIp } from "./rate-limit";
  * mutation — the worker's own poll loop will pick the job up regardless
  * once it's running.
  *
- * Retry schedule is shaped around production evidence, not guesswork: a
- * POST /wake against a sleeping Render Free origin gets a fast HTTP 502
- * from Render's own edge (observed: two attempts ~5s apart both failed in
- * under a second), while the worker's actual cold-start — measured via a
- * lone, patient request — reliably completes in ~23-43s. A short 2-attempt
- * budget can never survive that gap, so a cold worker's wake used to fail
- * every time; the job then sat PENDING until an unrelated deploy happened
- * to restart the worker (one measured incident: 8m49s; others: 24 minutes
- * to several hours). The schedule below spaces retries out to a cumulative
- * ~60s, comfortably past the observed cold-start window, while stopping
- * immediately on a permanent-looking rejection (401/403/other 4xx besides
- * 429) instead of wasting the full budget on something no amount of
- * waiting will fix. 429 is treated as transient too — see the
- * TRANSIENT_STATUSES comment below for why.
+ * Retry schedule is shaped around production evidence, not guesswork. Two
+ * rounds of production testing found:
  *
- * Never logs WORKER_WAKE_SECRET, never throws, never awaited-to-failure by
- * callers (fire-and-forget from their point of view — wakeWorker returns
- * void, not a Promise, so nothing can accidentally block on it).
+ *   1. A POST /wake against a sleeping Render Free origin gets a fast HTTP
+ *      502 (and sometimes 429 — Render's own edge throttling repeat
+ *      requests mid-boot, not the worker app's rate limiter, confirmed by
+ *      zero worker-side logs during the window) from Render's edge. Both
+ *      are transient cold-start noise, not permanent rejections.
+ *   2. Even with that classification fixed and the retry schedule running
+ *      its full ~61s budget (8 short, independently-timed-out attempts),
+ *      the worker still never woke — while a single lone, patient GET
+ *      /health request (no retries, one held-open connection) reliably
+ *      completes in ~23-43s. Render's cold start appears to need one
+ *      sustained connection that survives the whole boot, not several
+ *      short independent probes that each give up and reconnect.
+ *
+ * So the primary path is now: hold open a patient GET to the worker's
+ * public /health (bootstrapHealthThenWake) long enough to cover the
+ * observed cold-start window, then — once the worker is confirmed up —
+ * send the real authenticated POST /wake. /health is a read-only,
+ * unauthenticated status probe (see combined-worker-server.ts): it never
+ * claims jobs, mutates the DB, or runs processing, so using it purely as a
+ * "is the origin up yet" bootstrap doesn't weaken /wake's own
+ * authentication or touch job logic at all.
+ *
+ * If the bootstrap itself fails or times out (health URL undeterminable,
+ * network error, non-2xx), or the authenticated wake after a successful
+ * bootstrap comes back with a transient status, this falls back to the
+ * short-attempt retry loop below (unchanged from the previous fix, still
+ * including 429) as a second line of defense — never a total no-op.
+ *
+ * Never logs WORKER_WAKE_SECRET or the worker URL, never throws, never
+ * awaited-to-failure by callers (fire-and-forget from their point of view
+ * — wakeWorker returns void, not a Promise, so nothing can accidentally
+ * block on it).
  */
+const HEALTH_BOOTSTRAP_TIMEOUT_MS = 55_000;
 const WAKE_ATTEMPT_TIMEOUT_MS = 15_000;
 // Delays between attempts, landing cumulative elapsed time at roughly
 // 5s, 10s, 15s, 25s, 35s, 45s, 60s.
 const WAKE_RETRY_DELAYS_MS = [5_000, 5_000, 5_000, 10_000, 10_000, 10_000, 15_000];
-// 429 confirmed transient in this context by production evidence: a cold
-// worker's second wake attempt got HTTP 429 from Render's own edge (the
-// worker process hadn't started yet — zero worker-side logs during the
-// window — so this wasn't the worker app's own rate limiter). Render's
-// edge appears to throttle repeat requests during an active cold boot,
-// and the old classification treated that 429 as a permanent rejection,
-// aborting the retry sequence after ~5.5s and leaving the worker asleep.
+// Transient/retryable statuses — see the module doc comment above for why
+// 429 belongs here alongside the classic Bad-Gateway-family responses.
 const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
 
 export type WakeKind = "file" | "delivery" | "login";
@@ -99,8 +112,68 @@ async function postWake(url: string, secret: string, kind: WakeKind): Promise<Wa
   }
 }
 
-async function runWakeSequence(url: string, secret: string, kind: WakeKind): Promise<void> {
-  const startedAt = Date.now();
+/** POST /wake's URL with the path swapped to the worker's public, unauthenticated GET /health — same origin, no separate config needed. Returns null (never throws) if WORKER_WAKE_URL isn't a parseable absolute URL. */
+function deriveHealthUrl(wakeUrl: string): string | null {
+  try {
+    const url = new URL(wakeUrl);
+    url.pathname = "/health";
+    url.search = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+type BootstrapOutcome = "succeeded" | "permanent" | "fallback";
+
+/**
+ * Holds one patient GET open against the worker's public /health — long
+ * enough to survive a real Render Free cold start — then, once the origin
+ * confirms it's up, sends the real authenticated POST /wake. /health does
+ * no auth and no job work (see combined-worker-server.ts), so this never
+ * weakens /wake's own secret check and never touches job state; it's
+ * purely "is the origin reachable yet."
+ */
+async function bootstrapHealthThenWake(url: string, secret: string, kind: WakeKind, startedAt: number): Promise<BootstrapOutcome> {
+  const healthUrl = deriveHealthUrl(url);
+  if (!healthUrl) return "fallback";
+
+  console.log(`[worker-wake] bootstrap_started kind=${kind}`);
+  try {
+    const response = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(HEALTH_BOOTSTRAP_TIMEOUT_MS) });
+    console.log(`[worker-wake] bootstrap_status=${response.status}`);
+    if (!response.ok) {
+      console.error(`[worker-wake] bootstrap_failed status=${response.status}`);
+      return "fallback";
+    }
+  } catch {
+    console.error("[worker-wake] bootstrap_failed status=network_error_or_timeout");
+    return "fallback";
+  }
+  console.log(`[worker-wake] bootstrap_succeeded elapsedMs=${Date.now() - startedAt}`);
+
+  console.log(`[worker-wake] authenticated_wake_started kind=${kind}`);
+  const result = await postWake(url, secret, kind);
+  if (result.ok) {
+    console.log(`[worker-wake] wake_succeeded elapsedMs=${Date.now() - startedAt}`);
+    if (kind === "login") console.log("[worker-prewarm] wake_succeeded");
+    return "succeeded";
+  }
+
+  const transient = result.status === undefined || TRANSIENT_STATUSES.has(result.status);
+  if (!transient) {
+    console.error(`[worker-wake] wake_aborted status=${result.status}`);
+    if (kind === "login") console.log("[worker-prewarm] wake_failed");
+    return "permanent";
+  }
+  // The origin answered /health but the authenticated /wake itself came
+  // back transient (rare — e.g. a request landing in the last moment of
+  // startup) — the bounded retry loop below picks up from here.
+  return "fallback";
+}
+
+/** Fallback: the short-attempt, spaced-retry POST /wake loop from the previous fix, unchanged. Used when the health bootstrap can't run or doesn't resolve things on its own. */
+async function runPostWakeRetryLoop(url: string, secret: string, kind: WakeKind, startedAt: number): Promise<void> {
   const totalAttempts = WAKE_RETRY_DELAYS_MS.length + 1;
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
@@ -119,8 +192,8 @@ async function runWakeSequence(url: string, secret: string, kind: WakeKind): Pro
     // No status at all (network error / our own timeout) is treated as
     // transient — the same connection failures a genuine cold start
     // produces. A status is only "permanent" when it's present and isn't
-    // one of the 502/503/504 family Render's edge returns for a sleeping
-    // origin; that covers 401/403 and any other 4xx/5xx immediately.
+    // one of the transient statuses above; that covers 401/403 and any
+    // other 4xx/5xx immediately.
     const transient = result.status === undefined || TRANSIENT_STATUSES.has(result.status);
     if (!transient) {
       console.error(`[worker-wake] wake_aborted status=${result.status}`);
@@ -137,6 +210,15 @@ async function runWakeSequence(url: string, secret: string, kind: WakeKind): Pro
   const elapsedMs = Date.now() - startedAt;
   console.error(`[worker-wake] wake_exhausted elapsedMs=${elapsedMs}`);
   if (kind === "login") console.log("[worker-prewarm] wake_failed");
+}
+
+async function runWakeSequence(url: string, secret: string, kind: WakeKind): Promise<void> {
+  const startedAt = Date.now();
+
+  const outcome = await bootstrapHealthThenWake(url, secret, kind, startedAt);
+  if (outcome !== "fallback") return;
+
+  await runPostWakeRetryLoop(url, secret, kind, startedAt);
 }
 
 /**
