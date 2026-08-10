@@ -22,8 +22,10 @@ import { networkScopedIp } from "./rate-limit";
  * to restart the worker (one measured incident: 8m49s; others: 24 minutes
  * to several hours). The schedule below spaces retries out to a cumulative
  * ~60s, comfortably past the observed cold-start window, while stopping
- * immediately on a permanent-looking rejection (401/403/other 4xx) instead
- * of wasting the full budget on something no amount of waiting will fix.
+ * immediately on a permanent-looking rejection (401/403/other 4xx besides
+ * 429) instead of wasting the full budget on something no amount of
+ * waiting will fix. 429 is treated as transient too — see the
+ * TRANSIENT_STATUSES comment below for why.
  *
  * Never logs WORKER_WAKE_SECRET, never throws, never awaited-to-failure by
  * callers (fire-and-forget from their point of view — wakeWorker returns
@@ -33,7 +35,14 @@ const WAKE_ATTEMPT_TIMEOUT_MS = 15_000;
 // Delays between attempts, landing cumulative elapsed time at roughly
 // 5s, 10s, 15s, 25s, 35s, 45s, 60s.
 const WAKE_RETRY_DELAYS_MS = [5_000, 5_000, 5_000, 10_000, 10_000, 10_000, 15_000];
-const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+// 429 confirmed transient in this context by production evidence: a cold
+// worker's second wake attempt got HTTP 429 from Render's own edge (the
+// worker process hadn't started yet — zero worker-side logs during the
+// window — so this wasn't the worker app's own rate limiter). Render's
+// edge appears to throttle repeat requests during an active cold boot,
+// and the old classification treated that 429 as a permanent rejection,
+// aborting the retry sequence after ~5.5s and leaving the worker asleep.
+const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
 
 export type WakeKind = "file" | "delivery" | "login";
 

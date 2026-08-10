@@ -142,6 +142,66 @@ describe("wakeWorker", () => {
     }
   });
 
+  it("429 -> 502 -> 202 succeeds — a cold worker's Render edge throttling is transient, not permanent", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(statusResponse(429))
+        .mockResolvedValueOnce(statusResponse(502))
+        .mockResolvedValueOnce(okResponse());
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      wakeWorker("file");
+      await vi.advanceTimersByTimeAsync(TOTAL_SCHEDULE_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("repeated 429 then 202 succeeds", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(statusResponse(429))
+        .mockResolvedValueOnce(statusResponse(429))
+        .mockResolvedValueOnce(statusResponse(429))
+        .mockResolvedValueOnce(okResponse());
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      wakeWorker("file");
+      await vi.advanceTimersByTimeAsync(TOTAL_SCHEDULE_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("exits cleanly after exhausting the retry budget on repeated 429s", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(statusResponse(429));
+      global.fetch = fetchMock as unknown as typeof fetch;
+      const errorSpy = vi.spyOn(console, "error");
+
+      wakeWorker("file");
+      await vi.advanceTimersByTimeAsync(TOTAL_SCHEDULE_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(ALL_DELAYS_MS.length + 1);
+      expect(errorSpy.mock.calls.some((c) => String(c[0]).includes("wake_exhausted"))).toBe(true);
+
+      fetchMock.mockClear();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a network error -> 202 succeeds (treated the same as a transient status)", async () => {
     vi.useFakeTimers();
     try {
