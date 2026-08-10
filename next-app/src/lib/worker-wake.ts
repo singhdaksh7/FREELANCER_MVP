@@ -58,6 +58,14 @@ async function attemptWake(url: string, secret: string, kind: WakeKind, attempts
         await attemptWake(url, secret, kind, attemptsLeft - 1);
         return;
       }
+      // Every attempt exhausted with a non-2xx response (as opposed to a
+      // thrown/network error, handled below) previously fell through here
+      // silently for "file"/"delivery" kinds — a real wake failure (e.g. a
+      // wake-secret mismatch, or the worker rejecting the request) left no
+      // trace at all, so a job could sit PENDING indefinitely with nothing
+      // in the logs to explain why. Always log the final status so this is
+      // never silent again.
+      console.error(`[worker-wake] Wake for "${kind}" job rejected (non-fatal): HTTP ${response.status}`);
       if (kind === "login") console.log("[worker-prewarm] wake_failed");
       return;
     }

@@ -104,6 +104,26 @@ describe("wakeWorker", () => {
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
+
+  it("logs when every attempt gets a non-2xx response (e.g. a wake-secret mismatch) — this must never fail silently, or a stuck job leaves no trace of why", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.WORKER_WAKE_URL = "https://worker.example/wake";
+      process.env.WORKER_WAKE_SECRET = "secret";
+      global.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 401 })) as unknown as typeof fetch;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      wakeWorker("file");
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(errorSpy).toHaveBeenCalled();
+      const loggedText = errorSpy.mock.calls.map((c) => JSON.stringify(c)).join(" ");
+      expect(loggedText).toContain("401");
+      expect(loggedText).not.toContain("secret");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("prewarmCombinedWorkerForLogin", () => {
