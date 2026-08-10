@@ -78,8 +78,13 @@ export function networkScopedIp(ip: string): string {
 }
 
 /** Best-effort client IP extraction from standard proxy headers — never trusted as an identity, only as a rate-limit scoping hint. */
-export function getClientIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
+export function getClientIpFromHeaders(headers: Headers): string {
+  const forwarded = headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip") ?? "unknown";
+  return headers.get("x-real-ip") ?? "unknown";
+}
+
+/** Same extraction as {@link getClientIpFromHeaders}, for callers that hold a Request rather than a next/headers() Headers object. */
+export function getClientIp(request: Request): string {
+  return getClientIpFromHeaders(request.headers);
 }
